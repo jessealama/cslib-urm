@@ -1,0 +1,11 @@
+name = "urm"
+version = "0.1.0"
+defaultTargets = ["Urm"]
+
+[[lean_lib]]
+name = "Urm"
+
+[[require]]
+name = "cslib"
+scope = "leanprover"
+rev = "main"
