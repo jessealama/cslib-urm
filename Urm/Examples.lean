@@ -13,7 +13,7 @@ demonstrating the step semantics defined in `Urm.Execution`.
 
 ## Main definitions
 
-- `cutlandSub`: Cutland's subtraction program from page 12
+- `P`: Cutland's subtraction program from page 12
 
 ## Notation
 
@@ -65,8 +65,8 @@ Program listing:
 ```
 
 The `@[simp]` attribute enables automatic instruction lookup in proofs.
-Array indexing works with compile-time bounds checking: `cutlandSub[0]`, `cutlandSub[5]`, etc. -/
-@[simp] def cutlandSub : Program := [
+Array indexing works with compile-time bounds checking: `P[0]`, `P[5]`, etc. -/
+@[simp] def P : Program := [
   Instr.J 0 1 5,  -- 0: if R[0] = R[1], jump to 5
   Instr.S 1,      -- 1: R[1]++
   Instr.S 2,      -- 2: R[2]++
@@ -75,7 +75,7 @@ Array indexing works with compile-time bounds checking: `cutlandSub[0]`, `cutlan
   Instr.T 2 0     -- 5: R[0] := R[2]
 ]
 
-/-! ### Example: `cutlandSub ↓ [5, 3]` yields `2`
+/-! ### Example: `P ↓ [5, 3]` yields `2`
 
 The loop iterates twice (R[1]: 3→4→5, R[2]: 0→1→2), then outputs R[2] = 2 = 5 - 3. -/
 
@@ -83,24 +83,24 @@ The loop iterates twice (R[1]: 3→4→5, R[2]: 0→1→2), then outputs R[2] = 
 
 /-- When n = m initially, program halts immediately after jumping to T and executing it. -/
 theorem init_halts_when_equal (m : ℕ) :
-    ∃ c, Steps cutlandSub (Config.init [m, m]) c ∧ c.isHalted cutlandSub ∧ c.state.output = 0 := by
+    ∃ c, Steps P (Config.init [m, m]) c ∧ c.isHalted P ∧ c.state.output = 0 := by
   -- First step: J(0,1,5) succeeds since R[0] = R[1] = m, jump to pc=5
   set init := Config.init [m, m] with hinit
   have h_r0 : init.state.read 0 = m := by simp [hinit, Config.init, State.fromInputs, State.read]
   have h_r1 : init.state.read 1 = m := by simp [hinit, Config.init, State.fromInputs, State.read]
   have h_r2 : init.state.read 2 = 0 := by simp [hinit, Config.init, State.fromInputs, State.read]
-  have h_instr0 : cutlandSub.getInstr 0 = some (Instr.J 0 1 5) := rfl
-  have step1 : Step cutlandSub init ⟨5, init.state⟩ := Step.jump_eq h_instr0 (by rw [h_r0, h_r1])
+  have h_instr0 : P.getInstr 0 = some (Instr.J 0 1 5) := rfl
+  have step1 : Step P init ⟨5, init.state⟩ := Step.jump_eq h_instr0 (by rw [h_r0, h_r1])
   -- Second step: T(2,0) copies R[2]=0 to R[0], pc becomes 6
-  have h_instr5 : cutlandSub.getInstr 5 = some (Instr.T 2 0) := rfl
+  have h_instr5 : P.getInstr 5 = some (Instr.T 2 0) := rfl
   set final_state := init.state.write 0 (init.state.read 2) with hfinal
-  have step2 : Step cutlandSub ⟨5, init.state⟩ ⟨6, final_state⟩ := Step.trans h_instr5
+  have step2 : Step P ⟨5, init.state⟩ ⟨6, final_state⟩ := Step.trans h_instr5
   -- Final state output
   have h_output : final_state.output = 0 := by
     simp only [hfinal, State.output, State.write, Function.update_self, h_r2]
   refine ⟨⟨6, final_state⟩, ?_, ?_, h_output⟩
   · exact Relation.ReflTransGen.head step1 (Relation.ReflTransGen.single step2)
-  · simp [Config.isHalted, cutlandSub]
+  · simp [Config.isHalted, P]
 
 /-- Helper: the loop state after k iterations. R[0]=m, R[1]=n+k, R[2]=k -/
 def loopState (m n k : ℕ) : State := fun i =>
@@ -123,17 +123,17 @@ private def stateAfterIncr (m n k : ℕ) : State := fun i =>
 
 /-- Execute S(1); S(2) from pc=1, reaching pc=3 with incremented R[1] and R[2]. -/
 private theorem loop_incr_steps (m n k : ℕ) :
-    StepsN cutlandSub 2 (atPc1 m n k) ⟨3, stateAfterIncr m n k⟩ := by
-  have h_instr1 : cutlandSub.getInstr 1 = some (Instr.S 1) := rfl
-  have h_instr2 : cutlandSub.getInstr 2 = some (Instr.S 2) := rfl
+    StepsN P 2 (atPc1 m n k) ⟨3, stateAfterIncr m n k⟩ := by
+  have h_instr1 : P.getInstr 1 = some (Instr.S 1) := rfl
+  have h_instr2 : P.getInstr 2 = some (Instr.S 2) := rfl
   let σ0 := loopState m n k
   let σ1 := σ0.write 1 (n + k + 1)
-  have step1 : Step cutlandSub (atPc1 m n k) ⟨2, σ1⟩ := Step.succ h_instr1
+  have step1 : Step P (atPc1 m n k) ⟨2, σ1⟩ := Step.succ h_instr1
   have h_r2_1 : σ1.read 2 = k := by
     simp only [σ1, State.read, State.write, Function.update_of_ne (by decide : (2 : ℕ) ≠ 1)]
     rfl
   let σ2 := σ1.write 2 (k + 1)
-  have step2 : Step cutlandSub ⟨2, σ1⟩ ⟨3, σ2⟩ := by
+  have step2 : Step P ⟨2, σ1⟩ ⟨3, σ2⟩ := by
     have heq : σ2 = σ1.write 2 (σ1.read 2 + 1) := by simp only [σ2, h_r2_1]
     rw [heq]; exact Step.succ h_instr2
   have hσ2_eq : σ2 = stateAfterIncr m n k := by
@@ -154,18 +154,18 @@ private theorem stateAfterIncr_read (m n k : ℕ) :
 
 /-- One loop iteration when we don't exit: from pc=1 when n+k+1 < m, return to pc=1 with k+1. -/
 theorem loop_body_step (m n k : ℕ) (hlt : n + k + 1 < m) :
-    ∃ c', StepsN cutlandSub 4 (atPc1 m n k) c' ∧ c' = atPc1 m n (k + 1) := by
+    ∃ c', StepsN P 4 (atPc1 m n k) c' ∧ c' = atPc1 m n (k + 1) := by
   have steps12 := loop_incr_steps m n k
   set σ2 := stateAfterIncr m n k with hσ2_def
   have h_r0 : σ2.read 0 = m := rfl
   have h_r1 : σ2.read 1 = n + k + 1 := rfl
   -- Step 3: J(0,1,5) fails since R[0] = m ≠ R[1] = n+k+1
-  have h_instr3 : cutlandSub.getInstr 3 = some (Instr.J 0 1 5) := rfl
-  have step3 : Step cutlandSub ⟨3, σ2⟩ ⟨4, σ2⟩ :=
+  have h_instr3 : P.getInstr 3 = some (Instr.J 0 1 5) := rfl
+  have step3 : Step P ⟨3, σ2⟩ ⟨4, σ2⟩ :=
     Step.jump_ne h_instr3 (by rw [h_r0, h_r1]; omega)
   -- Step 4: J(0,0,1) unconditional jump to 1
-  have h_instr4 : cutlandSub.getInstr 4 = some (Instr.J 0 0 1) := rfl
-  have step4 : Step cutlandSub ⟨4, σ2⟩ ⟨1, σ2⟩ := Step.jump_eq h_instr4 rfl
+  have h_instr4 : P.getInstr 4 = some (Instr.J 0 0 1) := rfl
+  have step4 : Step P ⟨4, σ2⟩ ⟨1, σ2⟩ := Step.jump_eq h_instr4 rfl
   -- Combine and show σ2 = loopState m n (k + 1)
   have hσ2_loop : σ2 = loopState m n (k + 1) := by
     funext i; simp only [hσ2_def, stateAfterIncr, loopState]
@@ -175,22 +175,22 @@ theorem loop_body_step (m n k : ℕ) (hlt : n + k + 1 < m) :
 
 /-- Exit from loop: when n + k + 1 = m, we halt in 4 steps with output k + 1 = m - n. -/
 theorem loop_exit_step (m n k : ℕ) (heq : n + k + 1 = m) :
-    ∃ c', StepsN cutlandSub 4 (atPc1 m n k) c' ∧ c'.isHalted cutlandSub ∧ c'.state.output = k + 1 := by
+    ∃ c', StepsN P 4 (atPc1 m n k) c' ∧ c'.isHalted P ∧ c'.state.output = k + 1 := by
   have steps12 := loop_incr_steps m n k
   set σ2 := stateAfterIncr m n k with hσ2_def
   have h_r0 : σ2.read 0 = m := rfl
   have h_r1 : σ2.read 1 = n + k + 1 := rfl
   have h_r2 : σ2.read 2 = k + 1 := rfl
   -- Step 3: J(0,1,5) succeeds since R[0] = m = R[1] = n+k+1
-  have h_instr3 : cutlandSub.getInstr 3 = some (Instr.J 0 1 5) := rfl
-  have step3 : Step cutlandSub ⟨3, σ2⟩ ⟨5, σ2⟩ :=
+  have h_instr3 : P.getInstr 3 = some (Instr.J 0 1 5) := rfl
+  have step3 : Step P ⟨3, σ2⟩ ⟨5, σ2⟩ :=
     Step.jump_eq h_instr3 (by rw [h_r0, h_r1, heq])
   -- Step 4: T(2,0) copies R[2] to R[0]
-  have h_instr5 : cutlandSub.getInstr 5 = some (Instr.T 2 0) := rfl
+  have h_instr5 : P.getInstr 5 = some (Instr.T 2 0) := rfl
   set σ3 := σ2.write 0 (σ2.read 2) with hσ3_def
-  have step4 : Step cutlandSub ⟨5, σ2⟩ ⟨6, σ3⟩ := Step.trans h_instr5
+  have step4 : Step P ⟨5, σ2⟩ ⟨6, σ3⟩ := Step.trans h_instr5
   -- Combine and verify
-  have hhalted : (⟨6, σ3⟩ : Config).isHalted cutlandSub := by simp [Config.isHalted, cutlandSub]
+  have hhalted : (⟨6, σ3⟩ : Config).isHalted P := by simp [Config.isHalted, P]
   have houtput : σ3.output = k + 1 := by
     simp only [hσ3_def, State.output, State.write, Function.update_self, h_r2]
   exact ⟨⟨6, σ3⟩, StepsN.add steps12 (StepsN.succ step3 (StepsN.succ step4 (StepsN.zero _))),
@@ -199,7 +199,7 @@ theorem loop_exit_step (m n k : ℕ) (heq : n + k + 1 = m) :
 /-- From pc=1 with n + k < m, we eventually halt with output m - n.
     Note: we require strict inequality because at pc=1, we need room for at least one S(1). -/
 theorem loop_terminates (m n k : ℕ) (hlt : n + k < m) :
-    ∃ c, Steps cutlandSub (atPc1 m n k) c ∧ c.isHalted cutlandSub ∧ c.state.output = m - n := by
+    ∃ c, Steps P (atPc1 m n k) c ∧ c.isHalted P ∧ c.state.output = m - n := by
   -- Induction on m - n - k - 1 (the remaining full iterations before exit)
   obtain ⟨d, hd⟩ : ∃ d, d = m - n - k - 1 := ⟨_, rfl⟩
   induction d using Nat.strong_induction_on generalizing k with
@@ -229,16 +229,16 @@ private theorem init_state_eq_loopState (m n : ℕ) :
 
 /-- Helper: when n < m, first step enters loop, then terminates with output m - n. -/
 private theorem enters_loop_and_halts (m n : ℕ) (hlt : n < m) :
-    ∃ c, Steps cutlandSub (Config.init [m, n]) c ∧ c.isHalted cutlandSub ∧ c.state.output = m - n := by
-  have h_instr0 : cutlandSub.getInstr 0 = some (Instr.J 0 1 5) := rfl
-  have step1 : Step cutlandSub (Config.init [m, n]) ⟨1, (Config.init [m, n]).state⟩ :=
+    ∃ c, Steps P (Config.init [m, n]) c ∧ c.isHalted P ∧ c.state.output = m - n := by
+  have h_instr0 : P.getInstr 0 = some (Instr.J 0 1 5) := rfl
+  have step1 : Step P (Config.init [m, n]) ⟨1, (Config.init [m, n]).state⟩ :=
     Step.jump_ne h_instr0 (by simp [Config.init, State.fromInputs, State.read]; omega)
   rw [init_state_eq_loopState] at step1
   obtain ⟨c, hsteps, hhalted, hout⟩ := loop_terminates m n 0 (by omega : n + 0 < m)
   exact ⟨c, Relation.ReflTransGen.head step1 hsteps, hhalted, hout⟩
 
 /-- Cutland's program converges when n ≤ m. -/
-theorem cutlandSub_converges (m n : ℕ) (h : n ≤ m) : cutlandSub ↓ [m, n] := by
+theorem P_converges (m n : ℕ) (h : n ≤ m) : P ↓ [m, n] := by
   rcases h.eq_or_lt with rfl | hlt
   · obtain ⟨c, hsteps, hhalted, _⟩ := init_halts_when_equal n; exact ⟨c, hsteps, hhalted⟩
   · obtain ⟨c, hsteps, hhalted, _⟩ := enters_loop_and_halts m n hlt; exact ⟨c, hsteps, hhalted⟩
@@ -250,7 +250,7 @@ private def LoopInvariant (m : ℕ) (c : Config) : Prop :=
 
 /-- The loop invariant is preserved by Step when active. -/
 private theorem loop_invariant_preserved {m : ℕ} {c c' : Config}
-    (hinv : LoopInvariant m c) (hstep : Step cutlandSub c c') : LoopInvariant m c' := by
+    (hinv : LoopInvariant m c) (hstep : Step P c c') : LoopInvariant m c' := by
   obtain ⟨hpc, hr0, hr1⟩ := hinv
   simp only [State.read] at hr0 hr1
   -- Case split on Step constructor, then dispatch on pc value
@@ -299,14 +299,14 @@ private theorem loop_invariant_preserved {m : ℕ} {c c' : Config}
 
 /-- When n > m, the initial configuration satisfies the loop invariant (after first step). -/
 private theorem init_step_satisfies_invariant {m n : ℕ} (hgt : n > m) :
-    ∃ c', Step cutlandSub (Config.init [m, n]) c' ∧ LoopInvariant m c' := by
+    ∃ c', Step P (Config.init [m, n]) c' ∧ LoopInvariant m c' := by
   -- First step: J(0,1,5) fails since n > m, goes to pc=1
-  have h_instr0 : cutlandSub.getInstr 0 = some (Instr.J 0 1 5) := rfl
+  have h_instr0 : P.getInstr 0 = some (Instr.J 0 1 5) := rfl
   set init_cfg := Config.init [m, n] with hinit
   have h_r0 : init_cfg.state.read 0 = m := rfl
   have h_r1 : init_cfg.state.read 1 = n := rfl
   have hne : m ≠ n := by omega
-  have step1 : Step cutlandSub init_cfg ⟨1, init_cfg.state⟩ :=
+  have step1 : Step P init_cfg ⟨1, init_cfg.state⟩ :=
     Step.jump_ne h_instr0 (by rw [h_r0, h_r1]; exact hne)
   refine ⟨⟨1, init_cfg.state⟩, step1, ?_, ?_, ?_⟩
   · show (1 : ℕ) ≤ 4; decide
@@ -315,21 +315,21 @@ private theorem init_step_satisfies_invariant {m n : ℕ} (hgt : n > m) :
 
 /-- Configurations satisfying the invariant are not halted. -/
 private theorem loop_invariant_not_halted {m : ℕ} {c : Config} (hinv : LoopInvariant m c) :
-    ¬c.isHalted cutlandSub := by
+    ¬c.isHalted P := by
   obtain ⟨hpc, _, _⟩ := hinv
-  simp only [Config.isHalted, cutlandSub, List.length_cons, List.length_nil, not_le]
+  simp only [Config.isHalted, P, List.length_cons, List.length_nil, not_le]
   omega
 
 /-- Key lemma: when n > m, all configurations reachable via Steps satisfy the invariant
     (after the first step). -/
 private theorem steps_preserve_invariant {m : ℕ} {c c' : Config}
-    (hinv : LoopInvariant m c) (hsteps : Steps cutlandSub c c') : LoopInvariant m c' := by
+    (hinv : LoopInvariant m c) (hsteps : Steps P c c') : LoopInvariant m c' := by
   induction hsteps with
   | refl => exact hinv
   | tail _ hstep ih => exact loop_invariant_preserved ih hstep
 
 /-- When n > m, Cutland's program diverges. -/
-theorem cutlandSub_diverges (m n : ℕ) (hgt : n > m) : cutlandSub ↑ [m, n] := by
+theorem P_diverges (m n : ℕ) (hgt : n > m) : P ↑ [m, n] := by
   intro ⟨c_halt, hsteps, hhalted⟩
   -- Get the first step which satisfies the invariant
   obtain ⟨c', hstep_first, hinv_first⟩ := init_step_satisfies_invariant hgt
@@ -337,7 +337,7 @@ theorem cutlandSub_diverges (m n : ℕ) (hgt : n > m) : cutlandSub ↑ [m, n] :=
   cases hsteps using Relation.ReflTransGen.head_induction_on with
   | refl =>
     -- Config.init is halted - contradiction since pc=0 < 6
-    simp [Config.isHalted, cutlandSub, Config.init] at hhalted
+    simp [Config.isHalted, P, Config.init] at hhalted
   | head hstep hrest =>
     -- By determinism, the first step goes to c'
     have heq := Step.deterministic hstep hstep_first
@@ -348,18 +348,18 @@ theorem cutlandSub_diverges (m n : ℕ) (hgt : n > m) : cutlandSub ↑ [m, n] :=
     exact loop_invariant_not_halted hinv_halt hhalted
 
 /-- Cutland's program converges iff n ≤ m. -/
-theorem cutlandSub_converges_iff (m n : ℕ) : (cutlandSub ↓ [m, n]) ↔ n ≤ m := by
+theorem P_converges_iff (m n : ℕ) : (P ↓ [m, n]) ↔ n ≤ m := by
   constructor
   · intro hhalts
     by_contra hgt
     push_neg at hgt
-    exact cutlandSub_diverges m n hgt hhalts
-  · exact cutlandSub_converges m n
+    exact P_diverges m n hgt hhalts
+  · exact P_converges m n
 
 /-- When Cutland's program converges, the result is m - n. -/
-theorem cutlandSub_result (m n : ℕ) (h : n ≤ m) :
-    Result cutlandSub [m, n] (cutlandSub_converges m n h) = m - n := by
-  obtain ⟨hsteps_chosen, hhalted_chosen⟩ := Classical.choose_spec (cutlandSub_converges m n h)
+theorem P_result (m n : ℕ) (h : n ≤ m) :
+    Result P [m, n] (P_converges m n h) = m - n := by
+  obtain ⟨hsteps_chosen, hhalted_chosen⟩ := Classical.choose_spec (P_converges m n h)
   rcases h.eq_or_lt with rfl | hlt
   · -- Case n = m: output is 0
     obtain ⟨c, hsteps, hhalted, hout⟩ := init_halts_when_equal n
