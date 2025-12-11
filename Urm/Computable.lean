@@ -54,6 +54,20 @@ def TotalURMComputable (n : ℕ) (f : (Fin n → ℕ) → ℕ) : Prop :=
 
 namespace URMComputable
 
+/-- Helper for single-instruction programs: proves both halting and result. -/
+private theorem single_instr_computes {instr : Instr} {inputs : List ℕ} {finalState : State}
+    (hstep : Step [instr] (Config.init inputs) ⟨1, finalState⟩) :
+    Halts [instr] inputs ∧
+    ∀ h : Halts [instr] inputs, Result [instr] inputs h = finalState.output := by
+  have h_final_halted : (⟨1, finalState⟩ : Config).isHalted [instr] := by
+    simp [Config.isHalted]
+  constructor
+  · exact ⟨⟨1, finalState⟩, Steps.single hstep, h_final_halted⟩
+  · intro hHalts
+    obtain ⟨hsteps, hhalted⟩ := Classical.choose_spec hHalts
+    have heq := Steps.halts_unique hsteps hhalted (Steps.single hstep) h_final_halted
+    simp only [Result, heq]
+
 /-- The zero function `Z() = 0` (nullary) is URM-computable.
 
 Program: Empty program - register 0 is initialized to 0. -/
@@ -77,42 +91,14 @@ theorem zero_computable : URMComputable 0 (fun _ => Part.some 0) := by
 
 /-- The constant zero function of any arity is URM-computable.
 
-For any n, the function `(x₀, ..., xₙ₋₁) ↦ 0` is computable.
-
 Program: `[Z 0]` - set register 0 to 0 and halt. -/
 theorem const_zero_computable (n : ℕ) : URMComputable n (fun _ => Part.some 0) := by
   use [Instr.Z 0]
   intro inputs
-  constructor
-  · -- Halts ↔ Dom (Part.some 0)
-    simp only [Part.some_dom, iff_true]
-    -- Show the program halts: after one step, pc=1 ≥ length=1
-    let initConfig := Config.init (List.ofFn inputs)
-    let finalConfig : Config := ⟨1, initConfig.state.write 0 0⟩
-    use finalConfig
-    constructor
-    · -- Steps from init to final
-      apply Steps.single
-      apply Step.zero
-      rfl
-    · -- final is halted: pc=1 ≥ length=1
-      show (1 : ℕ) ≤ 1
-      omega
-  · -- Result equals 0
-    intro hHalts _
-    -- The unique halted config has state.write 0 0, so output is 0
-    obtain ⟨hsteps, hhalted⟩ := Classical.choose_spec hHalts
-    let initConfig := Config.init (List.ofFn inputs)
-    let finalConfig : Config := ⟨1, initConfig.state.write 0 0⟩
-    have h_final_halted : finalConfig.isHalted [Instr.Z 0] := by
-      show (1 : ℕ) ≤ 1; omega
-    have h_steps_to_final : Steps [Instr.Z 0] initConfig finalConfig := by
-      apply Steps.single
-      apply Step.zero
-      rfl
-    have heq := Steps.halts_unique hsteps hhalted h_steps_to_final h_final_halted
-    simp only [Result, heq, State.output, Part.get_some]
-    rfl
+  have h := single_instr_computes (inputs := List.ofFn inputs)
+    (Step.zero (p := [Instr.Z 0]) rfl)
+  refine ⟨by simp [h.1], fun hHalts _ => ?_⟩
+  simp only [h.2 hHalts, State.output, State.write, Function.update_self, Part.get_some]
 
 /-- The successor function `S(x) = x + 1` is URM-computable.
 
@@ -120,37 +106,10 @@ Program: `[S 0]` - increment register 0 and halt. -/
 theorem succ_computable : URMComputable 1 (fun inputs => Part.some (inputs 0 + 1)) := by
   use [Instr.S 0]
   intro inputs
-  constructor
-  · -- Halts ↔ Dom (Part.some _)
-    simp only [Part.some_dom, iff_true]
-    -- Show the program halts: after one step, pc=1 ≥ length=1
-    let initConfig := Config.init (List.ofFn inputs)
-    let finalConfig : Config := ⟨1, initConfig.state.write 0 (initConfig.state.read 0 + 1)⟩
-    use finalConfig
-    constructor
-    · -- Steps from init to final
-      apply Steps.single
-      apply Step.succ
-      rfl
-    · -- final is halted: pc=1 ≥ length=1
-      show (1 : ℕ) ≤ 1
-      omega
-  · -- Result equals inputs 0 + 1
-    intro hHalts _
-    obtain ⟨hsteps, hhalted⟩ := Classical.choose_spec hHalts
-    let initConfig := Config.init (List.ofFn inputs)
-    let finalConfig : Config := ⟨1, initConfig.state.write 0 (initConfig.state.read 0 + 1)⟩
-    have h_final_halted : finalConfig.isHalted [Instr.S 0] := by
-      show (1 : ℕ) ≤ 1; omega
-    have h_steps_to_final : Steps [Instr.S 0] initConfig finalConfig := by
-      apply Steps.single
-      apply Step.succ
-      rfl
-    have heq := Steps.halts_unique hsteps hhalted h_steps_to_final h_final_halted
-    simp only [Result, heq, State.output, Part.get_some]
-    -- Now show that the output equals inputs 0 + 1
-    simp only [finalConfig, initConfig, State.write, State.read, Function.update_self,
-               Config.init, State.fromInputs, List.ofFn_succ, List.ofFn_zero, List.getD_cons_zero]
+  have h := single_instr_computes (inputs := List.ofFn inputs)
+    (Step.succ (p := [Instr.S 0]) rfl)
+  refine ⟨by simp only [Part.some_dom, iff_true]; exact h.1, fun hHalts _ => ?_⟩
+  convert h.2 hHalts using 1
 
 /-- General projection function `Uₖⁿ(x₀, ..., xₙ₋₁) = xₖ` is URM-computable.
 
@@ -159,34 +118,12 @@ theorem proj_computable (n : ℕ) (k : Fin n) :
     URMComputable n (fun inputs => Part.some (inputs k)) := by
   use [Instr.T k 0]
   intro inputs
-  constructor
-  · -- Halts ↔ Dom (Part.some _)
-    simp only [Part.some_dom, iff_true]
-    let initConfig := Config.init (List.ofFn inputs)
-    let finalConfig : Config := ⟨1, initConfig.state.write 0 (initConfig.state.read k)⟩
-    use finalConfig
-    constructor
-    · apply Steps.single
-      apply Step.trans
-      rfl
-    · show (1 : ℕ) ≤ 1; omega
-  · -- Result equals inputs k
-    intro hHalts _
-    obtain ⟨hsteps, hhalted⟩ := Classical.choose_spec hHalts
-    let initConfig := Config.init (List.ofFn inputs)
-    let finalConfig : Config := ⟨1, initConfig.state.write 0 (initConfig.state.read k)⟩
-    have h_final_halted : finalConfig.isHalted [Instr.T k 0] := by
-      show (1 : ℕ) ≤ 1; omega
-    have h_steps_to_final : Steps [Instr.T k 0] initConfig finalConfig := by
-      apply Steps.single
-      apply Step.trans
-      rfl
-    have heq := Steps.halts_unique hsteps hhalted h_steps_to_final h_final_halted
-    simp only [Result, heq, State.output, Part.get_some, finalConfig, initConfig,
-               State.write, State.read, Function.update_self, Config.init, State.fromInputs]
-    -- Goal: (List.ofFn inputs).getD k 0 = inputs k
-    simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn, k.isLt, ↓reduceDIte,
-               Option.getD_some]
+  have h := single_instr_computes (inputs := List.ofFn inputs)
+    (Step.trans (p := [Instr.T k 0]) rfl)
+  refine ⟨by simp only [Part.some_dom, iff_true]; exact h.1, fun hHalts _ => ?_⟩
+  simp only [h.2 hHalts, State.output, State.write, State.read, Function.update_self,
+             Config.init, State.fromInputs, List.getD_eq_getElem?_getD, List.getElem?_ofFn,
+             k.isLt, ↓reduceDIte, Option.getD_some, Part.get_some]
 
 /-- The identity/projection function `U₁¹(x) = x` is URM-computable.
 

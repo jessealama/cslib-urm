@@ -67,12 +67,12 @@ Program listing:
 The `@[simp]` attribute enables automatic instruction lookup in proofs.
 Array indexing works with compile-time bounds checking: `P[0]`, `P[5]`, etc. -/
 @[simp] def P : Program := [
-  Instr.J 0 1 5,  -- 0: if R[0] = R[1], jump to 5
-  Instr.S 1,      -- 1: R[1]++
-  Instr.S 2,      -- 2: R[2]++
-  Instr.J 0 1 5,  -- 3: if R[0] = R[1], jump to 5
-  Instr.J 0 0 1,  -- 4: unconditional jump to 1
-  Instr.T 2 0     -- 5: R[0] := R[2]
+  Instr.J 0 1 5,
+  Instr.S 1,
+  Instr.S 2,
+  Instr.J 0 1 5,
+  Instr.J 0 0 1,
+  Instr.T 2 0
 ]
 
 /-! ### Example: `P ↓ [5, 3]` yields `2`
@@ -103,15 +103,15 @@ theorem init_halts_when_equal (m : ℕ) :
   · simp [Config.isHalted, P]
 
 /-- Helper: the loop state after k iterations. R[0]=m, R[1]=n+k, R[2]=k -/
-def loopState (m n k : ℕ) : State := fun i =>
+private def loopState (m n k : ℕ) : State := fun i =>
   match i with
   | 0 => m
   | 1 => n + k
   | 2 => k
   | _ => 0
 
-/-- Helper: configuration at pc=1 with loop state. -/
-def atPc1 (m n k : ℕ) : Config := ⟨1, loopState m n k⟩
+/-- Helper: configuration at pc=1 (loop entry) with loop state after k iterations. -/
+private def loopConfig (m n k : ℕ) : Config := ⟨1, loopState m n k⟩
 
 /-- State after incrementing R[1] and R[2]: R[0]=m, R[1]=n+k+1, R[2]=k+1 -/
 private def stateAfterIncr (m n k : ℕ) : State := fun i =>
@@ -123,12 +123,12 @@ private def stateAfterIncr (m n k : ℕ) : State := fun i =>
 
 /-- Execute S(1); S(2) from pc=1, reaching pc=3 with incremented R[1] and R[2]. -/
 private theorem loop_incr_steps (m n k : ℕ) :
-    StepsN P 2 (atPc1 m n k) ⟨3, stateAfterIncr m n k⟩ := by
+    StepsN P 2 (loopConfig m n k) ⟨3, stateAfterIncr m n k⟩ := by
   have h_instr1 : P.getInstr 1 = some (Instr.S 1) := rfl
   have h_instr2 : P.getInstr 2 = some (Instr.S 2) := rfl
   let σ0 := loopState m n k
   let σ1 := σ0.write 1 (n + k + 1)
-  have step1 : Step P (atPc1 m n k) ⟨2, σ1⟩ := Step.succ h_instr1
+  have step1 : Step P (loopConfig m n k) ⟨2, σ1⟩ := Step.succ h_instr1
   have h_r2_1 : σ1.read 2 = k := by
     simp only [σ1, State.read, State.write, Function.update_of_ne (by decide : (2 : ℕ) ≠ 1)]
     rfl
@@ -154,52 +154,33 @@ private theorem stateAfterIncr_read (m n k : ℕ) :
 
 /-- One loop iteration when we don't exit: from pc=1 when n+k+1 < m, return to pc=1 with k+1. -/
 theorem loop_body_step (m n k : ℕ) (hlt : n + k + 1 < m) :
-    ∃ c', StepsN P 4 (atPc1 m n k) c' ∧ c' = atPc1 m n (k + 1) := by
-  have steps12 := loop_incr_steps m n k
-  set σ2 := stateAfterIncr m n k with hσ2_def
-  have h_r0 : σ2.read 0 = m := rfl
-  have h_r1 : σ2.read 1 = n + k + 1 := rfl
-  -- Step 3: J(0,1,5) fails since R[0] = m ≠ R[1] = n+k+1
-  have h_instr3 : P.getInstr 3 = some (Instr.J 0 1 5) := rfl
-  have step3 : Step P ⟨3, σ2⟩ ⟨4, σ2⟩ :=
-    Step.jump_ne h_instr3 (by rw [h_r0, h_r1]; omega)
-  -- Step 4: J(0,0,1) unconditional jump to 1
-  have h_instr4 : P.getInstr 4 = some (Instr.J 0 0 1) := rfl
-  have step4 : Step P ⟨4, σ2⟩ ⟨1, σ2⟩ := Step.jump_eq h_instr4 rfl
-  -- Combine and show σ2 = loopState m n (k + 1)
+    ∃ c', StepsN P 4 (loopConfig m n k) c' ∧ c' = loopConfig m n (k + 1) := by
+  set σ2 := stateAfterIncr m n k
+  have ⟨h_r0, h_r1, _⟩ := stateAfterIncr_read m n k
+  have step3 : Step P ⟨3, σ2⟩ ⟨4, σ2⟩ := Step.jump_ne rfl (by rw [h_r0, h_r1]; omega)
+  have step4 : Step P ⟨4, σ2⟩ ⟨1, σ2⟩ := Step.jump_eq rfl rfl
   have hσ2_loop : σ2 = loopState m n (k + 1) := by
-    funext i; simp only [hσ2_def, stateAfterIncr, loopState]
-    match i with | 0 | 1 | 2 | _ + 3 => rfl
-  refine ⟨⟨1, σ2⟩, StepsN.add steps12 (StepsN.succ step3 (StepsN.succ step4 (StepsN.zero _))), ?_⟩
-  simp only [atPc1, hσ2_loop]
+    funext i; match i with | 0 | 1 | 2 | _ + 3 => rfl
+  exact ⟨⟨1, σ2⟩, StepsN.add (loop_incr_steps m n k)
+    (StepsN.succ step3 (StepsN.succ step4 (StepsN.zero _))), by simp only [loopConfig, hσ2_loop]⟩
 
 /-- Exit from loop: when n + k + 1 = m, we halt in 4 steps with output k + 1 = m - n. -/
 theorem loop_exit_step (m n k : ℕ) (heq : n + k + 1 = m) :
-    ∃ c', StepsN P 4 (atPc1 m n k) c' ∧ c'.isHalted P ∧ c'.state.output = k + 1 := by
-  have steps12 := loop_incr_steps m n k
-  set σ2 := stateAfterIncr m n k with hσ2_def
-  have h_r0 : σ2.read 0 = m := rfl
-  have h_r1 : σ2.read 1 = n + k + 1 := rfl
-  have h_r2 : σ2.read 2 = k + 1 := rfl
-  -- Step 3: J(0,1,5) succeeds since R[0] = m = R[1] = n+k+1
-  have h_instr3 : P.getInstr 3 = some (Instr.J 0 1 5) := rfl
-  have step3 : Step P ⟨3, σ2⟩ ⟨5, σ2⟩ :=
-    Step.jump_eq h_instr3 (by rw [h_r0, h_r1, heq])
-  -- Step 4: T(2,0) copies R[2] to R[0]
-  have h_instr5 : P.getInstr 5 = some (Instr.T 2 0) := rfl
-  set σ3 := σ2.write 0 (σ2.read 2) with hσ3_def
-  have step4 : Step P ⟨5, σ2⟩ ⟨6, σ3⟩ := Step.trans h_instr5
-  -- Combine and verify
-  have hhalted : (⟨6, σ3⟩ : Config).isHalted P := by simp [Config.isHalted, P]
-  have houtput : σ3.output = k + 1 := by
-    simp only [hσ3_def, State.output, State.write, Function.update_self, h_r2]
-  exact ⟨⟨6, σ3⟩, StepsN.add steps12 (StepsN.succ step3 (StepsN.succ step4 (StepsN.zero _))),
-         hhalted, houtput⟩
+    ∃ c', StepsN P 4 (loopConfig m n k) c' ∧ c'.isHalted P ∧ c'.state.output = k + 1 := by
+  set σ2 := stateAfterIncr m n k
+  have ⟨h_r0, h_r1, h_r2⟩ := stateAfterIncr_read m n k
+  have step3 : Step P ⟨3, σ2⟩ ⟨5, σ2⟩ := Step.jump_eq rfl (by rw [h_r0, h_r1, heq])
+  set σ3 := σ2.write 0 (σ2.read 2)
+  have step4 : Step P ⟨5, σ2⟩ ⟨6, σ3⟩ := Step.trans rfl
+  have houtput : σ3.output = k + 1 := by simp only [State.output]; exact h_r2
+  exact ⟨⟨6, σ3⟩, StepsN.add (loop_incr_steps m n k)
+    (StepsN.succ step3 (StepsN.succ step4 (StepsN.zero _))),
+    by simp [Config.isHalted], houtput⟩
 
 /-- From pc=1 with n + k < m, we eventually halt with output m - n.
     Note: we require strict inequality because at pc=1, we need room for at least one S(1). -/
 theorem loop_terminates (m n k : ℕ) (hlt : n + k < m) :
-    ∃ c, Steps P (atPc1 m n k) c ∧ c.isHalted P ∧ c.state.output = m - n := by
+    ∃ c, Steps P (loopConfig m n k) c ∧ c.isHalted P ∧ c.state.output = m - n := by
   -- Induction on m - n - k - 1 (the remaining full iterations before exit)
   obtain ⟨d, hd⟩ : ∃ d, d = m - n - k - 1 := ⟨_, rfl⟩
   induction d using Nat.strong_induction_on generalizing k with
@@ -367,6 +348,9 @@ theorem P_result (m n : ℕ) (h : n ≤ m) :
   · -- Case n < m: use enters_loop_and_halts
     obtain ⟨c, hsteps, hhalted, hout⟩ := enters_loop_and_halts m n hlt
     simp [Result, Steps.halts_unique hsteps_chosen hhalted_chosen hsteps hhalted, hout]
+
+/-- Example: P(5, 3) = 2 -/
+example : Result P [5, 3] (P_converges 5 3 (by decide)) = 2 := P_result 5 3 (by decide)
 
 end DivergentSubtraction
 
