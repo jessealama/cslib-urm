@@ -312,6 +312,148 @@ theorem cutlandSub_converges (m n : ℕ) (h : n ≤ m) : cutlandSub ↓ [m, n] :
     refine ⟨cfinal, ?_, hhalted⟩
     exact Relation.ReflTransGen.head step1 hsteps
 
+/-- Invariant for divergent case: when in the loop with R[1] > R[0], the program stays in the loop.
+    The invariant is: pc ∈ {0,1,2,3,4} and R[0] = m and R[1] > m -/
+private def LoopInvariant (m : ℕ) (c : Config) : Prop :=
+  c.pc ≤ 4 ∧ c.state.read 0 = m ∧ c.state.read 1 > m
+
+/-- The loop invariant is preserved by Step when active. -/
+private theorem loop_invariant_preserved {m : ℕ} {c c' : Config}
+    (hinv : LoopInvariant m c) (hstep : Step cutlandSub c c') : LoopInvariant m c' := by
+  obtain ⟨hpc, hr0, hr1⟩ := hinv
+  simp only [State.read] at hr0 hr1
+  -- Case analysis on pc value (0, 1, 2, 3, or 4)
+  match hpc_val : c.pc with
+  | 0 =>
+    -- pc=0: J(0,1,5) - The jump requires R[0]=R[1], but R[1] > R[0]=m
+    cases hstep with
+    | jump_ne h _ =>
+      simp only [LoopInvariant, State.read]
+      exact ⟨by omega, hr0, hr1⟩
+    | jump_eq h heq =>
+      have : cutlandSub.getInstr 0 = some (Instr.J 0 1 5) := rfl
+      rw [hpc_val, this] at h
+      cases h
+      simp only [State.read] at heq
+      omega
+    | zero h | succ h | trans h =>
+      have : cutlandSub.getInstr 0 = some (Instr.J 0 1 5) := rfl
+      rw [hpc_val, this] at h
+      cases h
+  | 1 =>
+    -- pc=1: S(1) - increment R[1], go to pc=2
+    cases hstep with
+    | succ h =>
+      have : cutlandSub.getInstr 1 = some (Instr.S 1) := rfl
+      rw [hpc_val, this] at h
+      cases h
+      simp only [LoopInvariant, State.read, State.write, Function.update]
+      exact ⟨by omega, by simp [hr0], by simp; omega⟩
+    | zero h | trans h | jump_eq h _ | jump_ne h _ =>
+      have : cutlandSub.getInstr 1 = some (Instr.S 1) := rfl
+      rw [hpc_val, this] at h
+      cases h
+  | 2 =>
+    -- pc=2: S(2) - increment R[2], go to pc=3
+    cases hstep with
+    | succ h =>
+      have : cutlandSub.getInstr 2 = some (Instr.S 2) := rfl
+      rw [hpc_val, this] at h
+      cases h
+      simp only [LoopInvariant, State.read, State.write, Function.update]
+      exact ⟨by omega, by simp [hr0], by simp [hr1]⟩
+    | zero h | trans h | jump_eq h _ | jump_ne h _ =>
+      have : cutlandSub.getInstr 2 = some (Instr.S 2) := rfl
+      rw [hpc_val, this] at h
+      cases h
+  | 3 =>
+    -- pc=3: J(0,1,5) - The jump requires R[0]=R[1], but R[1] > R[0]=m
+    cases hstep with
+    | jump_ne h _ =>
+      simp only [LoopInvariant, State.read]
+      exact ⟨by omega, hr0, hr1⟩
+    | jump_eq h heq =>
+      have : cutlandSub.getInstr 3 = some (Instr.J 0 1 5) := rfl
+      rw [hpc_val, this] at h
+      cases h
+      simp only [State.read] at heq
+      omega
+    | zero h | succ h | trans h =>
+      have : cutlandSub.getInstr 3 = some (Instr.J 0 1 5) := rfl
+      rw [hpc_val, this] at h
+      cases h
+  | 4 =>
+    -- pc=4: J(0,0,1) - unconditional jump to 1
+    cases hstep with
+    | jump_eq h _ =>
+      have : cutlandSub.getInstr 4 = some (Instr.J 0 0 1) := rfl
+      rw [hpc_val, this] at h
+      cases h
+      simp only [LoopInvariant, State.read]
+      exact ⟨by omega, hr0, hr1⟩
+    | jump_ne h hne =>
+      have : cutlandSub.getInstr 4 = some (Instr.J 0 0 1) := rfl
+      rw [hpc_val, this] at h
+      cases h
+      simp only [State.read] at hne
+      exact absurd rfl hne
+    | zero h | succ h | trans h =>
+      have : cutlandSub.getInstr 4 = some (Instr.J 0 0 1) := rfl
+      rw [hpc_val, this] at h
+      cases h
+  | n + 5 =>
+    omega
+
+/-- When n > m, the initial configuration satisfies the loop invariant (after first step). -/
+private theorem init_step_satisfies_invariant {m n : ℕ} (hgt : n > m) :
+    ∃ c', Step cutlandSub (Config.init [m, n]) c' ∧ LoopInvariant m c' := by
+  -- First step: J(0,1,5) fails since n > m, goes to pc=1
+  have h_instr0 : cutlandSub.getInstr 0 = some (Instr.J 0 1 5) := rfl
+  set init_cfg := Config.init [m, n] with hinit
+  have h_r0 : init_cfg.state.read 0 = m := rfl
+  have h_r1 : init_cfg.state.read 1 = n := rfl
+  have hne : m ≠ n := by omega
+  have step1 : Step cutlandSub init_cfg ⟨1, init_cfg.state⟩ :=
+    Step.jump_ne h_instr0 (by rw [h_r0, h_r1]; exact hne)
+  refine ⟨⟨1, init_cfg.state⟩, step1, ?_, ?_, ?_⟩
+  · show (1 : ℕ) ≤ 4; decide
+  · exact h_r0
+  · show init_cfg.state 1 > m; rw [show init_cfg.state 1 = n from rfl]; omega
+
+/-- Configurations satisfying the invariant are not halted. -/
+private theorem loop_invariant_not_halted {m : ℕ} {c : Config} (hinv : LoopInvariant m c) :
+    ¬c.isHalted cutlandSub := by
+  obtain ⟨hpc, _, _⟩ := hinv
+  simp only [Config.isHalted, cutlandSub, List.length_cons, List.length_nil, not_le]
+  omega
+
+/-- Key lemma: when n > m, all configurations reachable via Steps satisfy the invariant
+    (after the first step). -/
+private theorem steps_preserve_invariant {m : ℕ} {c c' : Config}
+    (hinv : LoopInvariant m c) (hsteps : Steps cutlandSub c c') : LoopInvariant m c' := by
+  induction hsteps with
+  | refl => exact hinv
+  | tail _ hstep ih => exact loop_invariant_preserved ih hstep
+
+/-- When n > m, Cutland's program diverges. -/
+theorem cutlandSub_diverges (m n : ℕ) (hgt : n > m) : cutlandSub ↑ [m, n] := by
+  intro ⟨c_halt, hsteps, hhalted⟩
+  -- Get the first step which satisfies the invariant
+  obtain ⟨c', hstep_first, hinv_first⟩ := init_step_satisfies_invariant hgt
+  -- The first step must be part of any non-empty path to c_halt
+  cases hsteps using Relation.ReflTransGen.head_induction_on with
+  | refl =>
+    -- Config.init is halted - contradiction since pc=0 < 6
+    simp [Config.isHalted, cutlandSub, Config.init] at hhalted
+  | head hstep hrest =>
+    -- By determinism, the first step goes to c'
+    have heq := Step.deterministic hstep hstep_first
+    subst heq
+    -- All subsequent configs satisfy the invariant
+    have hinv_halt := steps_preserve_invariant hinv_first hrest
+    -- But configs satisfying the invariant aren't halted
+    exact loop_invariant_not_halted hinv_halt hhalted
+
 /-- Cutland's program converges iff n ≤ m.
 
 The reverse direction (halts → n ≤ m) requires showing that when n > m,
@@ -322,7 +464,10 @@ the program diverges. This follows because:
 -/
 theorem cutlandSub_converges_iff (m n : ℕ) : (cutlandSub ↓ [m, n]) ↔ n ≤ m := by
   constructor
-  · intro _; sorry  -- Requires invariant proof: R[1] ≥ n > m when n > m initially
+  · intro hhalts
+    by_contra hgt
+    push_neg at hgt
+    exact cutlandSub_diverges m n hgt hhalts
   · exact cutlandSub_converges m n
 
 /-- When Cutland's program converges, the result is m - n.
