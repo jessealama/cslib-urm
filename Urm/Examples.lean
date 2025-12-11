@@ -63,8 +63,10 @@ Program listing:
 4: J(0, 0, 1)  -- unconditional jump to 1
 5: T(2, 0)     -- R[0] := R[2]
 ```
--/
-def cutlandSub : Program := [
+
+The `@[simp]` attribute enables automatic instruction lookup in proofs.
+Array indexing works with compile-time bounds checking: `cutlandSub[0]`, `cutlandSub[5]`, etc. -/
+@[simp] def cutlandSub : Program := [
   Instr.J 0 1 5,  -- 0: if R[0] = R[1], jump to 5
   Instr.S 1,      -- 1: R[1]++
   Instr.S 2,      -- 2: R[2]++
@@ -72,14 +74,6 @@ def cutlandSub : Program := [
   Instr.J 0 0 1,  -- 4: unconditional jump to 1
   Instr.T 2 0     -- 5: R[0] := R[2]
 ]
-
--- Instruction fetch lemmas for automation
-@[simp] private theorem cutlandSub_instr_0 : cutlandSub.getInstr 0 = some (Instr.J 0 1 5) := rfl
-@[simp] private theorem cutlandSub_instr_1 : cutlandSub.getInstr 1 = some (Instr.S 1) := rfl
-@[simp] private theorem cutlandSub_instr_2 : cutlandSub.getInstr 2 = some (Instr.S 2) := rfl
-@[simp] private theorem cutlandSub_instr_3 : cutlandSub.getInstr 3 = some (Instr.J 0 1 5) := rfl
-@[simp] private theorem cutlandSub_instr_4 : cutlandSub.getInstr 4 = some (Instr.J 0 0 1) := rfl
-@[simp] private theorem cutlandSub_instr_5 : cutlandSub.getInstr 5 = some (Instr.T 2 0) := rfl
 
 /-! ### Example: `cutlandSub ↓ [5, 3]` yields `2`
 
@@ -263,15 +257,15 @@ private theorem loop_invariant_preserved {m : ℕ} {c c' : Config}
   cases hstep with
   | zero h =>
     match hpc_val : c.pc with
-    | 0 | 1 | 2 | 3 | 4 => simp_all  -- No Z instructions at these positions
+    | 0 | 1 | 2 | 3 | 4 => simp_all [Program.getInstr]  -- No Z instructions at these positions
     | _ + 5 => omega
   | trans h =>
     match hpc_val : c.pc with
-    | 0 | 1 | 2 | 3 | 4 => simp_all  -- No T instructions at these positions
+    | 0 | 1 | 2 | 3 | 4 => simp_all [Program.getInstr]  -- No T instructions at these positions
     | _ + 5 => omega
   | succ h =>
     match hpc_val : c.pc with
-    | 0 | 3 | 4 => simp_all  -- No S instructions at these positions
+    | 0 | 3 | 4 => simp_all [Program.getInstr]  -- No S instructions at these positions
     | 1 =>
       simp only [hpc_val] at h; cases h
       refine ⟨(by decide : (2 : ℕ) ≤ 4), ?_, ?_⟩
@@ -285,7 +279,7 @@ private theorem loop_invariant_preserved {m : ℕ} {c c' : Config}
     | _ + 5 => omega
   | jump_eq h heq =>
     match hpc_val : c.pc with
-    | 1 | 2 => simp_all  -- No J instructions at these positions
+    | 1 | 2 => simp_all [Program.getInstr]  -- No J instructions at these positions
     | 0 | 3 =>
       simp only [hpc_val] at h; cases h
       simp only [State.read] at heq; omega
@@ -295,7 +289,7 @@ private theorem loop_invariant_preserved {m : ℕ} {c c' : Config}
     | _ + 5 => omega
   | jump_ne h hne =>
     match hpc_val : c.pc with
-    | 1 | 2 => simp_all  -- No J instructions at these positions
+    | 1 | 2 => simp_all [Program.getInstr]  -- No J instructions at these positions
     | 0 => exact ⟨(by decide : (1 : ℕ) ≤ 4), hr0, hr1⟩
     | 3 => exact ⟨(by decide : (4 : ℕ) ≤ 4), hr0, hr1⟩
     | 4 =>
