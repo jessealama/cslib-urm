@@ -116,7 +116,39 @@ theorem const_zero_computable : URMComputable 1 (fun _ => Part.some 0) := by
 
 Program: `[S 0]` - increment register 0 and halt. -/
 theorem succ_computable : URMComputable 1 (fun inputs => Part.some (inputs 0 + 1)) := by
-  sorry
+  use [Instr.S 0]
+  intro inputs
+  constructor
+  · -- Halts ↔ Dom (Part.some _)
+    simp only [Part.some_dom, iff_true]
+    -- Show the program halts: after one step, pc=1 ≥ length=1
+    let initConfig := Config.init (List.ofFn inputs)
+    let finalConfig : Config := ⟨1, initConfig.state.write 0 (initConfig.state.read 0 + 1)⟩
+    use finalConfig
+    constructor
+    · -- Steps from init to final
+      apply Steps.single
+      apply Step.succ
+      rfl
+    · -- final is halted: pc=1 ≥ length=1
+      show (1 : ℕ) ≤ 1
+      omega
+  · -- Result equals inputs 0 + 1
+    intro hHalts _
+    obtain ⟨hsteps, hhalted⟩ := Classical.choose_spec hHalts
+    let initConfig := Config.init (List.ofFn inputs)
+    let finalConfig : Config := ⟨1, initConfig.state.write 0 (initConfig.state.read 0 + 1)⟩
+    have h_final_halted : finalConfig.isHalted [Instr.S 0] := by
+      show (1 : ℕ) ≤ 1; omega
+    have h_steps_to_final : Steps [Instr.S 0] initConfig finalConfig := by
+      apply Steps.single
+      apply Step.succ
+      rfl
+    have heq := Steps.halts_unique hsteps hhalted h_steps_to_final h_final_halted
+    simp only [Result, heq, State.output, Part.get_some]
+    -- Now show that the output equals inputs 0 + 1
+    simp only [finalConfig, initConfig, State.write, State.read, Function.update_self,
+               Config.init, State.fromInputs, List.ofFn_succ, List.ofFn_zero, List.getD_cons_zero]
 
 /-- The identity/projection function `U₁¹(x) = x` is URM-computable.
 
