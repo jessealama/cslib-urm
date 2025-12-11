@@ -73,40 +73,17 @@ def cutlandSub : Program := [
   Instr.T 2 0     -- 5: R[0] := R[2]
 ]
 
-/-! ### Execution trace: cutlandSub ↓ [5, 3]
+-- Instruction fetch lemmas for automation
+@[simp] private theorem cutlandSub_instr_0 : cutlandSub.getInstr 0 = some (Instr.J 0 1 5) := rfl
+@[simp] private theorem cutlandSub_instr_1 : cutlandSub.getInstr 1 = some (Instr.S 1) := rfl
+@[simp] private theorem cutlandSub_instr_2 : cutlandSub.getInstr 2 = some (Instr.S 2) := rfl
+@[simp] private theorem cutlandSub_instr_3 : cutlandSub.getInstr 3 = some (Instr.J 0 1 5) := rfl
+@[simp] private theorem cutlandSub_instr_4 : cutlandSub.getInstr 4 = some (Instr.J 0 0 1) := rfl
+@[simp] private theorem cutlandSub_instr_5 : cutlandSub.getInstr 5 = some (Instr.T 2 0) := rfl
 
-Initial: pc=0, R[0]=5, R[1]=3, R[2]=0
+/-! ### Example: `cutlandSub ↓ [5, 3]` yields `2`
 
-Step 1: J(0,1,5) - R[0]=5 ≠ R[1]=3, continue
-        pc=1, R=[5,3,0]
-
-Step 2: S(1) - R[1]++
-        pc=2, R=[5,4,0]
-
-Step 3: S(2) - R[2]++
-        pc=3, R=[5,4,1]
-
-Step 4: J(0,1,5) - R[0]=5 ≠ R[1]=4, continue
-        pc=4, R=[5,4,1]
-
-Step 5: J(0,0,1) - unconditional jump to 1
-        pc=1, R=[5,4,1]
-
-Step 6: S(1) - R[1]++
-        pc=2, R=[5,5,1]
-
-Step 7: S(2) - R[2]++
-        pc=3, R=[5,5,2]
-
-Step 8: J(0,1,5) - R[0]=5 = R[1]=5, jump to 5
-        pc=5, R=[5,5,2]
-
-Step 9: T(2,0) - R[0] := R[2]
-        pc=6, R=[2,5,2]
-
-Halted: pc=6 ≥ length(cutlandSub)=6
-Output: R[0] = 2 = 5 - 3 ✓
--/
+The loop iterates twice (R[1]: 3→4→5, R[2]: 0→1→2), then outputs R[2] = 2 = 5 - 3. -/
 
 /-! ### Loop invariant and convergence proof -/
 
@@ -142,117 +119,88 @@ def loopState (m n k : ℕ) : State := fun i =>
 /-- Helper: configuration at pc=1 with loop state. -/
 def atPc1 (m n k : ℕ) : Config := ⟨1, loopState m n k⟩
 
+/-- State after incrementing R[1] and R[2]: R[0]=m, R[1]=n+k+1, R[2]=k+1 -/
+private def stateAfterIncr (m n k : ℕ) : State := fun i =>
+  match i with
+  | 0 => m
+  | 1 => n + k + 1
+  | 2 => k + 1
+  | _ => 0
+
+/-- Execute S(1); S(2) from pc=1, reaching pc=3 with incremented R[1] and R[2]. -/
+private theorem loop_incr_steps (m n k : ℕ) :
+    StepsN cutlandSub 2 (atPc1 m n k) ⟨3, stateAfterIncr m n k⟩ := by
+  have h_instr1 : cutlandSub.getInstr 1 = some (Instr.S 1) := rfl
+  have h_instr2 : cutlandSub.getInstr 2 = some (Instr.S 2) := rfl
+  let σ0 := loopState m n k
+  let σ1 := σ0.write 1 (n + k + 1)
+  have step1 : Step cutlandSub (atPc1 m n k) ⟨2, σ1⟩ := Step.succ h_instr1
+  have h_r2_1 : σ1.read 2 = k := by
+    simp only [σ1, State.read, State.write, Function.update_of_ne (by decide : (2 : ℕ) ≠ 1)]
+    rfl
+  let σ2 := σ1.write 2 (k + 1)
+  have step2 : Step cutlandSub ⟨2, σ1⟩ ⟨3, σ2⟩ := by
+    have heq : σ2 = σ1.write 2 (σ1.read 2 + 1) := by simp only [σ2, h_r2_1]
+    rw [heq]; exact Step.succ h_instr2
+  have hσ2_eq : σ2 = stateAfterIncr m n k := by
+    funext i; simp only [σ2, σ1, σ0, State.write, loopState, stateAfterIncr, Function.update]
+    match i with
+    | 0 => simp
+    | 1 => simp [Nat.add_assoc]
+    | 2 => simp
+    | _ + 3 => simp
+  rw [← hσ2_eq]
+  exact StepsN.succ step1 (StepsN.succ step2 (StepsN.zero _))
+
+/-- Register reads from stateAfterIncr. -/
+private theorem stateAfterIncr_read (m n k : ℕ) :
+    (stateAfterIncr m n k).read 0 = m ∧
+    (stateAfterIncr m n k).read 1 = n + k + 1 ∧
+    (stateAfterIncr m n k).read 2 = k + 1 := ⟨rfl, rfl, rfl⟩
+
 /-- One loop iteration when we don't exit: from pc=1 when n+k+1 < m, return to pc=1 with k+1. -/
 theorem loop_body_step (m n k : ℕ) (hlt : n + k + 1 < m) :
     ∃ c', StepsN cutlandSub 4 (atPc1 m n k) c' ∧ c' = atPc1 m n (k + 1) := by
-  -- Step 1: S(1) at pc=1
-  have h_instr1 : cutlandSub.getInstr 1 = some (Instr.S 1) := rfl
-  let σ0 := loopState m n k
-  let σ1 := σ0.write 1 (n + k + 1)
-  have step1 : Step cutlandSub (atPc1 m n k) ⟨2, σ1⟩ := by
-    simp only [atPc1]
-    exact Step.succ h_instr1
-  -- Step 2: S(2) at pc=2
-  have h_instr2 : cutlandSub.getInstr 2 = some (Instr.S 2) := rfl
-  have h_r2_1 : σ1.read 2 = k := by
-    simp only [σ1, State.read, State.write]
-    rw [Function.update_of_ne (by decide : (2 : ℕ) ≠ 1)]
-    rfl
-  let σ2 := σ1.write 2 (k + 1)
-  have hσ2 : σ2 = σ1.write 2 (σ1.read 2 + 1) := by simp only [σ2, h_r2_1]
-  have step2 : Step cutlandSub ⟨2, σ1⟩ ⟨3, σ2⟩ := by
-    rw [hσ2]
-    exact Step.succ h_instr2
-  -- Step 3: J(0,1,5) at pc=3, fails since R[0] = m ≠ R[1] = n+k+1
+  have steps12 := loop_incr_steps m n k
+  set σ2 := stateAfterIncr m n k with hσ2_def
+  have h_r0 : σ2.read 0 = m := rfl
+  have h_r1 : σ2.read 1 = n + k + 1 := rfl
+  -- Step 3: J(0,1,5) fails since R[0] = m ≠ R[1] = n+k+1
   have h_instr3 : cutlandSub.getInstr 3 = some (Instr.J 0 1 5) := rfl
-  have h_r0_2 : σ2.read 0 = m := by
-    simp only [σ2, σ1, State.read, State.write]
-    rw [Function.update_of_ne (by decide : (0 : ℕ) ≠ 2)]
-    rw [Function.update_of_ne (by decide : (0 : ℕ) ≠ 1)]
-    rfl
-  have h_r1_2 : σ2.read 1 = n + k + 1 := by
-    simp only [σ2, σ1, State.read, State.write]
-    rw [Function.update_of_ne (by decide : (1 : ℕ) ≠ 2)]
-    rw [Function.update_self]
-  have step3 : Step cutlandSub ⟨3, σ2⟩ ⟨4, σ2⟩ := by
-    apply Step.jump_ne h_instr3
-    simp only [h_r0_2, h_r1_2]
-    omega
-  -- Step 4: J(0,0,1) at pc=4, unconditional jump to 1
+  have step3 : Step cutlandSub ⟨3, σ2⟩ ⟨4, σ2⟩ :=
+    Step.jump_ne h_instr3 (by rw [h_r0, h_r1]; omega)
+  -- Step 4: J(0,0,1) unconditional jump to 1
   have h_instr4 : cutlandSub.getInstr 4 = some (Instr.J 0 0 1) := rfl
-  have step4 : Step cutlandSub ⟨4, σ2⟩ ⟨1, σ2⟩ := by
-    apply Step.jump_eq h_instr4
-    rfl
-  -- Combine steps
-  have hsteps : StepsN cutlandSub 4 (atPc1 m n k) ⟨1, σ2⟩ :=
-    StepsN.succ step1 (StepsN.succ step2 (StepsN.succ step3 (StepsN.succ step4 (StepsN.zero _))))
-  -- Show σ2 = loopState m n (k + 1)
-  have hσ2_eq : σ2 = loopState m n (k + 1) := by
-    funext i
-    simp only [σ2, σ1, σ0, State.write, loopState, Function.update]
-    split <;> split <;> simp_all [Nat.add_assoc]
-    -- Remaining case: i ≠ 2 and i ≠ 1
-    rename_i h1 h2
-    -- Since i ≠ 1 and i ≠ 2, either i = 0 or i ≥ 3. Both sides are equal.
-    match i with
-    | 0 => rfl  -- both give m
-    | 1 => exact absurd rfl h2
-    | 2 => exact absurd rfl h1
-    | _ + 3 => rfl  -- both give 0
-  refine ⟨⟨1, σ2⟩, hsteps, ?_⟩
-  simp only [atPc1, hσ2_eq]
+  have step4 : Step cutlandSub ⟨4, σ2⟩ ⟨1, σ2⟩ := Step.jump_eq h_instr4 rfl
+  -- Combine and show σ2 = loopState m n (k + 1)
+  have hσ2_loop : σ2 = loopState m n (k + 1) := by
+    funext i; simp only [hσ2_def, stateAfterIncr, loopState]
+    match i with | 0 | 1 | 2 | _ + 3 => rfl
+  refine ⟨⟨1, σ2⟩, StepsN.add steps12 (StepsN.succ step3 (StepsN.succ step4 (StepsN.zero _))), ?_⟩
+  simp only [atPc1, hσ2_loop]
 
 /-- Exit from loop: when n + k + 1 = m, we halt in 4 steps with output k + 1 = m - n. -/
 theorem loop_exit_step (m n k : ℕ) (heq : n + k + 1 = m) :
     ∃ c', StepsN cutlandSub 4 (atPc1 m n k) c' ∧ c'.isHalted cutlandSub ∧ c'.state.output = k + 1 := by
-  -- Step 1: S(1) at pc=1
-  have h_instr1 : cutlandSub.getInstr 1 = some (Instr.S 1) := rfl
-  let σ0 := loopState m n k
-  have h_r1_0 : σ0.read 1 = n + k := rfl
-  let σ1 := σ0.write 1 (n + k + 1)
-  have step1 : Step cutlandSub (atPc1 m n k) ⟨2, σ1⟩ := by
-    simp only [atPc1]
-    exact Step.succ h_instr1
-  -- Step 2: S(2) at pc=2
-  have h_instr2 : cutlandSub.getInstr 2 = some (Instr.S 2) := rfl
-  have h_r2_1 : σ1.read 2 = k := by
-    simp only [σ1, State.read, State.write]
-    rw [Function.update_of_ne (by decide : (2 : ℕ) ≠ 1)]
-    rfl
-  let σ2 := σ1.write 2 (k + 1)
-  have hσ2 : σ2 = σ1.write 2 (σ1.read 2 + 1) := by simp only [σ2, h_r2_1]
-  have step2 : Step cutlandSub ⟨2, σ1⟩ ⟨3, σ2⟩ := by
-    rw [hσ2]
-    exact Step.succ h_instr2
-  -- Step 3: J(0,1,5) at pc=3, succeeds since R[0] = m = R[1] = n+k+1
+  have steps12 := loop_incr_steps m n k
+  set σ2 := stateAfterIncr m n k with hσ2_def
+  have h_r0 : σ2.read 0 = m := rfl
+  have h_r1 : σ2.read 1 = n + k + 1 := rfl
+  have h_r2 : σ2.read 2 = k + 1 := rfl
+  -- Step 3: J(0,1,5) succeeds since R[0] = m = R[1] = n+k+1
   have h_instr3 : cutlandSub.getInstr 3 = some (Instr.J 0 1 5) := rfl
-  have h_r0_2 : σ2.read 0 = m := by
-    simp only [σ2, σ1, State.read, State.write]
-    rw [Function.update_of_ne (by decide : (0 : ℕ) ≠ 2)]
-    rw [Function.update_of_ne (by decide : (0 : ℕ) ≠ 1)]
-    rfl
-  have h_r1_2 : σ2.read 1 = n + k + 1 := by
-    simp only [σ2, σ1, State.read, State.write]
-    rw [Function.update_of_ne (by decide : (1 : ℕ) ≠ 2)]
-    rw [Function.update_self]
-  have step3 : Step cutlandSub ⟨3, σ2⟩ ⟨5, σ2⟩ := by
-    apply Step.jump_eq h_instr3
-    simp only [h_r0_2, h_r1_2, heq]
-  -- Step 4: T(2,0) at pc=5
+  have step3 : Step cutlandSub ⟨3, σ2⟩ ⟨5, σ2⟩ :=
+    Step.jump_eq h_instr3 (by rw [h_r0, h_r1, heq])
+  -- Step 4: T(2,0) copies R[2] to R[0]
   have h_instr5 : cutlandSub.getInstr 5 = some (Instr.T 2 0) := rfl
-  have h_r2_2 : σ2.read 2 = k + 1 := by
-    simp only [σ2, State.read, State.write]
-    rw [Function.update_self]
-  let σ3 := σ2.write 0 (σ2.read 2)
+  set σ3 := σ2.write 0 (σ2.read 2) with hσ3_def
   have step4 : Step cutlandSub ⟨5, σ2⟩ ⟨6, σ3⟩ := Step.trans h_instr5
-  -- Combine steps
-  have hsteps : StepsN cutlandSub 4 (atPc1 m n k) ⟨6, σ3⟩ :=
-    StepsN.succ step1 (StepsN.succ step2 (StepsN.succ step3 (StepsN.succ step4 (StepsN.zero _))))
-  -- Show halted and output
+  -- Combine and verify
   have hhalted : (⟨6, σ3⟩ : Config).isHalted cutlandSub := by simp [Config.isHalted, cutlandSub]
   have houtput : σ3.output = k + 1 := by
-    simp only [σ3, State.output, State.write, Function.update_self, h_r2_2]
-  exact ⟨⟨6, σ3⟩, hsteps, hhalted, houtput⟩
+    simp only [hσ3_def, State.output, State.write, Function.update_self, h_r2]
+  exact ⟨⟨6, σ3⟩, StepsN.add steps12 (StepsN.succ step3 (StepsN.succ step4 (StepsN.zero _))),
+         hhalted, houtput⟩
 
 /-- From pc=1 with n + k < m, we eventually halt with output m - n.
     Note: we require strict inequality because at pc=1, we need room for at least one S(1). -/
@@ -279,38 +227,27 @@ theorem loop_terminates (m n k : ℕ) (hlt : n + k < m) :
       rw [hc'] at hsteps
       exact Relation.ReflTransGen.trans hsteps.toSteps hsteps'
 
+/-- Helper: initial state equals loopState m n 0. -/
+private theorem init_state_eq_loopState (m n : ℕ) :
+    (Config.init [m, n]).state = loopState m n 0 := by
+  funext i; simp only [Config.init, State.fromInputs, loopState]
+  match i with | 0 | 1 | 2 => simp | _ + 3 => simp [List.getD]
+
+/-- Helper: when n < m, first step enters loop, then terminates with output m - n. -/
+private theorem enters_loop_and_halts (m n : ℕ) (hlt : n < m) :
+    ∃ c, Steps cutlandSub (Config.init [m, n]) c ∧ c.isHalted cutlandSub ∧ c.state.output = m - n := by
+  have h_instr0 : cutlandSub.getInstr 0 = some (Instr.J 0 1 5) := rfl
+  have step1 : Step cutlandSub (Config.init [m, n]) ⟨1, (Config.init [m, n]).state⟩ :=
+    Step.jump_ne h_instr0 (by simp [Config.init, State.fromInputs, State.read]; omega)
+  rw [init_state_eq_loopState] at step1
+  obtain ⟨c, hsteps, hhalted, hout⟩ := loop_terminates m n 0 (by omega : n + 0 < m)
+  exact ⟨c, Relation.ReflTransGen.head step1 hsteps, hhalted, hout⟩
+
 /-- Cutland's program converges when n ≤ m. -/
 theorem cutlandSub_converges (m n : ℕ) (h : n ≤ m) : cutlandSub ↓ [m, n] := by
-  by_cases heq : n = m
-  · -- Equal case: immediate halt
-    subst heq
-    obtain ⟨c, hsteps, hhalted, _⟩ := init_halts_when_equal n
-    exact ⟨c, hsteps, hhalted⟩
-  · -- n < m: first step goes to pc=1, then loop terminates
-    have hlt : n < m := Nat.lt_of_le_of_ne h heq
-    -- First step: J(0,1,5) fails since n ≠ m, goes to pc=1
-    set init := Config.init [m, n] with hinit
-    have h_r0 : init.state.read 0 = m := by simp [hinit, Config.init, State.fromInputs, State.read]
-    have h_r1 : init.state.read 1 = n := by simp [hinit, Config.init, State.fromInputs, State.read]
-    have h_instr0 : cutlandSub.getInstr 0 = some (Instr.J 0 1 5) := rfl
-    have hne : m ≠ n := Ne.symm heq
-    have step1 : Step cutlandSub init ⟨1, init.state⟩ :=
-      Step.jump_ne h_instr0 (by rw [h_r0, h_r1]; exact hne)
-    -- Show init.state = loopState m n 0
-    have hstate : init.state = loopState m n 0 := by
-      funext i
-      simp only [hinit, Config.init, State.fromInputs, loopState]
-      match i with
-      | 0 => simp
-      | 1 => simp
-      | 2 => simp
-      | i + 3 => simp [List.getD]
-    -- Now use loop_terminates (we have n < m, so n + 0 < m)
-    have hlt' : n + 0 < m := by omega
-    rw [hstate] at step1
-    obtain ⟨cfinal, hsteps, hhalted, _⟩ := loop_terminates m n 0 hlt'
-    refine ⟨cfinal, ?_, hhalted⟩
-    exact Relation.ReflTransGen.head step1 hsteps
+  rcases h.eq_or_lt with rfl | hlt
+  · obtain ⟨c, hsteps, hhalted, _⟩ := init_halts_when_equal n; exact ⟨c, hsteps, hhalted⟩
+  · obtain ⟨c, hsteps, hhalted, _⟩ := enters_loop_and_halts m n hlt; exact ⟨c, hsteps, hhalted⟩
 
 /-- Invariant for divergent case: when in the loop with R[1] > R[0], the program stays in the loop.
     The invariant is: pc ∈ {0,1,2,3,4} and R[0] = m and R[1] > m -/
@@ -322,87 +259,49 @@ private theorem loop_invariant_preserved {m : ℕ} {c c' : Config}
     (hinv : LoopInvariant m c) (hstep : Step cutlandSub c c') : LoopInvariant m c' := by
   obtain ⟨hpc, hr0, hr1⟩ := hinv
   simp only [State.read] at hr0 hr1
-  -- Case analysis on pc value (0, 1, 2, 3, or 4)
-  match hpc_val : c.pc with
-  | 0 =>
-    -- pc=0: J(0,1,5) - The jump requires R[0]=R[1], but R[1] > R[0]=m
-    cases hstep with
-    | jump_ne h _ =>
-      simp only [LoopInvariant, State.read]
-      exact ⟨by omega, hr0, hr1⟩
-    | jump_eq h heq =>
-      have : cutlandSub.getInstr 0 = some (Instr.J 0 1 5) := rfl
-      rw [hpc_val, this] at h
-      cases h
-      simp only [State.read] at heq
-      omega
-    | zero h | succ h | trans h =>
-      have : cutlandSub.getInstr 0 = some (Instr.J 0 1 5) := rfl
-      rw [hpc_val, this] at h
-      cases h
-  | 1 =>
-    -- pc=1: S(1) - increment R[1], go to pc=2
-    cases hstep with
-    | succ h =>
-      have : cutlandSub.getInstr 1 = some (Instr.S 1) := rfl
-      rw [hpc_val, this] at h
-      cases h
-      simp only [LoopInvariant, State.read, State.write, Function.update]
-      exact ⟨by omega, by simp [hr0], by simp; omega⟩
-    | zero h | trans h | jump_eq h _ | jump_ne h _ =>
-      have : cutlandSub.getInstr 1 = some (Instr.S 1) := rfl
-      rw [hpc_val, this] at h
-      cases h
-  | 2 =>
-    -- pc=2: S(2) - increment R[2], go to pc=3
-    cases hstep with
-    | succ h =>
-      have : cutlandSub.getInstr 2 = some (Instr.S 2) := rfl
-      rw [hpc_val, this] at h
-      cases h
-      simp only [LoopInvariant, State.read, State.write, Function.update]
-      exact ⟨by omega, by simp [hr0], by simp [hr1]⟩
-    | zero h | trans h | jump_eq h _ | jump_ne h _ =>
-      have : cutlandSub.getInstr 2 = some (Instr.S 2) := rfl
-      rw [hpc_val, this] at h
-      cases h
-  | 3 =>
-    -- pc=3: J(0,1,5) - The jump requires R[0]=R[1], but R[1] > R[0]=m
-    cases hstep with
-    | jump_ne h _ =>
-      simp only [LoopInvariant, State.read]
-      exact ⟨by omega, hr0, hr1⟩
-    | jump_eq h heq =>
-      have : cutlandSub.getInstr 3 = some (Instr.J 0 1 5) := rfl
-      rw [hpc_val, this] at h
-      cases h
-      simp only [State.read] at heq
-      omega
-    | zero h | succ h | trans h =>
-      have : cutlandSub.getInstr 3 = some (Instr.J 0 1 5) := rfl
-      rw [hpc_val, this] at h
-      cases h
-  | 4 =>
-    -- pc=4: J(0,0,1) - unconditional jump to 1
-    cases hstep with
-    | jump_eq h _ =>
-      have : cutlandSub.getInstr 4 = some (Instr.J 0 0 1) := rfl
-      rw [hpc_val, this] at h
-      cases h
-      simp only [LoopInvariant, State.read]
-      exact ⟨by omega, hr0, hr1⟩
-    | jump_ne h hne =>
-      have : cutlandSub.getInstr 4 = some (Instr.J 0 0 1) := rfl
-      rw [hpc_val, this] at h
-      cases h
-      simp only [State.read] at hne
-      exact absurd rfl hne
-    | zero h | succ h | trans h =>
-      have : cutlandSub.getInstr 4 = some (Instr.J 0 0 1) := rfl
-      rw [hpc_val, this] at h
-      cases h
-  | n + 5 =>
-    omega
+  -- Case split on Step constructor, then dispatch on pc value
+  cases hstep with
+  | zero h =>
+    match hpc_val : c.pc with
+    | 0 | 1 | 2 | 3 | 4 => simp_all  -- No Z instructions at these positions
+    | _ + 5 => omega
+  | trans h =>
+    match hpc_val : c.pc with
+    | 0 | 1 | 2 | 3 | 4 => simp_all  -- No T instructions at these positions
+    | _ + 5 => omega
+  | succ h =>
+    match hpc_val : c.pc with
+    | 0 | 3 | 4 => simp_all  -- No S instructions at these positions
+    | 1 =>
+      simp only [hpc_val] at h; cases h
+      refine ⟨(by decide : (2 : ℕ) ≤ 4), ?_, ?_⟩
+      · simp only [State.write, State.read, Function.update_of_ne (by decide : (0 : ℕ) ≠ 1), hr0]
+      · simp only [State.write, State.read, Function.update_self]; omega
+    | 2 =>
+      simp only [hpc_val] at h; cases h
+      refine ⟨(by decide : (3 : ℕ) ≤ 4), ?_, ?_⟩
+      · simp only [State.write, State.read, Function.update_of_ne (by decide : (0 : ℕ) ≠ 2), hr0]
+      · simp only [State.write, State.read, Function.update_of_ne (by decide : (1 : ℕ) ≠ 2), hr1]
+    | _ + 5 => omega
+  | jump_eq h heq =>
+    match hpc_val : c.pc with
+    | 1 | 2 => simp_all  -- No J instructions at these positions
+    | 0 | 3 =>
+      simp only [hpc_val] at h; cases h
+      simp only [State.read] at heq; omega
+    | 4 =>
+      simp only [hpc_val] at h; cases h
+      exact ⟨(by decide : (1 : ℕ) ≤ 4), hr0, hr1⟩
+    | _ + 5 => omega
+  | jump_ne h hne =>
+    match hpc_val : c.pc with
+    | 1 | 2 => simp_all  -- No J instructions at these positions
+    | 0 => exact ⟨(by decide : (1 : ℕ) ≤ 4), hr0, hr1⟩
+    | 3 => exact ⟨(by decide : (4 : ℕ) ≤ 4), hr0, hr1⟩
+    | 4 =>
+      simp only [hpc_val] at h; cases h
+      simp only [State.read] at hne; exact absurd rfl hne
+    | _ + 5 => omega
 
 /-- When n > m, the initial configuration satisfies the loop invariant (after first step). -/
 private theorem init_step_satisfies_invariant {m n : ℕ} (hgt : n > m) :
@@ -454,14 +353,7 @@ theorem cutlandSub_diverges (m n : ℕ) (hgt : n > m) : cutlandSub ↑ [m, n] :=
     -- But configs satisfying the invariant aren't halted
     exact loop_invariant_not_halted hinv_halt hhalted
 
-/-- Cutland's program converges iff n ≤ m.
-
-The reverse direction (halts → n ≤ m) requires showing that when n > m,
-the program diverges. This follows because:
-- R[1] starts at n > m = R[0] and only increases via S(1)
-- Therefore R[1] > R[0] is an invariant of all reachable configurations
-- The J checks at pc=0 and pc=3 never succeed, so the loop runs forever
--/
+/-- Cutland's program converges iff n ≤ m. -/
 theorem cutlandSub_converges_iff (m n : ℕ) : (cutlandSub ↓ [m, n]) ↔ n ≤ m := by
   constructor
   · intro hhalts
@@ -470,58 +362,17 @@ theorem cutlandSub_converges_iff (m n : ℕ) : (cutlandSub ↓ [m, n]) ↔ n ≤
     exact cutlandSub_diverges m n hgt hhalts
   · exact cutlandSub_converges m n
 
-/-- When Cutland's program converges, the result is m - n.
-
-The proof requires showing that the halting configuration chosen by Classical.choose
-has output m - n. Since Step is deterministic, all executions from the initial
-configuration reach the same halting configuration, which our proof of
-`loop_terminates` shows has output = m - n.
--/
+/-- When Cutland's program converges, the result is m - n. -/
 theorem cutlandSub_result (m n : ℕ) (h : n ≤ m) :
     Result cutlandSub [m, n] (cutlandSub_converges m n h) = m - n := by
-  -- Get the configuration chosen by Classical.choose
-  have hspec := Classical.choose_spec (cutlandSub_converges m n h)
-  -- hspec : Steps cutlandSub (Config.init [m, n]) c ∧ c.isHalted cutlandSub
-  obtain ⟨hsteps_chosen, hhalted_chosen⟩ := hspec
-  -- Construct a halting config with the known output
-  by_cases heq : n = m
-  · -- Case n = m: output should be 0
-    subst heq
-    obtain ⟨c_proven, hsteps_proven, hhalted_proven, hout_proven⟩ := init_halts_when_equal n
-    -- By halts_unique, c_chosen = c_proven
-    have heq_configs :=
-      Steps.halts_unique hsteps_chosen hhalted_chosen hsteps_proven hhalted_proven
-    simp only [Result, heq_configs, hout_proven, Nat.sub_self]
-  · -- Case n < m: use the loop termination proof
-    have hlt : n < m := Nat.lt_of_le_of_ne h heq
-    -- First step: J(0,1,5) fails since n ≠ m, goes to pc=1
-    set init := Config.init [m, n] with hinit
-    have h_r0 : init.state.read 0 = m := by simp [hinit, Config.init, State.fromInputs, State.read]
-    have h_r1 : init.state.read 1 = n := by simp [hinit, Config.init, State.fromInputs, State.read]
-    have h_instr0 : cutlandSub.getInstr 0 = some (Instr.J 0 1 5) := rfl
-    have hne : m ≠ n := Ne.symm heq
-    have step1 : Step cutlandSub init ⟨1, init.state⟩ :=
-      Step.jump_ne h_instr0 (by rw [h_r0, h_r1]; exact hne)
-    -- Show init.state = loopState m n 0
-    have hstate : init.state = loopState m n 0 := by
-      funext i
-      simp only [hinit, Config.init, State.fromInputs, loopState]
-      match i with
-      | 0 => simp
-      | 1 => simp
-      | 2 => simp
-      | i + 3 => simp [List.getD]
-    -- Now use loop_terminates
-    have hlt' : n + 0 < m := by omega
-    rw [hstate] at step1
-    obtain ⟨c_proven, hsteps_loop, hhalted_proven, hout_proven⟩ := loop_terminates m n 0 hlt'
-    -- Combine first step with loop steps
-    have hsteps_proven : Steps cutlandSub init c_proven :=
-      Relation.ReflTransGen.head step1 hsteps_loop
-    -- By halts_unique, c_chosen = c_proven
-    have heq_configs :=
-      Steps.halts_unique hsteps_chosen hhalted_chosen hsteps_proven hhalted_proven
-    simp only [Result, heq_configs, hout_proven]
+  obtain ⟨hsteps_chosen, hhalted_chosen⟩ := Classical.choose_spec (cutlandSub_converges m n h)
+  rcases h.eq_or_lt with rfl | hlt
+  · -- Case n = m: output is 0
+    obtain ⟨c, hsteps, hhalted, hout⟩ := init_halts_when_equal n
+    simp [Result, Steps.halts_unique hsteps_chosen hhalted_chosen hsteps hhalted, hout]
+  · -- Case n < m: use enters_loop_and_halts
+    obtain ⟨c, hsteps, hhalted, hout⟩ := enters_loop_and_halts m n hlt
+    simp [Result, Steps.halts_unique hsteps_chosen hhalted_chosen hsteps hhalted, hout]
 
 end DivergentSubtraction
 
