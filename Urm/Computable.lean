@@ -63,10 +63,17 @@ theorem zero_computable : URMComputable 0 (fun _ => Part.some 0) := by
   constructor
   · simp only [Part.some_dom, iff_true]
     exact Halts.empty_halts (List.ofFn inputs)
-  · intro _ _
-    -- The empty program halts immediately at the initial configuration
-    -- Register 0 contains 0 (since there are no inputs)
-    sorry
+  · intro hHalts _
+    -- Result is the output of the chosen halted config
+    -- The empty program halts immediately at Config.init, so this equals 0
+    obtain ⟨hsteps, hhalted⟩ := Classical.choose_spec hHalts
+    -- The init config is also halted for the empty program
+    have h_init_halted : (Config.init (List.ofFn inputs)).isHalted [] := by
+      simp [Config.isHalted]
+    -- By uniqueness of halted configs, the chosen one equals init
+    have heq := Steps.halts_unique hsteps hhalted (Steps.refl _) h_init_halted
+    simp only [Result, heq, State.output, Config.init, State.fromInputs, List.getD, List.ofFn_zero,
+      List.getElem?_nil, Part.get_some, Option.getD]
 
 /-- The constant zero function `const₀(x) = 0` is URM-computable.
 
