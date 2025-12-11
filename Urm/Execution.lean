@@ -99,6 +99,34 @@ theorem single {c c' : Config} (h : Step p c c') : Steps p c c' :=
 theorem refl (c : Config) : Steps p c c :=
   Relation.ReflTransGen.refl
 
+/-- If two halted configurations are reachable from the same start, they are equal.
+
+This follows from the determinism of `Step`: any two execution paths from the same
+initial configuration must be prefixes of each other (or identical if both terminate). -/
+theorem halts_unique {init c₁ c₂ : Config}
+    (h1 : Steps p init c₁) (hh1 : c₁.isHalted p)
+    (h2 : Steps p init c₂) (hh2 : c₂.isHalted p) : c₁ = c₂ := by
+  induction h1 using Relation.ReflTransGen.head_induction_on with
+  | refl =>
+    -- c₁ = init, so init is halted
+    -- By halted_no_step, init cannot step, so h2 must also be refl
+    cases h2 using Relation.ReflTransGen.head_induction_on with
+    | refl => rfl
+    | head hstep _ => exact absurd hstep (Step.halted_no_step hh1)
+  | head hstep_c hrest ih =>
+    -- init → c → ... → c₁, where hstep_c : Step p init c
+    -- init is not halted (it can step)
+    cases h2 using Relation.ReflTransGen.head_induction_on with
+    | refl =>
+      -- c₂ = init is halted, but init can step - contradiction
+      exact absurd hstep_c (Step.halted_no_step hh2)
+    | head hstep_c' hrest' =>
+      -- init → c' → ... → c₂
+      -- By determinism, c = c'
+      have heq : _ = _ := Step.deterministic hstep_c hstep_c'
+      subst heq
+      exact ih hrest'
+
 end Steps
 
 /-- A program halts on given inputs if there exists a halted configuration reachable from

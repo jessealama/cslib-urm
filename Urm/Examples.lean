@@ -334,7 +334,49 @@ configuration reach the same halting configuration, which our proof of
 -/
 theorem cutlandSub_result (m n : ℕ) (h : n ≤ m) :
     Result cutlandSub [m, n] (cutlandSub_converges m n h) = m - n := by
-  sorry  -- Requires determinism: all halting configs from same start are equal
+  -- Get the configuration chosen by Classical.choose
+  have hspec := Classical.choose_spec (cutlandSub_converges m n h)
+  -- hspec : Steps cutlandSub (Config.init [m, n]) c ∧ c.isHalted cutlandSub
+  obtain ⟨hsteps_chosen, hhalted_chosen⟩ := hspec
+  -- Construct a halting config with the known output
+  by_cases heq : n = m
+  · -- Case n = m: output should be 0
+    subst heq
+    obtain ⟨c_proven, hsteps_proven, hhalted_proven, hout_proven⟩ := init_halts_when_equal n
+    -- By halts_unique, c_chosen = c_proven
+    have heq_configs :=
+      Steps.halts_unique hsteps_chosen hhalted_chosen hsteps_proven hhalted_proven
+    simp only [Result, heq_configs, hout_proven, Nat.sub_self]
+  · -- Case n < m: use the loop termination proof
+    have hlt : n < m := Nat.lt_of_le_of_ne h heq
+    -- First step: J(0,1,5) fails since n ≠ m, goes to pc=1
+    set init := Config.init [m, n] with hinit
+    have h_r0 : init.state.read 0 = m := by simp [hinit, Config.init, State.fromInputs, State.read]
+    have h_r1 : init.state.read 1 = n := by simp [hinit, Config.init, State.fromInputs, State.read]
+    have h_instr0 : cutlandSub.getInstr 0 = some (Instr.J 0 1 5) := rfl
+    have hne : m ≠ n := Ne.symm heq
+    have step1 : Step cutlandSub init ⟨1, init.state⟩ :=
+      Step.jump_ne h_instr0 (by rw [h_r0, h_r1]; exact hne)
+    -- Show init.state = loopState m n 0
+    have hstate : init.state = loopState m n 0 := by
+      funext i
+      simp only [hinit, Config.init, State.fromInputs, loopState]
+      match i with
+      | 0 => simp
+      | 1 => simp
+      | 2 => simp
+      | i + 3 => simp [List.getD]
+    -- Now use loop_terminates
+    have hlt' : n + 0 < m := by omega
+    rw [hstate] at step1
+    obtain ⟨c_proven, hsteps_loop, hhalted_proven, hout_proven⟩ := loop_terminates m n 0 hlt'
+    -- Combine first step with loop steps
+    have hsteps_proven : Steps cutlandSub init c_proven :=
+      Relation.ReflTransGen.head step1 hsteps_loop
+    -- By halts_unique, c_chosen = c_proven
+    have heq_configs :=
+      Steps.halts_unique hsteps_chosen hhalted_chosen hsteps_proven hhalted_proven
+    simp only [Result, heq_configs, hout_proven]
 
 end DivergentSubtraction
 
