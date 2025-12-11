@@ -79,7 +79,38 @@ theorem zero_computable : URMComputable 0 (fun _ => Part.some 0) := by
 
 Program: `[Z 0]` - set register 0 to 0 and halt. -/
 theorem const_zero_computable : URMComputable 1 (fun _ => Part.some 0) := by
-  sorry
+  use [Instr.Z 0]
+  intro inputs
+  constructor
+  · -- Halts ↔ Dom (Part.some 0)
+    simp only [Part.some_dom, iff_true]
+    -- Show the program halts: after one step, pc=1 ≥ length=1
+    let initConfig := Config.init (List.ofFn inputs)
+    let finalConfig : Config := ⟨1, initConfig.state.write 0 0⟩
+    use finalConfig
+    constructor
+    · -- Steps from init to final
+      apply Steps.single
+      apply Step.zero
+      rfl
+    · -- final is halted: pc=1 ≥ length=1
+      show (1 : ℕ) ≤ 1
+      omega
+  · -- Result equals 0
+    intro hHalts _
+    -- The unique halted config has state.write 0 0, so output is 0
+    obtain ⟨hsteps, hhalted⟩ := Classical.choose_spec hHalts
+    let initConfig := Config.init (List.ofFn inputs)
+    let finalConfig : Config := ⟨1, initConfig.state.write 0 0⟩
+    have h_final_halted : finalConfig.isHalted [Instr.Z 0] := by
+      show (1 : ℕ) ≤ 1; omega
+    have h_steps_to_final : Steps [Instr.Z 0] initConfig finalConfig := by
+      apply Steps.single
+      apply Step.zero
+      rfl
+    have heq := Steps.halts_unique hsteps hhalted h_steps_to_final h_final_halted
+    simp only [Result, heq, State.output, Part.get_some]
+    rfl
 
 /-- The successor function `S(x) = x + 1` is URM-computable.
 
