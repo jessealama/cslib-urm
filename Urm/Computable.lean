@@ -75,10 +75,12 @@ theorem zero_computable : URMComputable 0 (fun _ => Part.some 0) := by
     simp only [Result, heq, State.output, Config.init, State.fromInputs, List.getD, List.ofFn_zero,
       List.getElem?_nil, Part.get_some, Option.getD]
 
-/-- The constant zero function `const₀(x) = 0` is URM-computable.
+/-- The constant zero function of any arity is URM-computable.
+
+For any n, the function `(x₀, ..., xₙ₋₁) ↦ 0` is computable.
 
 Program: `[Z 0]` - set register 0 to 0 and halt. -/
-theorem const_zero_computable : URMComputable 1 (fun _ => Part.some 0) := by
+theorem const_zero_computable (n : ℕ) : URMComputable n (fun _ => Part.some 0) := by
   use [Instr.Z 0]
   intro inputs
   constructor
@@ -150,18 +152,47 @@ theorem succ_computable : URMComputable 1 (fun inputs => Part.some (inputs 0 + 1
     simp only [finalConfig, initConfig, State.write, State.read, Function.update_self,
                Config.init, State.fromInputs, List.ofFn_succ, List.ofFn_zero, List.getD_cons_zero]
 
-/-- The identity/projection function `U₁¹(x) = x` is URM-computable.
-
-Program: Empty program - register 0 already contains the input. -/
-theorem id_computable : URMComputable 1 (fun inputs => Part.some (inputs 0)) := by
-  sorry
-
 /-- General projection function `Uₖⁿ(x₀, ..., xₙ₋₁) = xₖ` is URM-computable.
 
-Program: For k = 0, empty; for k > 0, use `[T k 0]`. -/
+Program: `[T k 0]` - copy register k to register 0. -/
 theorem proj_computable (n : ℕ) (k : Fin n) :
     URMComputable n (fun inputs => Part.some (inputs k)) := by
-  sorry
+  use [Instr.T k 0]
+  intro inputs
+  constructor
+  · -- Halts ↔ Dom (Part.some _)
+    simp only [Part.some_dom, iff_true]
+    let initConfig := Config.init (List.ofFn inputs)
+    let finalConfig : Config := ⟨1, initConfig.state.write 0 (initConfig.state.read k)⟩
+    use finalConfig
+    constructor
+    · apply Steps.single
+      apply Step.trans
+      rfl
+    · show (1 : ℕ) ≤ 1; omega
+  · -- Result equals inputs k
+    intro hHalts _
+    obtain ⟨hsteps, hhalted⟩ := Classical.choose_spec hHalts
+    let initConfig := Config.init (List.ofFn inputs)
+    let finalConfig : Config := ⟨1, initConfig.state.write 0 (initConfig.state.read k)⟩
+    have h_final_halted : finalConfig.isHalted [Instr.T k 0] := by
+      show (1 : ℕ) ≤ 1; omega
+    have h_steps_to_final : Steps [Instr.T k 0] initConfig finalConfig := by
+      apply Steps.single
+      apply Step.trans
+      rfl
+    have heq := Steps.halts_unique hsteps hhalted h_steps_to_final h_final_halted
+    simp only [Result, heq, State.output, Part.get_some, finalConfig, initConfig,
+               State.write, State.read, Function.update_self, Config.init, State.fromInputs]
+    -- Goal: (List.ofFn inputs).getD k 0 = inputs k
+    simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn, k.isLt, ↓reduceDIte,
+               Option.getD_some]
+
+/-- The identity/projection function `U₁¹(x) = x` is URM-computable.
+
+This is a special case of `proj_computable` with n = 1 and k = 0. -/
+theorem id_computable : URMComputable 1 (fun inputs => Part.some (inputs 0)) :=
+  proj_computable 1 0
 
 end URMComputable
 
