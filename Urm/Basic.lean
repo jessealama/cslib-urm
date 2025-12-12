@@ -207,6 +207,11 @@ theorem init_pc (inputs : List ℕ) : (init inputs).pc = 0 := rfl
 @[simp, scoped grind =]
 theorem init_state (inputs : List ℕ) : (init inputs).state = State.fromInputs inputs := rfl
 
+/-- Extensionality for Config: two configs are equal iff their components are equal. -/
+@[ext]
+theorem ext {c₁ c₂ : Config} (hpc : c₁.pc = c₂.pc) (hstate : c₁.state = c₂.state) : c₁ = c₂ := by
+  cases c₁; cases c₂; simp only at hpc hstate; simp [hpc, hstate]
+
 end Config
 
 end Urm
