@@ -1535,6 +1535,37 @@ theorem unshift_write (σ : State) (offset n v : ℕ) :
   · exfalso; omega
   · rfl
 
+/-- Writing to register n then shifting equals shifting then writing to n + offset. -/
+theorem shift_write (σ : State) (offset n v : ℕ) :
+    (σ.write n v).shift offset = (σ.shift offset).write (n + offset) v := by
+  funext k
+  simp only [shift, State.write, Function.update]
+  by_cases hlt : k < offset
+  · -- k < offset: both sides give 0
+    simp only [hlt, ↓reduceIte]
+    have hne : k ≠ n + offset := by omega
+    simp [hne]
+  · -- k >= offset
+    push_neg at hlt
+    have hlt' : ¬ k < offset := Nat.not_lt.mpr hlt
+    simp only [hlt', ↓reduceIte]
+    by_cases heq : k = n + offset
+    · -- k = n + offset: both sides give v
+      simp only [heq, ↓reduceIte]
+      have : k - offset = n := by omega
+      simp [this]
+    · -- k ≠ n + offset: both sides give σ (k - offset)
+      simp only [heq, ↓reduceIte]
+      have : k - offset ≠ n := by omega
+      simp [this]
+
+/-- Reading from a shifted state at n + offset gives the original value at n. -/
+@[simp]
+theorem shift_read_add (σ : State) (offset n : ℕ) :
+    (σ.shift offset).read (n + offset) = σ.read n := by
+  simp only [shift_read, Nat.add_sub_cancel]
+  simp [Nat.not_lt_of_le (Nat.le_add_left offset n)]
+
 end State
 
 /-! ### Register Shifting and Execution -/
@@ -1573,6 +1604,165 @@ theorem JumpsBounded.shiftRegisters {p : Program} (h : JumpsBounded p) (offset :
     | Z _ => simp [Instr.shiftRegisters] at hinstr
     | S _ => simp [Instr.shiftRegisters] at hinstr
     | T _ _ => simp [Instr.shiftRegisters] at hinstr
+
+/-! ### Step Simulation for Shifted Programs -/
+
+/-- Helper: get instruction from shifted program relates to original. -/
+theorem Program.getInstr_shiftRegisters (p : Program) (offset pc : ℕ) :
+    (p.shiftRegisters offset).getInstr pc = (p.getInstr pc).map (Instr.shiftRegisters offset) := by
+  simp only [Program.shiftRegisters, Program.getInstr, List.getElem?_map]
+
+/-- If program p takes a step, then p.shiftRegisters takes a corresponding step
+    on the shifted state. -/
+theorem Step.shiftRegisters_of_step {p : Program} {pc pc' : ℕ} {σ σ' : State} (offset : ℕ)
+    (h : Step p ⟨pc, σ⟩ ⟨pc', σ'⟩) :
+    Step (p.shiftRegisters offset) ⟨pc, σ.shift offset⟩ ⟨pc', σ'.shift offset⟩ := by
+  cases h with
+  | zero hinstr =>
+    -- p has Z n at pc, σ' = σ.write n 0, pc' = pc + 1
+    -- Need: p.shiftRegisters has Z (n + offset), result state is σ'.shift offset
+    rename_i n
+    have hinstr' : (p.shiftRegisters offset).getInstr pc = some (Instr.Z (n + offset)) := by
+      simp only [Program.getInstr_shiftRegisters, hinstr, Option.map_some, Instr.shiftRegisters]
+    rw [State.shift_write]
+    exact Step.zero hinstr'
+  | succ hinstr =>
+    rename_i n
+    have hinstr' : (p.shiftRegisters offset).getInstr pc = some (Instr.S (n + offset)) := by
+      simp only [Program.getInstr_shiftRegisters, hinstr, Option.map_some, Instr.shiftRegisters]
+    have hread_eq : σ.read n + 1 = (σ.shift offset).read (n + offset) + 1 := by
+      simp [State.shift_read_add]
+    conv_rhs => rw [hread_eq]
+    rw [State.shift_write]
+    exact Step.succ hinstr'
+  | trans hinstr =>
+    rename_i m n
+    have hinstr' : (p.shiftRegisters offset).getInstr pc = some (Instr.T (m + offset) (n + offset)) := by
+      simp only [Program.getInstr_shiftRegisters, hinstr, Option.map_some, Instr.shiftRegisters]
+    have hread_eq : σ.read m = (σ.shift offset).read (m + offset) := by
+      simp [State.shift_read_add]
+    conv_rhs => rw [hread_eq]
+    rw [State.shift_write]
+    exact Step.trans hinstr'
+  | jump_eq hinstr heq =>
+    have hinstr' : (p.shiftRegisters offset).getInstr pc = (p.getInstr pc).map (Instr.shiftRegisters offset) :=
+      Program.getInstr_shiftRegisters p offset pc
+    rw [hinstr] at hinstr'
+    simp only [Option.map_some, Instr.shiftRegisters] at hinstr'
+    exact Step.jump_eq hinstr' (by simp only [State.shift_read_add]; exact heq)
+  | jump_ne hinstr hne =>
+    have hinstr' : (p.shiftRegisters offset).getInstr pc = (p.getInstr pc).map (Instr.shiftRegisters offset) :=
+      Program.getInstr_shiftRegisters p offset pc
+    rw [hinstr] at hinstr'
+    simp only [Option.map_some, Instr.shiftRegisters] at hinstr'
+    exact Step.jump_ne hinstr' (by simp only [State.shift_read_add]; exact hne)
+
+/-- Converse: if p.shiftRegisters takes a step on a shifted state,
+    then p takes a corresponding step on the original state. -/
+theorem Step.of_shiftRegisters_step {p : Program} {pc pc' : ℕ} {σ σ' : State} (offset : ℕ)
+    (h : Step (p.shiftRegisters offset) ⟨pc, σ.shift offset⟩ ⟨pc', σ'⟩) :
+    ∃ σ'', Step p ⟨pc, σ⟩ ⟨pc', σ''⟩ ∧ σ' = σ''.shift offset := by
+  cases h with
+  | zero hinstr =>
+    simp only [Program.getInstr_shiftRegisters] at hinstr
+    cases hget : p.getInstr pc with
+    | none => simp [hget] at hinstr
+    | some instr =>
+      simp [hget] at hinstr
+      cases instr with
+      | Z n =>
+        simp only [Instr.shiftRegisters, Option.some.injEq, Instr.Z.injEq] at hinstr
+        refine ⟨σ.write n 0, Step.zero ?_, ?_⟩
+        · simp only [Program.getInstr] at hget; exact hget
+        · rw [← hinstr, State.shift_write]
+      | S _ => simp [Instr.shiftRegisters] at hinstr
+      | T _ _ => simp [Instr.shiftRegisters] at hinstr
+      | J _ _ _ => simp [Instr.shiftRegisters] at hinstr
+  | succ hinstr =>
+    simp only [Program.getInstr_shiftRegisters] at hinstr
+    cases hget : p.getInstr pc with
+    | none => simp [hget] at hinstr
+    | some instr =>
+      simp [hget] at hinstr
+      cases instr with
+      | S n =>
+        simp only [Instr.shiftRegisters, Option.some.injEq, Instr.S.injEq] at hinstr
+        refine ⟨σ.write n (σ.read n + 1), Step.succ ?_, ?_⟩
+        · simp only [Program.getInstr] at hget; exact hget
+        · rw [← hinstr, State.shift_write, State.shift_read_add]
+      | Z _ => simp [Instr.shiftRegisters] at hinstr
+      | T _ _ => simp [Instr.shiftRegisters] at hinstr
+      | J _ _ _ => simp [Instr.shiftRegisters] at hinstr
+  | trans hinstr =>
+    simp only [Program.getInstr_shiftRegisters] at hinstr
+    cases hget : p.getInstr pc with
+    | none => simp [hget] at hinstr
+    | some instr =>
+      simp [hget] at hinstr
+      cases instr with
+      | T m n =>
+        simp only [Instr.shiftRegisters, Option.some.injEq] at hinstr
+        obtain ⟨rfl, rfl⟩ := hinstr
+        refine ⟨σ.write n (σ.read m), Step.trans ?_, ?_⟩
+        · simp only [Program.getInstr] at hget; exact hget
+        · rw [State.shift_write, State.shift_read_add]
+      | Z _ => simp [Instr.shiftRegisters] at hinstr
+      | S _ => simp [Instr.shiftRegisters] at hinstr
+      | J _ _ _ => simp [Instr.shiftRegisters] at hinstr
+  | jump_eq hinstr heq =>
+    simp only [Program.getInstr_shiftRegisters] at hinstr
+    cases hget : p.getInstr pc with
+    | none => simp [hget] at hinstr
+    | some instr =>
+      simp [hget] at hinstr
+      cases instr with
+      | J m n q =>
+        simp only [Instr.shiftRegisters, Option.some.injEq, Instr.J.injEq] at hinstr
+        obtain ⟨hm, hn, hq⟩ := hinstr
+        subst hq  -- Now q = pc' is substituted, making hget have the right type
+        simp only [State.shift_read_add] at heq
+        have heq' : σ.read m = σ.read n := by
+          convert heq using 1 <;> simp [← hm, ← hn]
+        refine ⟨σ, Step.jump_eq ?_ heq', rfl⟩
+        simp only [Program.getInstr] at hget; exact hget
+      | Z _ => simp [Instr.shiftRegisters] at hinstr
+      | S _ => simp [Instr.shiftRegisters] at hinstr
+      | T _ _ => simp [Instr.shiftRegisters] at hinstr
+  | jump_ne hinstr hne =>
+    simp only [Program.getInstr_shiftRegisters] at hinstr
+    cases hget : p.getInstr pc with
+    | none => simp [hget] at hinstr
+    | some instr =>
+      simp [hget] at hinstr
+      cases instr with
+      | J m n q =>
+        simp only [Instr.shiftRegisters, Option.some.injEq, Instr.J.injEq] at hinstr
+        obtain ⟨hm, hn, hq⟩ := hinstr
+        simp only [State.shift_read_add] at hne
+        have hne' : σ.read m ≠ σ.read n := by
+          convert hne using 1 <;> simp [← hm, ← hn]
+        refine ⟨σ, Step.jump_ne (q := q) ?_ hne', rfl⟩
+        simp only [Program.getInstr] at hget; exact hget
+      | Z _ => simp [Instr.shiftRegisters] at hinstr
+      | S _ => simp [Instr.shiftRegisters] at hinstr
+      | T _ _ => simp [Instr.shiftRegisters] at hinstr
+
+/-- Multi-step execution is preserved under register shifting. -/
+theorem Steps.shiftRegisters_of_steps {p : Program} {c c' : Config} (offset : ℕ)
+    (h : Steps p c c') :
+    Steps (p.shiftRegisters offset) ⟨c.pc, c.state.shift offset⟩ ⟨c'.pc, c'.state.shift offset⟩ := by
+  induction h using Relation.ReflTransGen.head_induction_on with
+  | refl => exact Relation.ReflTransGen.refl
+  | head hstep _ ih =>
+    exact Relation.ReflTransGen.head (Step.shiftRegisters_of_step offset hstep) ih
+
+/-- If p halts reaching pc=p.length, then p.shiftRegisters also halts. -/
+theorem shiftRegisters_halts {p : Program} {σ σ' : State} (offset : ℕ)
+    (h : Steps p ⟨0, σ⟩ ⟨p.length, σ'⟩) :
+    Steps (p.shiftRegisters offset) ⟨0, σ.shift offset⟩ ⟨p.length, σ'.shift offset⟩ := by
+  have := Steps.shiftRegisters_of_steps offset h
+  simp only [Program.shiftRegisters_length] at this ⊢
+  exact this
 
 /-! ## Main Composition Theorem -/
 
@@ -2094,6 +2284,173 @@ theorem buildCollectLoop_bounded (n backupBase workBase outputBase : ℕ) (pg : 
     JumpsBounded (buildCollectLoop n backupBase workBase outputBase pg) := by
   simp only [buildCollectLoop]
   exact buildCollectLoopAux_bounded n backupBase workBase outputBase pg 0 hpg
+
+/-- The runAndStore program halts if the underlying program halts on the unshifted state.
+
+Note: We prove this by showing that p.shiftRegisters workBase running from σ
+matches p running from σ.unshift workBase, because they access corresponding registers. -/
+theorem runAndStore_halts {p : Program} {σ : State} (workBase outputReg : ℕ)
+    (hp_bounded : JumpsBounded p)
+    (hp_halts : ∃ σ', Steps p ⟨0, σ.unshift workBase⟩ ⟨p.length, σ'⟩) :
+    ∃ σ'', Steps (runAndStore p workBase outputReg) ⟨0, σ⟩
+           ⟨(runAndStore p workBase outputReg).length, σ''⟩ := by
+  obtain ⟨σ', hsteps⟩ := hp_halts
+  -- By shiftRegisters_halts, we get p.shiftRegisters halts from (σ.unshift workBase).shift workBase
+  have hshifted := shiftRegisters_halts workBase hsteps
+  -- Key: (σ.unshift workBase).shift workBase agrees with σ on registers >= workBase
+  -- And p.shiftRegisters workBase only accesses registers >= workBase
+  -- So the executions from σ and (σ.unshift workBase).shift workBase are identical
+  have hstates_agree : ∀ r, workBase ≤ r →
+      (σ.unshift workBase).shift workBase r = σ r := by
+    intro r hr
+    simp only [State.unshift, State.shift]
+    simp only [Nat.not_lt.mpr hr, if_false]
+    congr 1
+    omega
+  -- The shifted program only accesses registers >= workBase, so execution from σ
+  -- is the same as from (σ.unshift workBase).shift workBase
+  have hshifted_from_σ : Steps (p.shiftRegisters workBase) ⟨0, σ⟩
+      ⟨p.length, σ'.shift workBase⟩ := by
+    -- This follows from the fact that shiftRegisters only touches registers >= workBase
+    -- and both states agree on those registers
+    sorry  -- Need state-agreement execution lemma for shiftRegisters
+  -- runAndStore = p.shiftRegisters workBase ++ [T workBase outputReg]
+  -- After p.shiftRegisters halts at pc = p.length with state σ'.shift workBase,
+  -- we execute the T instruction
+  have hT_step : Step (runAndStore p workBase outputReg)
+      ⟨p.length, σ'.shift workBase⟩
+      ⟨p.length + 1, (σ'.shift workBase).write outputReg ((σ'.shift workBase).read workBase)⟩ := by
+    apply Step.trans
+    simp only [runAndStore, Program.getInstr]
+    rw [List.getElem?_append_right (by simp [Program.shiftRegisters_length])]
+    simp [Program.shiftRegisters_length]
+  -- Lift the shifted program's steps to runAndStore using prefix transfer
+  have hrunAndStore_steps : Steps (runAndStore p workBase outputReg) ⟨0, σ⟩
+      ⟨p.length, σ'.shift workBase⟩ := by
+    -- p.shiftRegisters workBase is a prefix of runAndStore
+    -- All steps within bounds in the prefix work in the full program
+    have hbounds : ∀ c c', Step (p.shiftRegisters workBase) c c' →
+        c.pc < (runAndStore p workBase outputReg).length := by
+      intro c c' hstep
+      simp only [runAndStore_length, Program.shiftRegisters_length]
+      have := Step.not_halted_of_step hstep
+      simp only [Config.isHalted, Program.shiftRegisters_length] at this
+      omega
+    sorry  -- Need prefix step transfer lemma
+  -- Combine
+  refine ⟨(σ'.shift workBase).write outputReg ((σ'.shift workBase).read workBase), ?_⟩
+  apply Relation.ReflTransGen.tail hrunAndStore_steps
+  convert hT_step using 1
+  simp [runAndStore_length]
+
+/-! ### Collection Loop Halting -/
+
+/-- collectOneIteration is a sequential composition of copyRegs and shifted runAndStore. -/
+theorem collectOneIteration_eq_seq (n backupBase workBase : ℕ) (p : Program) (outputReg : ℕ) :
+    collectOneIteration n backupBase workBase p outputReg =
+    (copyRegs n backupBase workBase) ++ (runAndStore p workBase outputReg).shiftJumps n := by
+  rfl
+
+/-- One iteration of the collection loop halts if the underlying program halts.
+
+The key insight is that after copyRegs finishes, the work registers R[workBase..workBase+n-1]
+contain copies of the backup registers R[backupBase..backupBase+n-1]. Then runAndStore
+runs the shifted program (which only accesses registers >= workBase) and halts if p would
+halt on the unshifted state.
+
+Parameters:
+- n: number of input registers
+- backupBase: where inputs are backed up
+- workBase: where shifted programs execute (must have workBase >= backupBase + n for disjointness)
+- p: program to run
+- outputReg: where to store the result
+- σ: initial state (backup registers at backupBase..backupBase+n-1 contain the inputs)
+-/
+theorem collectOneIteration_halts (n backupBase workBase : ℕ) (p : Program) (outputReg : ℕ)
+    (σ : State)
+    (hp_bounded : JumpsBounded p)
+    (hdisjoint : backupBase + n ≤ workBase)
+    (hp_halts : ∃ σ', Steps p ⟨0, State.fromInputs (List.ofFn (fun i : Fin n => σ (backupBase + i)))⟩
+                       ⟨p.length, σ'⟩) :
+    ∃ σ'', Steps (collectOneIteration n backupBase workBase p outputReg) ⟨0, σ⟩
+           ⟨(collectOneIteration n backupBase workBase p outputReg).length, σ''⟩ := by
+  -- collectOneIteration = copyRegs ++ runAndStore.shiftJumps
+  rw [collectOneIteration_eq_seq]
+  -- copyRegs always halts in n steps (it's just T instructions with no conditional jumps)
+  -- After copyRegs, the work registers contain copies of the backup registers
+  -- Then runAndStore halts because p halts on the corresponding input state
+  -- Key steps:
+  -- 1. copyRegs halts from any state (takes n steps regardless of register values)
+  -- 2. After copyRegs, work registers R[workBase..workBase+n-1] = backup registers R[backupBase..backupBase+n-1]
+  -- 3. runAndStore halts because p halts on (σ_after_copy.unshift workBase) which agrees with
+  --    State.fromInputs(...) on registers 0..n-1
+  sorry  -- Detailed proof requires: copyRegs_halts_from_state, state agreement lemmas
+
+/-- The auxiliary collection loop halts if all component programs halt. -/
+theorem buildCollectLoopAux_halts (n backupBase workBase outputBase : ℕ)
+    (pg : List Program) (startIdx : ℕ) (σ : State)
+    (hpg_bounded : ∀ p ∈ pg, JumpsBounded p)
+    (hdisjoint : backupBase + n ≤ workBase)
+    (hpg_halts : ∀ p ∈ pg, ∃ σ', Steps p ⟨0, State.fromInputs (List.ofFn (fun i : Fin n => σ (backupBase + i)))⟩
+                                 ⟨p.length, σ'⟩) :
+    ∃ σ'', Steps (buildCollectLoopAux n backupBase workBase outputBase pg startIdx) ⟨0, σ⟩
+           ⟨(buildCollectLoopAux n backupBase workBase outputBase pg startIdx).length, σ''⟩ := by
+  induction pg generalizing startIdx σ with
+  | nil =>
+    simp only [buildCollectLoopAux]
+    exact ⟨σ, Relation.ReflTransGen.refl⟩
+  | cons p ps ih =>
+    simp only [buildCollectLoopAux]
+    -- First, collectOneIteration halts
+    have hiter_halts := collectOneIteration_halts n backupBase workBase p (outputBase + startIdx) σ
+      (hpg_bounded p (List.mem_cons.mpr (Or.inl rfl)))
+      hdisjoint
+      (hpg_halts p (List.mem_cons.mpr (Or.inl rfl)))
+    obtain ⟨σ', hiter_steps⟩ := hiter_halts
+    -- Then the rest of the loop halts
+    -- Key: backup registers are preserved after collectOneIteration
+    have hbackup_preserved : ∀ i : Fin n, σ' (backupBase + i) = σ (backupBase + i) := by
+      -- collectOneIteration only modifies workBase+ registers and outputReg
+      -- Since backupBase + n ≤ workBase and outputReg ≥ outputBase (typically > backupBase),
+      -- backup registers are preserved
+      sorry  -- Need to trace through collectOneIteration's register modifications
+    -- With backup preserved, the remaining programs still halt
+    have hrest_halts : ∃ σ'', Steps (buildCollectLoopAux n backupBase workBase outputBase ps (startIdx + 1)) ⟨0, σ'⟩
+        ⟨(buildCollectLoopAux n backupBase workBase outputBase ps (startIdx + 1)).length, σ''⟩ := by
+      apply ih (startIdx + 1) σ'
+      · intro p' hp'
+        exact hpg_bounded p' (List.mem_cons.mpr (Or.inr hp'))
+      · intro p' hp'
+        -- Rewrite using hbackup_preserved
+        have h := hpg_halts p' (List.mem_cons.mpr (Or.inr hp'))
+        -- The states agree on backup registers, so fromInputs produces the same state
+        have heq : (List.ofFn (fun i : Fin n => σ' (backupBase + i))) =
+                   (List.ofFn (fun i : Fin n => σ (backupBase + i))) := by
+          apply List.ext_getElem
+          · simp
+          · intro j h1 h2
+            simp only [List.getElem_ofFn]
+            exact hbackup_preserved ⟨j, by simp at h1; exact h1⟩
+        simp only [heq]; exact h
+    obtain ⟨σ'', hrest_steps⟩ := hrest_halts
+    -- Combine: collectOneIteration ++ buildCollectLoopAux (direct append)
+    -- The programs are designed so jumps are bounded within each piece
+    -- We need to transfer steps from each part to the concatenation
+    -- For now, use sorry as the combination requires careful step transfer lemmas
+    -- for direct appends (not shiftJumps-based seq)
+    sorry
+
+/-- The collection loop halts if all component programs halt on the backed-up inputs. -/
+theorem buildCollectLoop_halts (n backupBase workBase outputBase : ℕ)
+    (pg : List Program) (σ : State)
+    (hpg_bounded : ∀ p ∈ pg, JumpsBounded p)
+    (hdisjoint : backupBase + n ≤ workBase)
+    (hpg_halts : ∀ p ∈ pg, ∃ σ', Steps p ⟨0, State.fromInputs (List.ofFn (fun i : Fin n => σ (backupBase + i)))⟩
+                                 ⟨p.length, σ'⟩) :
+    ∃ σ'', Steps (buildCollectLoop n backupBase workBase outputBase pg) ⟨0, σ⟩
+           ⟨(buildCollectLoop n backupBase workBase outputBase pg).length, σ''⟩ := by
+  simp only [buildCollectLoop]
+  exact buildCollectLoopAux_halts n backupBase workBase outputBase pg 0 σ hpg_bounded hdisjoint hpg_halts
 
 /-- URM-computable functions are closed under composition.
 
