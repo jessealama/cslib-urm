@@ -65,6 +65,13 @@ def copyRegs (n : ℕ) (srcBase dstBase : ℕ) : Program :=
 theorem copyRegs_length (n srcBase dstBase : ℕ) : (copyRegs n srcBase dstBase).length = n := by
   simp [copyRegs]
 
+/-- The instruction at position i in copyRegs is T (srcBase + i) (dstBase + i). -/
+theorem copyRegs_getInstr (n srcBase dstBase : ℕ) (i : ℕ) (hi : i < n) :
+    (copyRegs n srcBase dstBase).getInstr i = some (Instr.T (srcBase + i) (dstBase + i)) := by
+  simp only [copyRegs, Program.getInstr, List.getElem?_map]
+  rw [List.getElem?_eq_getElem (by simp; exact hi)]
+  simp [List.getElem_finRange]
+
 /-- Zero out a single register. -/
 def zeroReg (n : ℕ) : Program := [Instr.Z n]
 
@@ -464,6 +471,50 @@ theorem seq (h₁ : JumpsBounded p₁) (h₂ : JumpsBounded p₂) : JumpsBounded
       have hbound := h₂ (i - p₁.length) hi' jm jn jq hinstr'
       simp only [Program.seq_length]
       omega
+
+/-- Appending programs preserves JumpsBounded (for the first program's part). -/
+theorem append (h₁ : JumpsBounded p₁) (h₂ : JumpsBounded p₂) : JumpsBounded (p₁ ++ p₂) := by
+  intro i hi m n q hinstr
+  simp only [List.length_append] at hi ⊢
+  by_cases hlt : i < p₁.length
+  · -- Instruction from first program
+    simp only [Program.getInstr, List.getElem?_append_left hlt] at hinstr
+    have hbound := h₁ i hlt m n q hinstr
+    omega
+  · -- Instruction from second program; note: jumps NOT shifted, so this is bounded by p₂.length
+    have hge : p₁.length ≤ i := Nat.not_lt.mp hlt
+    have hi' : i - p₁.length < p₂.length := by omega
+    simp only [Program.getInstr, List.getElem?_append_right hge] at hinstr
+    have hbound := h₂ (i - p₁.length) hi' m n q hinstr
+    omega
+
+/-- shiftJumps preserves JumpsBounded when offset is added to length bound.
+    Used for sequential composition where p₂.shiftJumps p₁.length is appended to p₁. -/
+theorem shiftJumps_bounded_with_offset (h : JumpsBounded p) (offset : ℕ) :
+    ∀ i < (p.shiftJumps offset).length, ∀ m n q,
+      (p.shiftJumps offset).getInstr i = some (Instr.J m n q) →
+      q ≤ p.length + offset := by
+  intro i hi m n q hinstr
+  simp only [Program.shiftJumps, List.length_map] at hi
+  have hi' : i < p.length := hi
+  simp only [Program.getInstr, Program.shiftJumps] at hinstr
+  rw [List.getElem?_map] at hinstr
+  cases hget : p[i]? with
+  | none =>
+    rw [hget] at hinstr
+    simp at hinstr
+  | some instr =>
+    rw [hget] at hinstr
+    simp only [Option.map_some] at hinstr
+    cases instr with
+    | J m' n' q' =>
+      simp only [Instr.shiftJumps, Option.some.injEq] at hinstr
+      obtain ⟨rfl, rfl, rfl⟩ := hinstr
+      have hbound := h i hi' m n q' (by simp [Program.getInstr, hget])
+      omega
+    | Z _ => simp [Instr.shiftJumps] at hinstr
+    | S _ => simp [Instr.shiftJumps] at hinstr
+    | T _ _ => simp [Instr.shiftJumps] at hinstr
 
 /-- Helper: stepping preserves the invariant pc ≤ p.length when jumps are bounded. -/
 private theorem step_preserves_pc_bound (hbounded : JumpsBounded p)
@@ -1025,6 +1076,232 @@ theorem Steps.clearRegsFrom1_in_seq (k : ℕ) (p : Program) (σ : State) :
     · simp only [clearRegsFrom1_length]; exact hk_pos
     · simp
 
+/-! ## copyRegs Execution Lemmas -/
+
+/-- copyRegs has bounded jumps (it has no jumps at all). -/
+theorem copyRegs_bounded (cnt srcBase dstBase : ℕ) : JumpsBounded (copyRegs cnt srcBase dstBase) := by
+  intro i hi m n q hinstr
+  simp only [copyRegs, Program.getInstr, List.getElem?_map] at hinstr
+  rw [copyRegs_length] at hi
+  rw [List.getElem?_eq_getElem (by simp; exact hi)] at hinstr
+  simp only [List.getElem_finRange, Option.map_some] at hinstr
+  -- hinstr : some (Instr.T ...) = some (Instr.J m n q) - contradiction
+  cases hinstr
+
+/-- State after copying registers: destination registers contain copies of source registers.
+    Note: This is a semantic definition - the actual copying behavior depends on
+    whether source and destination ranges overlap. -/
+def State.afterCopy (σ : State) (cnt srcBase dstBase : ℕ) : State :=
+  fun r =>
+    if dstBase ≤ r ∧ r < dstBase + cnt then
+      σ (srcBase + (r - dstBase))
+    else
+      σ r
+
+/-- After copyRegs, destination registers contain copies from source (semantic definition). -/
+theorem State.afterCopy_read_dst (σ : State) (cnt srcBase dstBase : ℕ) (i : ℕ) (hi : i < cnt) :
+    (σ.afterCopy cnt srcBase dstBase) (dstBase + i) = σ (srcBase + i) := by
+  simp only [afterCopy]
+  split_ifs with h
+  · simp only [Nat.add_sub_cancel_left]
+  · omega
+
+/-- After copyRegs, registers outside the destination range are unchanged. -/
+theorem State.afterCopy_read_other (σ : State) (cnt srcBase dstBase : ℕ) (r : ℕ)
+    (h : r < dstBase ∨ dstBase + cnt ≤ r) :
+    (σ.afterCopy cnt srcBase dstBase) r = σ r := by
+  simp only [afterCopy]
+  split_ifs with h'
+  · omega
+  · rfl
+
+/-- Helper: state after i copy operations. -/
+private def copyRegs_stateAfter (σ : State) (srcBase dstBase : ℕ) (i : ℕ) : State :=
+  (List.range i).foldl (fun s j => s.write (dstBase + j) (σ (srcBase + j))) σ
+
+/-- Reading source register from intermediate copyRegs state gives original value
+    (when ranges don't overlap). -/
+private theorem copyRegs_stateAfter_preserves_src (σ : State) (srcBase dstBase j : ℕ)
+    (hdisjoint : ∀ k < j, srcBase + j ≠ dstBase + k) :
+    (copyRegs_stateAfter σ srcBase dstBase j) (srcBase + j) = σ (srcBase + j) := by
+  simp only [copyRegs_stateAfter]
+  -- The foldl writes to dstBase + 0, ..., dstBase + (j-1)
+  -- We're reading srcBase + j, which by hdisjoint is different from all of those
+  induction j with
+  | zero => simp [List.range_zero, List.foldl_nil]
+  | succ k ihk =>
+    simp only [List.range_succ, List.foldl_append, List.foldl_cons, List.foldl_nil]
+    simp only [State.write, Function.update]
+    have h_ne : srcBase + (k + 1) ≠ dstBase + k := hdisjoint k (Nat.lt_succ_self k)
+    simp only [h_ne, dite_false]
+    -- Now need to show the inner foldl (range k) at position srcBase + (k+1) = σ (srcBase + (k+1))
+    -- The inner foldl writes to dstBase + 0, ..., dstBase + (k-1)
+    -- Prove by a simpler approach: the foldl only writes to dstBase+i for i < k
+    -- and srcBase + (k+1) ≠ dstBase + i for all i < k (by hdisjoint)
+    -- We use a general helper lemma about foldl preserving other positions
+    clear ihk
+    suffices h : ∀ m ≤ k, (List.range m).foldl (fun s j => s.write (dstBase + j) (σ (srcBase + j))) σ
+        (srcBase + (k + 1)) = σ (srcBase + (k + 1)) by
+      exact h k (Nat.le_refl k)
+    intro m hm
+    induction m with
+    | zero => simp [List.range_zero, List.foldl_nil]
+    | succ n ihn =>
+      simp only [List.range_succ, List.foldl_append, List.foldl_cons, List.foldl_nil]
+      simp only [State.write, Function.update]
+      have hn_lt_j : n < k + 1 := by omega
+      have h_ne' : srcBase + (k + 1) ≠ dstBase + n := hdisjoint n hn_lt_j
+      simp only [h_ne', dite_false]
+      exact ihn (Nat.le_of_succ_le hm)
+
+/-- The foldl-based state equals afterCopy for full range. -/
+private theorem copyRegs_stateAfter_eq_afterCopy (σ : State) (cnt srcBase dstBase : ℕ) :
+    copyRegs_stateAfter σ srcBase dstBase cnt = σ.afterCopy cnt srcBase dstBase := by
+  funext r
+  simp only [copyRegs_stateAfter, State.write]
+  induction cnt with
+  | zero =>
+    simp only [List.range_zero, List.foldl_nil, State.afterCopy]
+    split_ifs with h
+    · omega
+    · rfl
+  | succ k ih =>
+    simp only [List.range_succ, List.foldl_append, List.foldl_cons, List.foldl_nil]
+    by_cases h_eq : r = dstBase + k
+    · subst h_eq
+      simp only [Function.update_self, State.afterCopy, Nat.add_sub_cancel_left]
+      split_ifs with h
+      · rfl
+      · omega
+    · simp only [Function.update, h_eq, dite_false]
+      rw [ih]
+      simp only [State.afterCopy]
+      split_ifs with h1 h2
+      · rfl
+      · omega
+      · omega
+      · rfl
+
+/-- Running copyRegs cnt from state σ reaches the expected state.
+    Requires that source and destination ranges don't overlap in a problematic way:
+    either they're disjoint, or dstBase + cnt ≤ srcBase (copy from higher to lower). -/
+theorem copyRegs_reaches (cnt srcBase dstBase : ℕ) (σ : State)
+    (hdisjoint : dstBase + cnt ≤ srcBase ∨ srcBase + cnt ≤ dstBase) :
+    Steps (copyRegs cnt srcBase dstBase) ⟨0, σ⟩ ⟨cnt, σ.afterCopy cnt srcBase dstBase⟩ := by
+  -- Prove by induction that after i steps we reach stateAfter i
+  have hsteps : ∀ i ≤ cnt, StepsN (copyRegs cnt srcBase dstBase) i ⟨0, σ⟩
+      ⟨i, copyRegs_stateAfter σ srcBase dstBase i⟩ := by
+    intro i hi
+    induction i with
+    | zero =>
+      simp only [copyRegs_stateAfter, List.range_zero, List.foldl_nil]
+      exact StepsN.zero _
+    | succ j ihj =>
+      have hj' : j ≤ cnt := Nat.le_of_succ_le hi
+      have hjbound : j < cnt := Nat.lt_of_succ_le hi
+      have steps_j := ihj hj'
+      have hinstr := copyRegs_getInstr cnt srcBase dstBase j hjbound
+      -- Key: reading srcBase + j from intermediate state gives σ (srcBase + j)
+      have hdisjoint_j : ∀ k < j, srcBase + j ≠ dstBase + k := by
+        intro k hk
+        cases hdisjoint with
+        | inl h => omega
+        | inr h => omega
+      have hread : (copyRegs_stateAfter σ srcBase dstBase j).read (srcBase + j) = σ (srcBase + j) := by
+        simp only [State.read]
+        exact copyRegs_stateAfter_preserves_src σ srcBase dstBase j hdisjoint_j
+      have hstep : Step (copyRegs cnt srcBase dstBase)
+          ⟨j, copyRegs_stateAfter σ srcBase dstBase j⟩
+          ⟨j + 1, (copyRegs_stateAfter σ srcBase dstBase j).write (dstBase + j)
+                   ((copyRegs_stateAfter σ srcBase dstBase j).read (srcBase + j))⟩ :=
+        Step.trans hinstr
+      have hstate_eq : copyRegs_stateAfter σ srcBase dstBase (j + 1) =
+          (copyRegs_stateAfter σ srcBase dstBase j).write (dstBase + j)
+           ((copyRegs_stateAfter σ srcBase dstBase j).read (srcBase + j)) := by
+        simp only [copyRegs_stateAfter, List.range_succ, List.foldl_append, List.foldl_cons,
+                   List.foldl_nil, State.read]
+        congr 1
+        exact hread.symm
+      rw [hstate_eq]
+      exact StepsN.add steps_j (StepsN.succ hstep (StepsN.zero _))
+  have hstepsN := hsteps cnt (Nat.le_refl cnt)
+  rw [copyRegs_stateAfter_eq_afterCopy] at hstepsN
+  exact hstepsN.toSteps
+
+/-- The copying program halts in exactly cnt steps. -/
+theorem copyRegs_haltsIn (cnt srcBase dstBase : ℕ) (inputs : List ℕ)
+    (hdisjoint : dstBase + cnt ≤ srcBase ∨ srcBase + cnt ≤ dstBase) :
+    HaltsIn (copyRegs cnt srcBase dstBase) cnt inputs := by
+  refine ⟨⟨cnt, (State.fromInputs inputs).afterCopy cnt srcBase dstBase⟩, ?_, ?_⟩
+  · -- Prove StepsN using the same approach as copyRegs_reaches
+    have hsteps : ∀ i ≤ cnt, StepsN (copyRegs cnt srcBase dstBase) i
+        ⟨0, State.fromInputs inputs⟩
+        ⟨i, copyRegs_stateAfter (State.fromInputs inputs) srcBase dstBase i⟩ := by
+      intro i hi
+      induction i with
+      | zero =>
+        simp only [copyRegs_stateAfter, List.range_zero, List.foldl_nil]
+        exact StepsN.zero _
+      | succ j ihj =>
+        have hj' : j ≤ cnt := Nat.le_of_succ_le hi
+        have hjbound : j < cnt := Nat.lt_of_succ_le hi
+        have steps_j := ihj hj'
+        have hinstr := copyRegs_getInstr cnt srcBase dstBase j hjbound
+        have hdisjoint_j : ∀ k < j, srcBase + j ≠ dstBase + k := by
+          intro k hk
+          cases hdisjoint with
+          | inl h => omega
+          | inr h => omega
+        have hread : (copyRegs_stateAfter (State.fromInputs inputs) srcBase dstBase j).read (srcBase + j) =
+            (State.fromInputs inputs) (srcBase + j) := by
+          simp only [State.read]
+          exact copyRegs_stateAfter_preserves_src (State.fromInputs inputs) srcBase dstBase j hdisjoint_j
+        have hstep : Step (copyRegs cnt srcBase dstBase)
+            ⟨j, copyRegs_stateAfter (State.fromInputs inputs) srcBase dstBase j⟩
+            ⟨j + 1, (copyRegs_stateAfter (State.fromInputs inputs) srcBase dstBase j).write (dstBase + j)
+                     ((copyRegs_stateAfter (State.fromInputs inputs) srcBase dstBase j).read (srcBase + j))⟩ :=
+          Step.trans hinstr
+        have hstate_eq : copyRegs_stateAfter (State.fromInputs inputs) srcBase dstBase (j + 1) =
+            (copyRegs_stateAfter (State.fromInputs inputs) srcBase dstBase j).write (dstBase + j)
+             ((copyRegs_stateAfter (State.fromInputs inputs) srcBase dstBase j).read (srcBase + j)) := by
+          simp only [copyRegs_stateAfter, List.range_succ, List.foldl_append, List.foldl_cons,
+                     List.foldl_nil, State.read]
+          congr 1
+          exact hread.symm
+        rw [hstate_eq]
+        exact StepsN.add steps_j (StepsN.succ hstep (StepsN.zero _))
+    have hfinal := hsteps cnt (Nat.le_refl cnt)
+    rw [copyRegs_stateAfter_eq_afterCopy] at hfinal
+    exact hfinal
+  · simp [Config.isHalted]
+
+/-- The copying program halts on any input. -/
+theorem copyRegs_halts (cnt srcBase dstBase : ℕ) (inputs : List ℕ)
+    (hdisjoint : dstBase + cnt ≤ srcBase ∨ srcBase + cnt ≤ dstBase) :
+    Halts (copyRegs cnt srcBase dstBase) inputs :=
+  (copyRegs_haltsIn cnt srcBase dstBase inputs hdisjoint).toHalts
+
+/-- Lift copyRegs steps to the first part of a sequential composition. -/
+theorem Steps.copyRegs_in_seq (cnt srcBase dstBase : ℕ) (p : Program) (σ : State)
+    (hdisjoint : dstBase + cnt ≤ srcBase ∨ srcBase + cnt ≤ dstBase) :
+    Steps ((copyRegs cnt srcBase dstBase).seq p) ⟨0, σ⟩ ⟨cnt, σ.afterCopy cnt srcBase dstBase⟩ := by
+  by_cases hcnt : cnt = 0
+  · -- When cnt = 0, copyRegs is empty and afterCopy is identity
+    subst hcnt
+    have hafter : σ.afterCopy 0 srcBase dstBase = σ := by
+      funext r
+      simp only [State.afterCopy, Nat.add_zero]
+      split_ifs with h
+      · omega
+      · rfl
+    simp only [hafter]
+    exact Steps.refl _
+  · have hcnt_pos : 0 < cnt := Nat.pos_of_ne_zero hcnt
+    have hcopy_steps := copyRegs_reaches cnt srcBase dstBase σ hdisjoint
+    apply Steps.seq_steps_first hcopy_steps
+    · simp only [copyRegs_length]; exact hcnt_pos
+    · simp
+
 /-! ## State Agreement Lemmas -/
 
 /-- Two states agree on registers 0..k. -/
@@ -1227,6 +1504,75 @@ def State.shift (σ : State) (offset : ℕ) : State :=
     in the original state. -/
 def State.unshift (σ : State) (offset : ℕ) : State :=
   fun n => σ (n + offset)
+
+/-! ### State Shifting Lemmas -/
+
+namespace State
+
+@[simp]
+theorem shift_read (σ : State) (offset n : ℕ) :
+    (σ.shift offset).read n = if n < offset then 0 else σ.read (n - offset) := rfl
+
+@[simp]
+theorem unshift_read (σ : State) (offset n : ℕ) :
+    (σ.unshift offset).read n = σ.read (n + offset) := rfl
+
+/-- unshift after shift recovers the original state. -/
+theorem unshift_shift (σ : State) (offset : ℕ) :
+    (σ.shift offset).unshift offset = σ := by
+  funext n
+  simp only [shift, unshift, Nat.add_sub_cancel]
+  simp [Nat.not_lt_of_le (Nat.le_add_left offset n)]
+
+/-- Writing to a register then unshifting is the same as unshifting then writing. -/
+theorem unshift_write (σ : State) (offset n v : ℕ) :
+    (σ.write (n + offset) v).unshift offset = (σ.unshift offset).write n v := by
+  funext k
+  simp only [unshift, State.write, Function.update]
+  split_ifs with h1 h2
+  · simp_all
+  · exfalso; omega
+  · exfalso; omega
+  · rfl
+
+end State
+
+/-! ### Register Shifting and Execution -/
+
+/-- Length is preserved under register shifting. -/
+@[simp]
+theorem Program.shiftRegisters_length (p : Program) (offset : ℕ) :
+    (p.shiftRegisters offset).length = p.length := by
+  simp [Program.shiftRegisters]
+
+-- Note: Detailed Step.shiftRegisters lemmas require careful handling of state
+-- representation. For the composition proof, we may use a different approach.
+
+/-- JumpsBounded is preserved under register shifting (jump targets unchanged). -/
+theorem JumpsBounded.shiftRegisters {p : Program} (h : JumpsBounded p) (offset : ℕ) :
+    JumpsBounded (p.shiftRegisters offset) := by
+  intro i hi m n q hinstr
+  simp only [Program.shiftRegisters_length] at hi
+  have hi' : i < p.length := hi
+  -- Get the instruction from shifted program
+  simp only [Program.shiftRegisters, Program.getInstr, List.getElem?_map] at hinstr
+  -- The shifted instruction must have come from a J instruction in the original
+  cases hget : p[i]? with
+  | none => simp [hget] at hinstr
+  | some instr =>
+    rw [hget] at hinstr
+    simp only [Option.map] at hinstr
+    cases instr with
+    | J m' n' q' =>
+      simp only [Instr.shiftRegisters, Option.some.injEq] at hinstr
+      -- hinstr : Instr.J (m' + offset) (n' + offset) q' = Instr.J m n q
+      cases hinstr
+      -- After cases: q = q' (unified), need to show q ≤ length
+      simp only [Program.shiftRegisters_length]
+      exact h i hi' m' n' q (by simp [Program.getInstr, hget])
+    | Z _ => simp [Instr.shiftRegisters] at hinstr
+    | S _ => simp [Instr.shiftRegisters] at hinstr
+    | T _ _ => simp [Instr.shiftRegisters] at hinstr
 
 /-! ## Main Composition Theorem -/
 
@@ -1614,6 +1960,140 @@ theorem comp_unary {n : ℕ}
       _ = ((g inputs).bind (fun v' => f (fun _ => v'))).get hDom := by
           symm; apply Part.get_eq_of_mem; rw [Part.mem_bind_iff]
           exact ⟨v, Part.get_mem hgDom, Part.get_mem hfDom⟩
+
+/-! ### Collection Loop Construction
+
+For multi-ary composition, we need to run each gᵢ and collect outputs.
+The collection loop iterates through the programs, restoring inputs from backup
+before each execution and saving results to the output collection area.
+-/
+
+/-- Build a program segment that runs `p` with inputs at `workBase` and stores
+    the result (from R[workBase]) to R[outputReg]. Requires inputs already at workBase. -/
+def runAndStore (p : Program) (workBase outputReg : ℕ) : Program :=
+  (p.shiftRegisters workBase) ++ [Instr.T workBase outputReg]
+
+/-- Build a program segment for one iteration of the collection loop:
+    1. Copy n inputs from backupBase to workBase
+    2. Run program p shifted to workBase
+    3. Store result (R[workBase]) to R[outputReg] -/
+def collectOneIteration (n backupBase workBase : ℕ) (p : Program) (outputReg : ℕ) : Program :=
+  (copyRegs n backupBase workBase) ++
+  (runAndStore p workBase outputReg).shiftJumps n
+
+/-- Build the full collection loop that runs programs pg[0], pg[1], ..., pg[m-1]
+    and stores their outputs to R[outputBase], R[outputBase+1], ..., R[outputBase+m-1].
+
+    Parameters:
+    - n: number of input registers (inputs are backed up at backupBase)
+    - backupBase: where inputs are backed up (R[backupBase..backupBase+n-1])
+    - workBase: where shifted programs execute
+    - outputBase: where to store collected outputs
+    - pg: list of programs to run
+    - startIdx: current index (for recursive definition) -/
+def buildCollectLoopAux (n backupBase workBase outputBase : ℕ) (pg : List Program) (startIdx : ℕ) : Program :=
+  match pg with
+  | [] => []
+  | p :: ps =>
+    collectOneIteration n backupBase workBase p (outputBase + startIdx) ++
+    buildCollectLoopAux n backupBase workBase outputBase ps (startIdx + 1)
+
+/-- Build the full collection loop starting at index 0. -/
+def buildCollectLoop (n backupBase workBase outputBase : ℕ) (pg : List Program) : Program :=
+  buildCollectLoopAux n backupBase workBase outputBase pg 0
+
+/-- Length of runAndStore. -/
+theorem runAndStore_length (p : Program) (workBase outputReg : ℕ) :
+    (runAndStore p workBase outputReg).length = p.length + 1 := by
+  simp [runAndStore, Program.shiftRegisters]
+
+/-- Length of one collection iteration. -/
+theorem collectOneIteration_length (n backupBase workBase : ℕ) (p : Program) (outputReg : ℕ) :
+    (collectOneIteration n backupBase workBase p outputReg).length = n + p.length + 1 := by
+  simp [collectOneIteration, copyRegs_length, Program.shiftJumps, runAndStore_length]
+  omega
+
+/-- JumpsBounded for runAndStore. -/
+theorem runAndStore_bounded (p : Program) (workBase outputReg : ℕ) (hp : JumpsBounded p) :
+    JumpsBounded (runAndStore p workBase outputReg) := by
+  apply JumpsBounded.append
+  · exact hp.shiftRegisters workBase
+  · -- The second part is a single T instruction, which has no jumps
+    intro i hi m' n' q hinstr
+    simp only [List.length_singleton] at hi
+    have hi' : i = 0 := Nat.lt_one_iff.mp hi
+    subst hi'
+    simp only [Program.getInstr, List.getElem?_cons_zero] at hinstr
+    cases hinstr
+
+/-- JumpsBounded for one collection iteration. -/
+theorem collectOneIteration_bounded (n backupBase workBase : ℕ) (p : Program) (outputReg : ℕ)
+    (hp : JumpsBounded p) :
+    JumpsBounded (collectOneIteration n backupBase workBase p outputReg) := by
+  simp only [collectOneIteration]
+  -- Structure: copyRegs ++ (runAndStore.shiftJumps n)
+  -- Total length: n + (p.length + 1)
+  intro i hi m m' q hinstr
+  simp only [List.length_append, copyRegs_length, Program.shiftJumps, List.length_map,
+             runAndStore_length] at hi ⊢
+  by_cases hlt : i < n
+  · -- Instruction from copyRegs (no jumps)
+    have hlt' : i < (copyRegs n backupBase workBase).length := by simp [copyRegs_length, hlt]
+    simp only [Program.getInstr, List.getElem?_append_left hlt'] at hinstr
+    have hcopy := copyRegs_bounded n backupBase workBase
+    have hbound := hcopy i hlt' m m' q hinstr
+    simp only [copyRegs_length] at hbound
+    omega
+  · -- Instruction from shifted runAndStore
+    have hge : n ≤ i := Nat.not_lt.mp hlt
+    have hge' : (copyRegs n backupBase workBase).length ≤ i := by simp [copyRegs_length, hge]
+    have hi' : i - n < (runAndStore p workBase outputReg).length := by
+      simp only [runAndStore_length]; omega
+    simp only [Program.getInstr, List.getElem?_append_right hge', copyRegs_length] at hinstr
+    simp only [Program.shiftJumps] at hinstr
+    rw [List.getElem?_map] at hinstr
+    cases hget : (runAndStore p workBase outputReg)[i - n]? with
+    | none => rw [hget] at hinstr; simp at hinstr
+    | some instr =>
+      rw [hget] at hinstr
+      simp only [Option.map_some] at hinstr
+      cases instr with
+      | J jm jn jq =>
+        simp only [Instr.shiftJumps, Option.some.injEq] at hinstr
+        obtain ⟨rfl, rfl, rfl⟩ := hinstr
+        -- Now m = jm, m' = jn, q = jq + n
+        have hrunStore := runAndStore_bounded p workBase outputReg hp
+        have hbound := hrunStore (i - n) hi' m m' jq (by simp [Program.getInstr, hget])
+        simp only [runAndStore_length] at hbound
+        omega
+      | Z _ => simp [Instr.shiftJumps] at hinstr
+      | S _ => simp [Instr.shiftJumps] at hinstr
+      | T _ _ => simp [Instr.shiftJumps] at hinstr
+
+/-- JumpsBounded for the auxiliary collection loop. -/
+theorem buildCollectLoopAux_bounded (n backupBase workBase outputBase : ℕ)
+    (pg : List Program) (startIdx : ℕ)
+    (hpg : ∀ p ∈ pg, JumpsBounded p) :
+    JumpsBounded (buildCollectLoopAux n backupBase workBase outputBase pg startIdx) := by
+  induction pg generalizing startIdx with
+  | nil =>
+    simp only [buildCollectLoopAux]
+    exact JumpsBounded.nil
+  | cons p ps ih =>
+    simp only [buildCollectLoopAux]
+    apply JumpsBounded.append
+    · apply collectOneIteration_bounded
+      exact hpg p (List.mem_cons.mpr (Or.inl rfl))
+    · apply ih
+      intro p' hp'
+      exact hpg p' (List.mem_cons.mpr (Or.inr hp'))
+
+/-- JumpsBounded for the full collection loop. -/
+theorem buildCollectLoop_bounded (n backupBase workBase outputBase : ℕ) (pg : List Program)
+    (hpg : ∀ p ∈ pg, JumpsBounded p) :
+    JumpsBounded (buildCollectLoop n backupBase workBase outputBase pg) := by
+  simp only [buildCollectLoop]
+  exact buildCollectLoopAux_bounded n backupBase workBase outputBase pg 0 hpg
 
 /-- URM-computable functions are closed under composition.
 
