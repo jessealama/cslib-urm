@@ -74,6 +74,24 @@ def maxRegister : Instr → ℕ
   | T m n => max m n
   | J m n _ => max m n
 
+/-- Shift all jump targets in an instruction by `offset`.
+Used when concatenating programs to maintain correct jump destinations. -/
+@[scoped grind =]
+def shiftJumps (offset : ℕ) : Instr → Instr
+  | Z n => Z n
+  | S n => S n
+  | T m n => T m n
+  | J m n q => J m n (q + offset)
+
+/-- Shift all register references in an instruction by `offset`.
+Used to isolate register usage when composing programs. -/
+@[scoped grind =]
+def shiftRegisters (offset : ℕ) : Instr → Instr
+  | Z n => Z (n + offset)
+  | S n => S (n + offset)
+  | T m n => T (m + offset) (n + offset)
+  | J m n q => J (m + offset) (n + offset) q
+
 end Instr
 
 /-- A URM program is a list of instructions. -/
@@ -89,6 +107,19 @@ def getInstr (p : Program) (i : ℕ) : Option Instr := p[i]?
 @[scoped grind =]
 def maxRegister (p : Program) : ℕ :=
   p.foldl (fun acc instr => max acc instr.maxRegister) 0
+
+/-- Shift all jump targets in a program by `offset`.
+Used when concatenating programs: the second program's jumps must be adjusted
+by the length of the first program. -/
+@[scoped grind =]
+def shiftJumps (offset : ℕ) (p : Program) : Program :=
+  p.map (Instr.shiftJumps offset)
+
+/-- Shift all register references in a program by `offset`.
+Used to isolate register usage when composing programs. -/
+@[scoped grind =]
+def shiftRegisters (offset : ℕ) (p : Program) : Program :=
+  p.map (Instr.shiftRegisters offset)
 
 end Program
 
@@ -175,6 +206,11 @@ theorem init_pc (inputs : List ℕ) : (init inputs).pc = 0 := rfl
 
 @[simp, scoped grind =]
 theorem init_state (inputs : List ℕ) : (init inputs).state = State.fromInputs inputs := rfl
+
+/-- Extensionality for Config: two configs are equal iff their components are equal. -/
+@[ext]
+theorem ext {c₁ c₂ : Config} (hpc : c₁.pc = c₂.pc) (hstate : c₁.state = c₂.state) : c₁ = c₂ := by
+  cases c₁; cases c₂; simp only at hpc hstate; simp [hpc, hstate]
 
 end Config
 
