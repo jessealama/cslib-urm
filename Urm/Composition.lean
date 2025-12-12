@@ -1076,6 +1076,157 @@ theorem Steps.clearRegsFrom1_in_seq (k : ℕ) (p : Program) (σ : State) :
     · simp only [clearRegsFrom1_length]; exact hk_pos
     · simp
 
+/-! ## clearRegsRange: Clear an Arbitrary Range of Registers -/
+
+/-- Zero out registers base, base+1, ..., base+count-1. -/
+def clearRegsRange (base count : ℕ) : Program :=
+  (List.range count).map fun i => Instr.Z (base + i)
+
+@[simp]
+theorem clearRegsRange_length (base count : ℕ) : (clearRegsRange base count).length = count := by
+  simp [clearRegsRange]
+
+/-- The instruction at position i in clearRegsRange base count is Z (base + i). -/
+theorem clearRegsRange_getInstr (base count i : ℕ) (hi : i < count) :
+    (clearRegsRange base count).getInstr i = some (Instr.Z (base + i)) := by
+  simp only [clearRegsRange, Program.getInstr, List.getElem?_map]
+  rw [List.getElem?_eq_getElem (by simp; exact hi)]
+  simp [List.getElem_range]
+
+/-- clearRegsRange has bounded jumps (it has no jumps at all). -/
+theorem clearRegsRange_bounded (base count : ℕ) : JumpsBounded (clearRegsRange base count) := by
+  intro i hi m n q hinstr
+  simp only [clearRegsRange, Program.getInstr, List.getElem?_map] at hinstr
+  rw [clearRegsRange_length] at hi
+  rw [List.getElem?_eq_getElem (by simp; exact hi)] at hinstr
+  simp only [List.getElem_range, Option.map_some] at hinstr
+  cases hinstr
+
+/-- State after clearing registers in [base, base+count). -/
+def State.clearRange (σ : State) (base count : ℕ) : State :=
+  fun r => if base ≤ r ∧ r < base + count then 0 else σ r
+
+/-- Reading from a cleared register gives 0. -/
+theorem State.clearRange_read_cleared (σ : State) (base count r : ℕ)
+    (hr : base ≤ r ∧ r < base + count) :
+    (σ.clearRange base count) r = 0 := by
+  simp only [clearRange, hr, and_self, ↓reduceIte]
+
+/-- Reading from a non-cleared register gives the original value. -/
+theorem State.clearRange_read_other (σ : State) (base count r : ℕ)
+    (hr : r < base ∨ base + count ≤ r) :
+    (σ.clearRange base count) r = σ r := by
+  simp only [clearRange]
+  split_ifs with h
+  · omega
+  · rfl
+
+/-- Clearing 0 registers is identity. -/
+@[simp]
+theorem State.clearRange_zero (σ : State) (base : ℕ) : σ.clearRange base 0 = σ := by
+  funext r
+  simp only [clearRange, Nat.add_zero]
+  split_ifs with h
+  · omega  -- base ≤ r ∧ r < base is impossible
+  · rfl
+
+/-- Helper: state after i clearing operations starting from base. -/
+private def clearRegsRange_stateAfter (σ : State) (base i : ℕ) : State :=
+  (List.range i).foldl (fun s j => s.write (base + j) 0) σ
+
+/-- The foldl-based state equals clearRange. -/
+private theorem clearRegsRange_stateAfter_eq_clearRange (σ : State) (base count : ℕ) :
+    clearRegsRange_stateAfter σ base count = σ.clearRange base count := by
+  funext r
+  simp only [clearRegsRange_stateAfter, State.clearRange]
+  induction count with
+  | zero =>
+    simp only [List.range_zero, List.foldl_nil, Nat.add_zero]
+    split_ifs with h
+    · omega  -- base ≤ r ∧ r < base is impossible
+    · rfl
+  | succ k ih =>
+    simp only [List.range_succ, List.foldl_append, List.foldl_cons, List.foldl_nil]
+    by_cases h_eq : r = base + k
+    · -- r = base + k: LHS writes 0, RHS gives 0
+      subst h_eq
+      simp only [State.write, Function.update, ↓reduceIte, dite_true, and_self,
+                 Nat.add_lt_add_iff_left, Nat.lt_add_one, Nat.le_add_right, and_true]
+    · -- r ≠ base + k
+      have h_update : ((List.range k).foldl (fun s j => s.write (base + j) 0) σ).write (base + k) 0 r =
+                      (List.range k).foldl (fun s j => s.write (base + j) 0) σ r := by
+        simp only [State.write, Function.update, h_eq, dite_false]
+      rw [h_update, ih]
+      -- Goal: (if base ≤ r ∧ r < base + k then 0 else σ r) = (if base ≤ r ∧ r < base + (k + 1) then 0 else σ r)
+      -- Since r ≠ base + k, we can analyze cases
+      split_ifs with h1 h2
+      · rfl
+      · -- h1 : base ≤ r ∧ r < base + k, ¬h2 : ¬(base ≤ r ∧ r < base + (k+1))
+        omega  -- contradiction since [base, base+k) ⊆ [base, base+k+1)
+      · -- ¬h1, h2 : base ≤ r ∧ r < base + (k + 1) means base + k ≤ r < base + k + 1, i.e. r = base + k
+        omega  -- contradiction with h_eq
+      · rfl
+
+/-- Helper for clearRegsRange_reachesN: builds StepsN incrementally. -/
+private theorem clearRegsRange_stepsN_aux (base count : ℕ) (σ : State) :
+    ∀ i ≤ count, StepsN (clearRegsRange base count) i ⟨0, σ⟩
+      ⟨i, clearRegsRange_stateAfter σ base i⟩ := by
+  intro i
+  induction i with
+  | zero =>
+    intro _
+    simp only [clearRegsRange_stateAfter, List.range_zero, List.foldl_nil]
+    exact StepsN.zero _
+  | succ j ihj =>
+    intro hj
+    have hj' : j ≤ count := Nat.le_of_succ_le hj
+    have hjbound : j < count := Nat.lt_of_succ_le hj
+    have steps_j := ihj hj'
+    have hinstr : (clearRegsRange base count).getInstr j = some (Instr.Z (base + j)) :=
+      clearRegsRange_getInstr base count j hjbound
+    have hstep : Step (clearRegsRange base count)
+        ⟨j, clearRegsRange_stateAfter σ base j⟩
+        ⟨j + 1, (clearRegsRange_stateAfter σ base j).write (base + j) 0⟩ :=
+      Step.zero hinstr
+    have hstate_eq : clearRegsRange_stateAfter σ base (j + 1) =
+        (clearRegsRange_stateAfter σ base j).write (base + j) 0 := by
+      simp only [clearRegsRange_stateAfter, List.range_succ, List.foldl_append,
+                 List.foldl_cons, List.foldl_nil]
+    rw [hstate_eq]
+    exact StepsN.add steps_j (StepsN.succ hstep (StepsN.zero _))
+
+/-- Running clearRegsRange from state σ reaches state σ.clearRange in exactly count steps. -/
+theorem clearRegsRange_reachesN (base count : ℕ) (σ : State) :
+    StepsN (clearRegsRange base count) count ⟨0, σ⟩ ⟨count, σ.clearRange base count⟩ := by
+  have hfinal := clearRegsRange_stepsN_aux base count σ count (Nat.le_refl _)
+  rw [clearRegsRange_stateAfter_eq_clearRange] at hfinal
+  exact hfinal
+
+/-- Running clearRegsRange from state σ reaches state σ.clearRange. -/
+theorem clearRegsRange_reaches (base count : ℕ) (σ : State) :
+    Steps (clearRegsRange base count) ⟨0, σ⟩ ⟨count, σ.clearRange base count⟩ :=
+  (clearRegsRange_reachesN base count σ).toSteps
+
+/-- The clearing program halts in exactly count steps. -/
+theorem clearRegsRange_haltsIn (base count : ℕ) (inputs : List ℕ) :
+    HaltsIn (clearRegsRange base count) count inputs := by
+  refine ⟨⟨count, (State.fromInputs inputs).clearRange base count⟩, ?_, ?_⟩
+  · exact clearRegsRange_reachesN base count (State.fromInputs inputs)
+  · simp [Config.isHalted]
+
+/-- Lift clearRegsRange steps to the first part of a sequential composition. -/
+theorem Steps.clearRegsRange_in_seq (base count : ℕ) (p : Program) (σ : State) :
+    Steps ((clearRegsRange base count).seq p) ⟨0, σ⟩ ⟨count, σ.clearRange base count⟩ := by
+  by_cases hcount : count = 0
+  · simp only [hcount, clearRegsRange, Program.seq, List.range_zero, List.map_nil, List.nil_append,
+               List.length_nil, Program.shiftJumps_zero, State.clearRange_zero]
+    exact Steps.refl _
+  · have hcount_pos : 0 < count := Nat.pos_of_ne_zero hcount
+    have hclear_steps := clearRegsRange_reaches base count σ
+    apply Steps.seq_steps_first hclear_steps
+    · simp only [clearRegsRange_length]; exact hcount_pos
+    · simp
+
 /-! ## copyRegs Execution Lemmas -/
 
 /-- copyRegs has bounded jumps (it has no jumps at all). -/
@@ -2360,11 +2511,16 @@ def runAndStore (p : Program) (workBase outputReg : ℕ) : Program :=
 
 /-- Build a program segment for one iteration of the collection loop:
     1. Copy n inputs from backupBase to workBase
-    2. Run program p shifted to workBase
-    3. Store result (R[workBase]) to R[outputReg] -/
-def collectOneIteration (n backupBase workBase : ℕ) (p : Program) (outputReg : ℕ) : Program :=
-  (copyRegs n backupBase workBase) ++
-  (runAndStore p workBase outputReg).shiftJumps n
+    2. Clear working registers (workBase+n to workBase+n+clearCount-1) to match fromInputs
+    3. Run program p shifted to workBase
+    4. Store result (R[workBase]) to R[outputReg]
+
+    The clearCount parameter specifies how many registers beyond the n inputs to zero out.
+    This ensures the execution state matches State.fromInputs when unshifted. -/
+def collectOneIteration (n backupBase workBase : ℕ) (p : Program) (outputReg clearCount : ℕ) : Program :=
+  (copyRegs n backupBase workBase).seq
+  ((clearRegsRange (workBase + n) clearCount).seq
+   (runAndStore p workBase outputReg))
 
 /-- Build the full collection loop that runs programs pg[0], pg[1], ..., pg[m-1]
     and stores their outputs to R[outputBase], R[outputBase+1], ..., R[outputBase+m-1].
@@ -2374,18 +2530,19 @@ def collectOneIteration (n backupBase workBase : ℕ) (p : Program) (outputReg :
     - backupBase: where inputs are backed up (R[backupBase..backupBase+n-1])
     - workBase: where shifted programs execute
     - outputBase: where to store collected outputs
+    - clearCount: number of working registers to clear before each program run
     - pg: list of programs to run
     - startIdx: current index (for recursive definition) -/
-def buildCollectLoopAux (n backupBase workBase outputBase : ℕ) (pg : List Program) (startIdx : ℕ) : Program :=
+def buildCollectLoopAux (n backupBase workBase outputBase clearCount : ℕ) (pg : List Program) (startIdx : ℕ) : Program :=
   match pg with
   | [] => []
   | p :: ps =>
-    collectOneIteration n backupBase workBase p (outputBase + startIdx) ++
-    buildCollectLoopAux n backupBase workBase outputBase ps (startIdx + 1)
+    collectOneIteration n backupBase workBase p (outputBase + startIdx) clearCount ++
+    buildCollectLoopAux n backupBase workBase outputBase clearCount ps (startIdx + 1)
 
 /-- Build the full collection loop starting at index 0. -/
-def buildCollectLoop (n backupBase workBase outputBase : ℕ) (pg : List Program) : Program :=
-  buildCollectLoopAux n backupBase workBase outputBase pg 0
+def buildCollectLoop (n backupBase workBase outputBase clearCount : ℕ) (pg : List Program) : Program :=
+  buildCollectLoopAux n backupBase workBase outputBase clearCount pg 0
 
 /-- Length of runAndStore. -/
 theorem runAndStore_length (p : Program) (workBase outputReg : ℕ) :
@@ -2393,9 +2550,9 @@ theorem runAndStore_length (p : Program) (workBase outputReg : ℕ) :
   simp [runAndStore, Program.shiftRegisters]
 
 /-- Length of one collection iteration. -/
-theorem collectOneIteration_length (n backupBase workBase : ℕ) (p : Program) (outputReg : ℕ) :
-    (collectOneIteration n backupBase workBase p outputReg).length = n + p.length + 1 := by
-  simp [collectOneIteration, copyRegs_length, Program.shiftJumps, runAndStore_length]
+theorem collectOneIteration_length (n backupBase workBase : ℕ) (p : Program) (outputReg clearCount : ℕ) :
+    (collectOneIteration n backupBase workBase p outputReg clearCount).length = n + clearCount + p.length + 1 := by
+  simp [collectOneIteration, Program.seq_length, copyRegs_length, clearRegsRange_length, runAndStore_length]
   omega
 
 /-- JumpsBounded for runAndStore. -/
@@ -2412,54 +2569,20 @@ theorem runAndStore_bounded (p : Program) (workBase outputReg : ℕ) (hp : Jumps
     cases hinstr
 
 /-- JumpsBounded for one collection iteration. -/
-theorem collectOneIteration_bounded (n backupBase workBase : ℕ) (p : Program) (outputReg : ℕ)
+theorem collectOneIteration_bounded (n backupBase workBase : ℕ) (p : Program) (outputReg clearCount : ℕ)
     (hp : JumpsBounded p) :
-    JumpsBounded (collectOneIteration n backupBase workBase p outputReg) := by
+    JumpsBounded (collectOneIteration n backupBase workBase p outputReg clearCount) := by
   simp only [collectOneIteration]
-  -- Structure: copyRegs ++ (runAndStore.shiftJumps n)
-  -- Total length: n + (p.length + 1)
-  intro i hi m m' q hinstr
-  simp only [List.length_append, copyRegs_length, Program.shiftJumps, List.length_map,
-             runAndStore_length] at hi ⊢
-  by_cases hlt : i < n
-  · -- Instruction from copyRegs (no jumps)
-    have hlt' : i < (copyRegs n backupBase workBase).length := by simp [copyRegs_length, hlt]
-    simp only [Program.getInstr, List.getElem?_append_left hlt'] at hinstr
-    have hcopy := copyRegs_bounded n backupBase workBase
-    have hbound := hcopy i hlt' m m' q hinstr
-    simp only [copyRegs_length] at hbound
-    omega
-  · -- Instruction from shifted runAndStore
-    have hge : n ≤ i := Nat.not_lt.mp hlt
-    have hge' : (copyRegs n backupBase workBase).length ≤ i := by simp [copyRegs_length, hge]
-    have hi' : i - n < (runAndStore p workBase outputReg).length := by
-      simp only [runAndStore_length]; omega
-    simp only [Program.getInstr, List.getElem?_append_right hge', copyRegs_length] at hinstr
-    simp only [Program.shiftJumps] at hinstr
-    rw [List.getElem?_map] at hinstr
-    cases hget : (runAndStore p workBase outputReg)[i - n]? with
-    | none => rw [hget] at hinstr; simp at hinstr
-    | some instr =>
-      rw [hget] at hinstr
-      simp only [Option.map_some] at hinstr
-      cases instr with
-      | J jm jn jq =>
-        simp only [Instr.shiftJumps, Option.some.injEq] at hinstr
-        obtain ⟨rfl, rfl, rfl⟩ := hinstr
-        -- Now m = jm, m' = jn, q = jq + n
-        have hrunStore := runAndStore_bounded p workBase outputReg hp
-        have hbound := hrunStore (i - n) hi' m m' jq (by simp [Program.getInstr, hget])
-        simp only [runAndStore_length] at hbound
-        omega
-      | Z _ => simp [Instr.shiftJumps] at hinstr
-      | S _ => simp [Instr.shiftJumps] at hinstr
-      | T _ _ => simp [Instr.shiftJumps] at hinstr
+  -- Structure: copyRegs.seq (clearRegsRange.seq runAndStore)
+  apply JumpsBounded.seq (copyRegs_bounded n backupBase workBase)
+  apply JumpsBounded.seq (clearRegsRange_bounded (workBase + n) clearCount)
+  exact runAndStore_bounded p workBase outputReg hp
 
 /-- JumpsBounded for the auxiliary collection loop. -/
-theorem buildCollectLoopAux_bounded (n backupBase workBase outputBase : ℕ)
+theorem buildCollectLoopAux_bounded (n backupBase workBase outputBase clearCount : ℕ)
     (pg : List Program) (startIdx : ℕ)
     (hpg : ∀ p ∈ pg, JumpsBounded p) :
-    JumpsBounded (buildCollectLoopAux n backupBase workBase outputBase pg startIdx) := by
+    JumpsBounded (buildCollectLoopAux n backupBase workBase outputBase clearCount pg startIdx) := by
   induction pg generalizing startIdx with
   | nil =>
     simp only [buildCollectLoopAux]
@@ -2474,11 +2597,11 @@ theorem buildCollectLoopAux_bounded (n backupBase workBase outputBase : ℕ)
       exact hpg p' (List.mem_cons.mpr (Or.inr hp'))
 
 /-- JumpsBounded for the full collection loop. -/
-theorem buildCollectLoop_bounded (n backupBase workBase outputBase : ℕ) (pg : List Program)
+theorem buildCollectLoop_bounded (n backupBase workBase outputBase clearCount : ℕ) (pg : List Program)
     (hpg : ∀ p ∈ pg, JumpsBounded p) :
-    JumpsBounded (buildCollectLoop n backupBase workBase outputBase pg) := by
+    JumpsBounded (buildCollectLoop n backupBase workBase outputBase clearCount pg) := by
   simp only [buildCollectLoop]
-  exact buildCollectLoopAux_bounded n backupBase workBase outputBase pg 0 hpg
+  exact buildCollectLoopAux_bounded n backupBase workBase outputBase clearCount pg 0 hpg
 
 /-- The runAndStore program halts if the underlying program halts on the unshifted state.
 
@@ -2547,18 +2670,13 @@ theorem runAndStore_halts {p : Program} {σ : State} (workBase outputReg : ℕ)
 
 /-! ### Collection Loop Halting -/
 
-/-- collectOneIteration is a sequential composition of copyRegs and shifted runAndStore. -/
-theorem collectOneIteration_eq_seq (n backupBase workBase : ℕ) (p : Program) (outputReg : ℕ) :
-    collectOneIteration n backupBase workBase p outputReg =
-    (copyRegs n backupBase workBase) ++ (runAndStore p workBase outputReg).shiftJumps n := by
-  rfl
-
 /-- One iteration of the collection loop halts if the underlying program halts.
 
-The key insight is that after copyRegs finishes, the work registers R[workBase..workBase+n-1]
-contain copies of the backup registers R[backupBase..backupBase+n-1]. Then runAndStore
-runs the shifted program (which only accesses registers >= workBase) and halts if p would
-halt on the unshifted state.
+The key insight is:
+1. copyRegs copies inputs from backup to work registers (halts in n steps)
+2. clearRegsRange zeros the working registers beyond the n inputs (halts in clearCount steps)
+3. After these, the unshifted state matches State.fromInputs
+4. runAndStore then halts because p halts on that state
 
 Parameters:
 - n: number of input registers
@@ -2566,37 +2684,42 @@ Parameters:
 - workBase: where shifted programs execute (must have workBase >= backupBase + n for disjointness)
 - p: program to run
 - outputReg: where to store the result
+- clearCount: number of working registers to clear (must cover p.maxRegister - n)
 - σ: initial state (backup registers at backupBase..backupBase+n-1 contain the inputs)
 -/
-theorem collectOneIteration_halts (n backupBase workBase : ℕ) (p : Program) (outputReg : ℕ)
+theorem collectOneIteration_halts (n backupBase workBase : ℕ) (p : Program) (outputReg clearCount : ℕ)
     (σ : State)
     (hp_bounded : JumpsBounded p)
     (hdisjoint : backupBase + n ≤ workBase)
+    (hclear_enough : p.maxRegister < n + clearCount)
     (hp_halts : ∃ σ', Steps p ⟨0, State.fromInputs (List.ofFn (fun i : Fin n => σ (backupBase + i)))⟩
                        ⟨p.length, σ'⟩) :
-    ∃ σ'', Steps (collectOneIteration n backupBase workBase p outputReg) ⟨0, σ⟩
-           ⟨(collectOneIteration n backupBase workBase p outputReg).length, σ''⟩ := by
-  -- collectOneIteration = copyRegs ++ runAndStore.shiftJumps
-  rw [collectOneIteration_eq_seq]
-  -- copyRegs always halts in n steps (it's just T instructions with no conditional jumps)
-  -- After copyRegs, the work registers contain copies of the backup registers
-  -- Then runAndStore halts because p halts on the corresponding input state
-  -- Key steps:
-  -- 1. copyRegs halts from any state (takes n steps regardless of register values)
-  -- 2. After copyRegs, work registers R[workBase..workBase+n-1] = backup registers R[backupBase..backupBase+n-1]
-  -- 3. runAndStore halts because p halts on (σ_after_copy.unshift workBase) which agrees with
-  --    State.fromInputs(...) on registers 0..n-1
-  sorry  -- Detailed proof requires: copyRegs_halts_from_state, state agreement lemmas
+    ∃ σ'', Steps (collectOneIteration n backupBase workBase p outputReg clearCount) ⟨0, σ⟩
+           ⟨(collectOneIteration n backupBase workBase p outputReg clearCount).length, σ''⟩ := by
+  -- The structure is: copyRegs.seq (clearRegsRange.seq runAndStore)
+  -- We prove this by composing the three phases
+  simp only [collectOneIteration]
+  -- Phase 1: copyRegs halts
+  have hcopy_bounded := copyRegs_bounded n backupBase workBase
+  have hcopy_halts := copyRegs_reaches n backupBase workBase σ
+  -- Phase 2: clearRegsRange halts
+  have hclear_bounded := clearRegsRange_bounded (workBase + n) clearCount
+  let σ_copy := σ.afterCopy n backupBase workBase
+  have hclear_halts := clearRegsRange_reaches (workBase + n) clearCount σ_copy
+  -- Phase 3: runAndStore halts (this is the key - we need state agreement)
+  -- After copy and clear, the unshifted state agrees with fromInputs on 0..p.maxRegister
+  sorry  -- Proof requires: state agreement argument using hclear_enough
 
 /-- The auxiliary collection loop halts if all component programs halt. -/
-theorem buildCollectLoopAux_halts (n backupBase workBase outputBase : ℕ)
+theorem buildCollectLoopAux_halts (n backupBase workBase outputBase clearCount : ℕ)
     (pg : List Program) (startIdx : ℕ) (σ : State)
     (hpg_bounded : ∀ p ∈ pg, JumpsBounded p)
     (hdisjoint : backupBase + n ≤ workBase)
+    (hclear_enough : ∀ p ∈ pg, p.maxRegister < n + clearCount)
     (hpg_halts : ∀ p ∈ pg, ∃ σ', Steps p ⟨0, State.fromInputs (List.ofFn (fun i : Fin n => σ (backupBase + i)))⟩
                                  ⟨p.length, σ'⟩) :
-    ∃ σ'', Steps (buildCollectLoopAux n backupBase workBase outputBase pg startIdx) ⟨0, σ⟩
-           ⟨(buildCollectLoopAux n backupBase workBase outputBase pg startIdx).length, σ''⟩ := by
+    ∃ σ'', Steps (buildCollectLoopAux n backupBase workBase outputBase clearCount pg startIdx) ⟨0, σ⟩
+           ⟨(buildCollectLoopAux n backupBase workBase outputBase clearCount pg startIdx).length, σ''⟩ := by
   induction pg generalizing startIdx σ with
   | nil =>
     simp only [buildCollectLoopAux]
@@ -2604,9 +2727,10 @@ theorem buildCollectLoopAux_halts (n backupBase workBase outputBase : ℕ)
   | cons p ps ih =>
     simp only [buildCollectLoopAux]
     -- First, collectOneIteration halts
-    have hiter_halts := collectOneIteration_halts n backupBase workBase p (outputBase + startIdx) σ
+    have hiter_halts := collectOneIteration_halts n backupBase workBase p (outputBase + startIdx) clearCount σ
       (hpg_bounded p (List.mem_cons.mpr (Or.inl rfl)))
       hdisjoint
+      (hclear_enough p (List.mem_cons.mpr (Or.inl rfl)))
       (hpg_halts p (List.mem_cons.mpr (Or.inl rfl)))
     obtain ⟨σ', hiter_steps⟩ := hiter_halts
     -- Then the rest of the loop halts
@@ -2617,11 +2741,13 @@ theorem buildCollectLoopAux_halts (n backupBase workBase outputBase : ℕ)
       -- backup registers are preserved
       sorry  -- Need to trace through collectOneIteration's register modifications
     -- With backup preserved, the remaining programs still halt
-    have hrest_halts : ∃ σ'', Steps (buildCollectLoopAux n backupBase workBase outputBase ps (startIdx + 1)) ⟨0, σ'⟩
-        ⟨(buildCollectLoopAux n backupBase workBase outputBase ps (startIdx + 1)).length, σ''⟩ := by
+    have hrest_halts : ∃ σ'', Steps (buildCollectLoopAux n backupBase workBase outputBase clearCount ps (startIdx + 1)) ⟨0, σ'⟩
+        ⟨(buildCollectLoopAux n backupBase workBase outputBase clearCount ps (startIdx + 1)).length, σ''⟩ := by
       apply ih (startIdx + 1) σ'
       · intro p' hp'
         exact hpg_bounded p' (List.mem_cons.mpr (Or.inr hp'))
+      · intro p' hp'
+        exact hclear_enough p' (List.mem_cons.mpr (Or.inr hp'))
       · intro p' hp'
         -- Rewrite using hbackup_preserved
         have h := hpg_halts p' (List.mem_cons.mpr (Or.inr hp'))
@@ -2643,16 +2769,17 @@ theorem buildCollectLoopAux_halts (n backupBase workBase outputBase : ℕ)
     sorry
 
 /-- The collection loop halts if all component programs halt on the backed-up inputs. -/
-theorem buildCollectLoop_halts (n backupBase workBase outputBase : ℕ)
+theorem buildCollectLoop_halts (n backupBase workBase outputBase clearCount : ℕ)
     (pg : List Program) (σ : State)
     (hpg_bounded : ∀ p ∈ pg, JumpsBounded p)
     (hdisjoint : backupBase + n ≤ workBase)
+    (hclear_enough : ∀ p ∈ pg, p.maxRegister < n + clearCount)
     (hpg_halts : ∀ p ∈ pg, ∃ σ', Steps p ⟨0, State.fromInputs (List.ofFn (fun i : Fin n => σ (backupBase + i)))⟩
                                  ⟨p.length, σ'⟩) :
-    ∃ σ'', Steps (buildCollectLoop n backupBase workBase outputBase pg) ⟨0, σ⟩
-           ⟨(buildCollectLoop n backupBase workBase outputBase pg).length, σ''⟩ := by
+    ∃ σ'', Steps (buildCollectLoop n backupBase workBase outputBase clearCount pg) ⟨0, σ⟩
+           ⟨(buildCollectLoop n backupBase workBase outputBase clearCount pg).length, σ''⟩ := by
   simp only [buildCollectLoop]
-  exact buildCollectLoopAux_halts n backupBase workBase outputBase pg 0 σ hpg_bounded hdisjoint hpg_halts
+  exact buildCollectLoopAux_halts n backupBase workBase outputBase clearCount pg 0 σ hpg_bounded hdisjoint hclear_enough hpg_halts
 
 /-- URM-computable functions are closed under composition.
 
