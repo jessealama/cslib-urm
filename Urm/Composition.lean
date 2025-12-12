@@ -749,7 +749,7 @@ private theorem seq_step_preserves_p2_region {p₁ p₂ : Program}
 private theorem seq_steps_extract_p2 {p₁ p₂ : Program}
     (hbounded : JumpsBounded p₂) {c c' : Config}
     (hsteps : Steps (p₁.seq p₂) c c') (hpc : p₁.length ≤ c.pc)
-    (hhalted : c'.isHalted (p₁.seq p₂)) :
+    (_hhalted : c'.isHalted (p₁.seq p₂)) :
     Steps p₂ ⟨c.pc - p₁.length, c.state⟩ ⟨c'.pc - p₁.length, c'.state⟩ := by
   -- Induct on hsteps
   induction hsteps using Relation.ReflTransGen.head_induction_on with
@@ -2608,7 +2608,7 @@ theorem buildCollectLoop_bounded (n backupBase workBase outputBase clearCount : 
 Note: We prove this by showing that p.shiftRegisters workBase running from σ
 matches p running from σ.unshift workBase, because they access corresponding registers. -/
 theorem runAndStore_halts {p : Program} {σ : State} (workBase outputReg : ℕ)
-    (hp_bounded : JumpsBounded p)
+    (_hp_bounded : JumpsBounded p)
     (hp_halts : ∃ σ', Steps p ⟨0, σ.unshift workBase⟩ ⟨p.length, σ'⟩) :
     ∃ σ'', Steps (runAndStore p workBase outputReg) ⟨0, σ⟩
            ⟨(runAndStore p workBase outputReg).length, σ''⟩ := by
@@ -2696,19 +2696,58 @@ theorem collectOneIteration_halts (n backupBase workBase : ℕ) (p : Program) (o
                        ⟨p.length, σ'⟩) :
     ∃ σ'', Steps (collectOneIteration n backupBase workBase p outputReg clearCount) ⟨0, σ⟩
            ⟨(collectOneIteration n backupBase workBase p outputReg clearCount).length, σ''⟩ := by
-  -- The structure is: copyRegs.seq (clearRegsRange.seq runAndStore)
-  -- We prove this by composing the three phases
   simp only [collectOneIteration]
-  -- Phase 1: copyRegs halts
   have hcopy_bounded := copyRegs_bounded n backupBase workBase
   have hcopy_halts := copyRegs_reaches n backupBase workBase σ
-  -- Phase 2: clearRegsRange halts
   have hclear_bounded := clearRegsRange_bounded (workBase + n) clearCount
   let σ_copy := σ.afterCopy n backupBase workBase
   have hclear_halts := clearRegsRange_reaches (workBase + n) clearCount σ_copy
-  -- Phase 3: runAndStore halts (this is the key - we need state agreement)
-  -- After copy and clear, the unshifted state agrees with fromInputs on 0..p.maxRegister
-  sorry  -- Proof requires: state agreement argument using hclear_enough
+  let σ_clear := σ_copy.clearRange (workBase + n) clearCount
+  let inputs := List.ofFn (fun i : Fin n => σ (backupBase + i))
+  have hagree : (σ_clear.unshift workBase).agreeUpTo (State.fromInputs inputs) p.maxRegister := by
+    intro r hr
+    have hr_bound : r < n + clearCount := Nat.lt_of_le_of_lt hr hclear_enough
+    simp only [State.unshift, σ_clear, State.clearRange, σ_copy, State.afterCopy,
+      State.fromInputs, inputs, List.getD_eq_getElem?_getD, List.getElem?_ofFn]
+    split_ifs with h1 h2 h3
+    all_goals (first | omega | simp_all)
+  obtain ⟨σ_hp, hsteps_hp⟩ := hp_halts
+  have hagree_sym : (State.fromInputs inputs).agreeUpTo (σ_clear.unshift workBase) p.maxRegister :=
+    fun r hr => (hagree r hr).symm
+  obtain ⟨c_transferred, hsteps_transferred, hpc_eq, _⟩ := Steps.agree_steps hsteps_hp hagree_sym
+  have hp_halts_clear : ∃ σ', Steps p ⟨0, σ_clear.unshift workBase⟩ ⟨p.length, σ'⟩ := by
+    refine ⟨c_transferred.state, ?_⟩
+    convert hsteps_transferred using 2
+  have hphase3 := runAndStore_halts workBase outputReg hp_bounded hp_halts_clear
+  obtain ⟨σ_final, hphase3_steps⟩ := hphase3
+  let outer := (copyRegs n backupBase workBase).seq
+      ((clearRegsRange (workBase + n) clearCount).seq (runAndStore p workBase outputReg))
+  let inner := (clearRegsRange (workBase + n) clearCount).seq (runAndStore p workBase outputReg)
+  have hphase1 : Steps outer ⟨0, σ⟩ ⟨n, σ_copy⟩ := by
+    apply Steps.copyRegs_in_seq
+    exact Or.inr hdisjoint
+  have hphase2_inner : Steps inner ⟨0, σ_copy⟩ ⟨clearCount, σ_clear⟩ :=
+    Steps.clearRegsRange_in_seq (workBase + n) clearCount (runAndStore p workBase outputReg) σ_copy
+  have hphase2 : Steps outer ⟨n, σ_copy⟩ ⟨n + clearCount, σ_clear⟩ := by
+    have h := Steps.seq_steps_second (p₁ := copyRegs n backupBase workBase) hphase2_inner
+    simp only [copyRegs_length, Nat.add_zero] at h
+    exact h
+  have hphase3_inner : Steps inner ⟨clearCount, σ_clear⟩
+      ⟨clearCount + (runAndStore p workBase outputReg).length, σ_final⟩ := by
+    have h := Steps.seq_steps_second (p₁ := clearRegsRange (workBase + n) clearCount) hphase3_steps
+    simp only [clearRegsRange_length, Nat.add_zero] at h
+    exact h
+  have hphase3_outer : Steps outer ⟨n + clearCount, σ_clear⟩
+      ⟨n + (clearCount + (runAndStore p workBase outputReg).length), σ_final⟩ := by
+    have h := Steps.seq_steps_second (p₁ := copyRegs n backupBase workBase) hphase3_inner
+    simp only [copyRegs_length, Nat.add_zero] at h
+    exact h
+  have hsteps_all := Relation.ReflTransGen.trans hphase1
+    (Relation.ReflTransGen.trans hphase2 hphase3_outer)
+  refine ⟨σ_final, ?_⟩
+  convert hsteps_all using 2
+  simp only [collectOneIteration_length, runAndStore_length, Program.seq_length,
+    copyRegs_length, clearRegsRange_length]
 
 /-- The auxiliary collection loop halts if all component programs halt. -/
 theorem buildCollectLoopAux_halts (n backupBase workBase outputBase clearCount : ℕ)
