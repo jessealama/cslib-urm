@@ -1764,6 +1764,201 @@ theorem shiftRegisters_halts {p : Program} {σ σ' : State} (offset : ℕ)
   simp only [Program.shiftRegisters_length] at this ⊢
   exact this
 
+/-! ### State Agreement from Offset (for shifted programs) -/
+
+/-- Two states agree on registers ≥ offset. -/
+def State.agreeFrom (σ₁ σ₂ : State) (offset : ℕ) : Prop :=
+  ∀ r, offset ≤ r → σ₁ r = σ₂ r
+
+/-- Writes to registers ≥ offset preserve agreement on registers ≥ offset. -/
+theorem State.agreeFrom_write {σ₁ σ₂ : State} {offset n v : ℕ}
+    (hagree : σ₁.agreeFrom σ₂ offset) (_hn : offset ≤ n) :
+    (σ₁.write n v).agreeFrom (σ₂.write n v) offset := by
+  intro r hr
+  simp only [write, Function.update]
+  split_ifs with heq
+  · rfl
+  · exact hagree r hr
+
+/-- If states agree from offset and p.shiftRegisters offset steps, execution is identical.
+    Key insight: p.shiftRegisters offset only accesses registers ≥ offset. -/
+theorem Step.shiftRegisters_agreeFrom {p : Program} {pc pc' : ℕ} {σ₁ σ₂ σ₁' : State}
+    {offset : ℕ}
+    (hagree : σ₁.agreeFrom σ₂ offset)
+    (hstep : Step (p.shiftRegisters offset) ⟨pc, σ₁⟩ ⟨pc', σ₁'⟩) :
+    ∃ σ₂', Step (p.shiftRegisters offset) ⟨pc, σ₂⟩ ⟨pc', σ₂'⟩ ∧
+           σ₁'.agreeFrom σ₂' offset := by
+  match hstep with
+  | Step.zero (n := n) h =>
+    -- Instruction is Z n where n = n' + offset for some n' (since program is shifted)
+    simp only [Program.getInstr_shiftRegisters] at h
+    cases hget : p.getInstr pc with
+    | none => simp [hget] at h
+    | some instr =>
+      simp [hget] at h
+      cases instr with
+      | Z n' =>
+        simp only [Instr.shiftRegisters, Option.some.injEq] at h
+        cases h -- n = n' + offset
+        refine ⟨σ₂.write (n' + offset) 0, Step.zero ?_, State.agreeFrom_write hagree (Nat.le_add_left _ _)⟩
+        simp only [Program.getInstr_shiftRegisters, hget, Option.map_some, Instr.shiftRegisters]
+      | S _ => simp [Instr.shiftRegisters] at h
+      | T _ _ => simp [Instr.shiftRegisters] at h
+      | J _ _ _ => simp [Instr.shiftRegisters] at h
+  | Step.succ (n := n) h =>
+    simp only [Program.getInstr_shiftRegisters] at h
+    cases hget : p.getInstr pc with
+    | none => simp [hget] at h
+    | some instr =>
+      simp [hget] at h
+      cases instr with
+      | S n' =>
+        simp only [Instr.shiftRegisters, Option.some.injEq] at h
+        cases h -- n = n' + offset
+        have hread_eq : σ₁.read (n' + offset) = σ₂.read (n' + offset) :=
+          hagree (n' + offset) (Nat.le_add_left _ _)
+        have hinstr' : (p.shiftRegisters offset).getInstr pc = some (Instr.S (n' + offset)) := by
+          simp only [Program.getInstr_shiftRegisters, hget, Option.map_some, Instr.shiftRegisters]
+        refine ⟨σ₂.write (n' + offset) (σ₂.read (n' + offset) + 1), Step.succ hinstr',
+               ?_⟩
+        -- Need: (σ₁.write (n' + offset) (σ₁.read (n' + offset) + 1)).agreeFrom
+        --       (σ₂.write (n' + offset) (σ₂.read (n' + offset) + 1)) offset
+        intro r hr
+        simp only [State.write, Function.update]
+        split_ifs with heqr
+        · -- r = n' + offset: both sides write read+1
+          subst heqr
+          simp only [State.read]
+          exact congrArg (· + 1) hread_eq
+        · exact hagree r hr
+      | Z _ => simp [Instr.shiftRegisters] at h
+      | T _ _ => simp [Instr.shiftRegisters] at h
+      | J _ _ _ => simp [Instr.shiftRegisters] at h
+  | Step.trans (m := m) (n := n) h =>
+    simp only [Program.getInstr_shiftRegisters] at h
+    cases hget : p.getInstr pc with
+    | none => simp [hget] at h
+    | some instr =>
+      simp [hget] at h
+      cases instr with
+      | T m' n' =>
+        simp only [Instr.shiftRegisters, Option.some.injEq, Instr.T.injEq] at h
+        obtain ⟨hm, hn⟩ := h
+        subst hm hn -- m = m' + offset, n = n' + offset
+        have hread_eq : σ₁.read (m' + offset) = σ₂.read (m' + offset) :=
+          hagree (m' + offset) (Nat.le_add_left _ _)
+        have hinstr' : (p.shiftRegisters offset).getInstr pc = some (Instr.T (m' + offset) (n' + offset)) := by
+          simp only [Program.getInstr_shiftRegisters, hget, Option.map_some, Instr.shiftRegisters]
+        refine ⟨σ₂.write (n' + offset) (σ₂.read (m' + offset)), Step.trans hinstr', ?_⟩
+        intro r hr
+        simp only [State.write, Function.update]
+        split_ifs with heqr
+        · -- r = n' + offset: both sides wrote σ.read (m' + offset)
+          subst heqr
+          simp only [State.read]
+          exact hread_eq
+        · exact hagree r hr
+      | Z _ => simp [Instr.shiftRegisters] at h
+      | S _ => simp [Instr.shiftRegisters] at h
+      | J _ _ _ => simp [Instr.shiftRegisters] at h
+  | Step.jump_eq (m := m) (n := n) (q := q) h heq =>
+    simp only [Program.getInstr_shiftRegisters] at h
+    cases hget : p.getInstr pc with
+    | none => simp [hget] at h
+    | some instr =>
+      simp [hget] at h
+      cases instr with
+      | J m' n' q' =>
+        simp only [Instr.shiftRegisters, Option.some.injEq, Instr.J.injEq] at h
+        obtain ⟨hm, hn, hq⟩ := h
+        subst hm hn hq -- m = m' + offset, n = n' + offset, q = q'
+        have hread_m : σ₁.read (m' + offset) = σ₂.read (m' + offset) :=
+          hagree (m' + offset) (Nat.le_add_left _ _)
+        have hread_n : σ₁.read (n' + offset) = σ₂.read (n' + offset) :=
+          hagree (n' + offset) (Nat.le_add_left _ _)
+        have heq' : σ₂.read (m' + offset) = σ₂.read (n' + offset) := by
+          rw [← hread_m, ← hread_n]; exact heq
+        refine ⟨σ₂, Step.jump_eq ?_ heq', hagree⟩
+        simp only [Program.getInstr_shiftRegisters, hget, Option.map_some, Instr.shiftRegisters]
+      | Z _ => simp [Instr.shiftRegisters] at h
+      | S _ => simp [Instr.shiftRegisters] at h
+      | T _ _ => simp [Instr.shiftRegisters] at h
+  | Step.jump_ne (m := m) (n := n) (q := q) h hne =>
+    simp only [Program.getInstr_shiftRegisters] at h
+    cases hget : p.getInstr pc with
+    | none => simp [hget] at h
+    | some instr =>
+      simp [hget] at h
+      cases instr with
+      | J m' n' q' =>
+        simp only [Instr.shiftRegisters, Option.some.injEq, Instr.J.injEq] at h
+        obtain ⟨hm, hn, hq⟩ := h
+        subst hm hn hq
+        have hread_m : σ₁.read (m' + offset) = σ₂.read (m' + offset) :=
+          hagree (m' + offset) (Nat.le_add_left _ _)
+        have hread_n : σ₁.read (n' + offset) = σ₂.read (n' + offset) :=
+          hagree (n' + offset) (Nat.le_add_left _ _)
+        have hne' : σ₂.read (m' + offset) ≠ σ₂.read (n' + offset) := by
+          rw [← hread_m, ← hread_n]; exact hne
+        have hinstr' : (p.shiftRegisters offset).getInstr pc = some (Instr.J (m' + offset) (n' + offset) q') := by
+          simp only [Program.getInstr_shiftRegisters, hget, Option.map_some, Instr.shiftRegisters]
+        refine ⟨σ₂, Step.jump_ne hinstr' hne', hagree⟩
+      | Z _ => simp [Instr.shiftRegisters] at h
+      | S _ => simp [Instr.shiftRegisters] at h
+      | T _ _ => simp [Instr.shiftRegisters] at h
+
+/-- Multi-step agreement: if states agree from offset and p.shiftRegisters offset steps,
+    execution from the agreeing state produces the same PC. -/
+theorem Steps.shiftRegisters_agreeFrom {p : Program} {c₁ c₁' : Config}
+    {offset : ℕ}
+    (hsteps : Steps (p.shiftRegisters offset) c₁ c₁')
+    {σ₂ : State} (hagree : c₁.state.agreeFrom σ₂ offset) :
+    ∃ c₂', Steps (p.shiftRegisters offset) ⟨c₁.pc, σ₂⟩ c₂' ∧
+           c₁'.pc = c₂'.pc ∧ c₁'.state.agreeFrom c₂'.state offset := by
+  induction hsteps using Relation.ReflTransGen.head_induction_on generalizing σ₂ with
+  | refl =>
+    exact ⟨⟨c₁'.pc, σ₂⟩, Relation.ReflTransGen.refl, rfl, hagree⟩
+  | head hstep _ ih =>
+    rename_i c_mid
+    obtain ⟨σ_mid', hstep', hagree'⟩ := Step.shiftRegisters_agreeFrom hagree hstep
+    obtain ⟨c₂', hsteps', hpc_eq', hagree''⟩ := ih hagree'
+    refine ⟨c₂', Relation.ReflTransGen.head hstep' ?_, hpc_eq', hagree''⟩
+    exact hsteps'
+
+/-! ### Prefix Step Transfer for Program Concatenation -/
+
+/-- A single step in a prefix program transfers to the concatenated program when PC < prefix length. -/
+theorem Step.prefix_transfer {p₁ p₂ : Program} {c c' : Config}
+    (hstep : Step p₁ c c')
+    (hpc : c.pc < p₁.length) :
+    Step (p₁ ++ p₂) c c' := by
+  have hinstr_eq : ∀ instr, p₁.getInstr c.pc = some instr → (p₁ ++ p₂).getInstr c.pc = some instr := by
+    intro instr h
+    simp only [Program.getInstr, List.getElem?_append_left hpc]
+    exact h
+  match hstep with
+  | Step.zero h => exact Step.zero (hinstr_eq _ h)
+  | Step.succ h => exact Step.succ (hinstr_eq _ h)
+  | Step.trans h => exact Step.trans (hinstr_eq _ h)
+  | Step.jump_eq h heq => exact Step.jump_eq (hinstr_eq _ h) heq
+  | Step.jump_ne h hne => exact Step.jump_ne (hinstr_eq _ h) hne
+
+/-- Steps in a prefix program transfer to the concatenated program when any config
+    that can take a step has pc < prefix length. -/
+theorem Steps.prefix_transfer {p₁ p₂ : Program} {c c' : Config}
+    (hsteps : Steps p₁ c c')
+    (hbound : ∀ c₀ c₁, Steps p₁ c c₀ → Step p₁ c₀ c₁ → c₀.pc < p₁.length) :
+    Steps (p₁ ++ p₂) c c' := by
+  induction hsteps with
+  | refl => exact Relation.ReflTransGen.refl
+  | @tail b c_final hrest hstep ih =>
+    -- hrest : Steps p₁ c b, hstep : Step p₁ b c_final
+    -- ih : Steps (p₁ ++ p₂) c b (from induction on hrest with same bound)
+    -- Need pc bound for b to transfer the step
+    have hpc_b : b.pc < p₁.length := hbound b c_final hrest hstep
+    have hstep' := Step.prefix_transfer (p₂ := p₂) hstep hpc_b
+    exact Relation.ReflTransGen.tail ih hstep'
+
 /-! ## Main Composition Theorem -/
 
 namespace URMComputable
@@ -2309,36 +2504,43 @@ theorem runAndStore_halts {p : Program} {σ : State} (workBase outputReg : ℕ)
     omega
   -- The shifted program only accesses registers >= workBase, so execution from σ
   -- is the same as from (σ.unshift workBase).shift workBase
+  -- Convert hstates_agree to State.agreeFrom form
+  have hagree : ((σ.unshift workBase).shift workBase).agreeFrom σ workBase :=
+    fun r hr => hstates_agree r hr
+  -- Apply the state agreement lemma to get execution from σ
+  obtain ⟨c₂', hsteps_from_σ, hpc_eq, _⟩ := Steps.shiftRegisters_agreeFrom hshifted hagree
+  -- c₂'.pc = p.length by hpc_eq
+  -- We'll use c₂' as our intermediate state
   have hshifted_from_σ : Steps (p.shiftRegisters workBase) ⟨0, σ⟩
-      ⟨p.length, σ'.shift workBase⟩ := by
-    -- This follows from the fact that shiftRegisters only touches registers >= workBase
-    -- and both states agree on those registers
-    sorry  -- Need state-agreement execution lemma for shiftRegisters
+      ⟨p.length, c₂'.state⟩ := by
+    convert hsteps_from_σ using 2 <;> simp [hpc_eq]
   -- runAndStore = p.shiftRegisters workBase ++ [T workBase outputReg]
-  -- After p.shiftRegisters halts at pc = p.length with state σ'.shift workBase,
-  -- we execute the T instruction
+  -- After p.shiftRegisters halts at pc = p.length, we execute the T instruction
   have hT_step : Step (runAndStore p workBase outputReg)
-      ⟨p.length, σ'.shift workBase⟩
-      ⟨p.length + 1, (σ'.shift workBase).write outputReg ((σ'.shift workBase).read workBase)⟩ := by
-    apply Step.trans
+      ⟨p.length, c₂'.state⟩
+      ⟨p.length + 1, c₂'.state.write outputReg (c₂'.state.read workBase)⟩ := by
+    refine Step.trans ?_
     simp only [runAndStore, Program.getInstr]
     rw [List.getElem?_append_right (by simp [Program.shiftRegisters_length])]
     simp [Program.shiftRegisters_length]
   -- Lift the shifted program's steps to runAndStore using prefix transfer
   have hrunAndStore_steps : Steps (runAndStore p workBase outputReg) ⟨0, σ⟩
-      ⟨p.length, σ'.shift workBase⟩ := by
+      ⟨p.length, c₂'.state⟩ := by
     -- p.shiftRegisters workBase is a prefix of runAndStore
-    -- All steps within bounds in the prefix work in the full program
-    have hbounds : ∀ c c', Step (p.shiftRegisters workBase) c c' →
-        c.pc < (runAndStore p workBase outputReg).length := by
-      intro c c' hstep
-      simp only [runAndStore_length, Program.shiftRegisters_length]
-      have := Step.not_halted_of_step hstep
-      simp only [Config.isHalted, Program.shiftRegisters_length] at this
-      omega
-    sorry  -- Need prefix step transfer lemma
+    apply Steps.prefix_transfer hshifted_from_σ
+    -- Need to show: any config that takes a step has pc < p.length
+    intro c₀ c₁ _ hstep₀
+    -- If c₀ can take a step, then c₀.pc points to a valid instruction
+    -- Valid instructions have index < p.shiftRegisters.length
+    -- Step requires getInstr c₀.pc = some _, which means c₀.pc < p.shiftRegisters.length
+    cases hstep₀ with
+    | zero h => exact (List.getElem?_eq_some_iff.mp h).1
+    | succ h => exact (List.getElem?_eq_some_iff.mp h).1
+    | trans h => exact (List.getElem?_eq_some_iff.mp h).1
+    | jump_eq h _ => exact (List.getElem?_eq_some_iff.mp h).1
+    | jump_ne h _ => exact (List.getElem?_eq_some_iff.mp h).1
   -- Combine
-  refine ⟨(σ'.shift workBase).write outputReg ((σ'.shift workBase).read workBase), ?_⟩
+  refine ⟨c₂'.state.write outputReg (c₂'.state.read workBase), ?_⟩
   apply Relation.ReflTransGen.tail hrunAndStore_steps
   convert hT_step using 1
   simp [runAndStore_length]
