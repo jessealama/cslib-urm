@@ -3,5 +3,4 @@
 import Urm.Basic
 import Urm.Execution
 import Urm.Computable
-import Urm.Composition
 import Urm.Examples
