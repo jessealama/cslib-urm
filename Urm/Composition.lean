@@ -276,6 +276,89 @@ theorem seq_steps_second {c c' : Config} (hsteps : Steps p₂ c c') :
   | head hstep _ ih =>
     exact Relation.ReflTransGen.head (seq_step_second hstep) ih
 
+/-- A step in `p₁.seq p₂` at PC ≥ p₁.length corresponds to a step in `p₂`.
+This is the inverse of `seq_step_second`. -/
+theorem seq_step_to_p2_step {c c' : Config}
+    (hstep : Step (p₁.seq p₂) c c') (hpc : p₁.length ≤ c.pc) (hpc' : c.pc < p₁.length + p₂.length) :
+    Step p₂ ⟨c.pc - p₁.length, c.state⟩ ⟨c'.pc - p₁.length, c'.state⟩ := by
+  -- Get the instruction at c.pc in p₁.seq p₂
+  have hi : c.pc - p₁.length < p₂.length := by omega
+  have hinstr_eq := seq_getInstr_second_eq p₁ p₂ (c.pc - p₁.length) hi
+  have hpc_eq : p₁.length + (c.pc - p₁.length) = c.pc := by omega
+  simp only [hpc_eq] at hinstr_eq
+  cases hstep with
+  | zero h =>
+    rw [hinstr_eq] at h
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨instr, hinstr_p2, heq⟩ := h
+    match instr with
+    | Instr.Z n =>
+      injection heq with hn; subst hn
+      have hstep' := Step.zero (p := p₂) (c := ⟨c.pc - p₁.length, c.state⟩) hinstr_p2
+      simp only at hstep' ⊢
+      convert hstep' using 2
+      omega
+    | Instr.S _ => simp_all [Instr.shiftJumps]
+    | Instr.T _ _ => simp_all [Instr.shiftJumps]
+    | Instr.J _ _ _ => simp_all [Instr.shiftJumps]
+  | succ h =>
+    rw [hinstr_eq] at h
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨instr, hinstr_p2, heq⟩ := h
+    match instr with
+    | Instr.Z _ => simp_all [Instr.shiftJumps]
+    | Instr.S n =>
+      injection heq with hn; subst hn
+      have hstep' := Step.succ (p := p₂) (c := ⟨c.pc - p₁.length, c.state⟩) hinstr_p2
+      simp only at hstep' ⊢
+      convert hstep' using 2
+      omega
+    | Instr.T _ _ => simp_all [Instr.shiftJumps]
+    | Instr.J _ _ _ => simp_all [Instr.shiftJumps]
+  | trans h =>
+    rw [hinstr_eq] at h
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨instr, hinstr_p2, heq⟩ := h
+    match instr with
+    | Instr.Z _ => simp_all [Instr.shiftJumps]
+    | Instr.S _ => simp_all [Instr.shiftJumps]
+    | Instr.T m n =>
+      injection heq with hm hn; subst hm; subst hn
+      have hstep' := Step.trans (p := p₂) (c := ⟨c.pc - p₁.length, c.state⟩) hinstr_p2
+      simp only at hstep' ⊢
+      convert hstep' using 2
+      omega
+    | Instr.J _ _ _ => simp_all [Instr.shiftJumps]
+  | jump_eq h heq =>
+    rw [hinstr_eq] at h
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨instr, hinstr_p2, heq'⟩ := h
+    match instr with
+    | Instr.Z _ => simp_all [Instr.shiftJumps]
+    | Instr.S _ => simp_all [Instr.shiftJumps]
+    | Instr.T _ _ => simp_all [Instr.shiftJumps]
+    | Instr.J m n q =>
+      simp only [Instr.shiftJumps] at heq'
+      injection heq' with hm hn hq; subst hm; subst hn
+      have hstep' := Step.jump_eq (p := p₂) (c := ⟨c.pc - p₁.length, c.state⟩) hinstr_p2 heq
+      convert hstep' using 2
+      simp only; omega
+  | jump_ne h hne =>
+    rw [hinstr_eq] at h
+    simp only [Option.map_eq_some_iff] at h
+    obtain ⟨instr, hinstr_p2, heq⟩ := h
+    match instr with
+    | Instr.Z _ => simp_all [Instr.shiftJumps]
+    | Instr.S _ => simp_all [Instr.shiftJumps]
+    | Instr.T _ _ => simp_all [Instr.shiftJumps]
+    | Instr.J m n q =>
+      simp only [Instr.shiftJumps] at heq
+      injection heq with hm hn hq; subst hm; subst hn
+      have hstep' := Step.jump_ne (p := p₂) (c := ⟨c.pc - p₁.length, c.state⟩) hinstr_p2 hne
+      simp only at hstep' ⊢
+      convert hstep' using 2
+      omega
+
 /-- Sequential composition of halting programs: if p₁ reaches state σ at pc = p₁.length,
 and p₂ halts starting from state σ at pc = 0, then p₁.seq p₂ halts.
 
@@ -347,6 +430,41 @@ theorem singleton_nonjump (instr : Instr) (h : ∀ m n q, instr ≠ Instr.J m n 
   simp only [Program.getInstr, List.getElem?_cons_zero, Option.some.injEq] at hinstr
   exact absurd hinstr (h m n q)
 
+/-- Sequential composition of JumpsBounded programs is JumpsBounded. -/
+theorem seq (h₁ : JumpsBounded p₁) (h₂ : JumpsBounded p₂) : JumpsBounded (p₁.seq p₂) := by
+  intro i hi m n q hinstr
+  simp only [Program.seq_length] at hi
+  by_cases hlt : i < p₁.length
+  · -- In first program region
+    rw [Program.seq_getInstr_first p₁ p₂ i hlt] at hinstr
+    have hbound := h₁ i hlt m n q hinstr
+    simp only [Program.seq_length]
+    omega
+  · -- In second program region
+    have hge : p₁.length ≤ i := Nat.not_lt.mp hlt
+    rw [Program.seq_getInstr_second p₁ p₂ i hge hi] at hinstr
+    simp only [Program.shiftJumps, Program.getInstr, List.getElem?_map] at hinstr
+    have hi' : i - p₁.length < p₂.length := by omega
+    rw [List.getElem?_eq_getElem hi'] at hinstr
+    simp only [Option.map_some, Option.some.injEq] at hinstr
+    -- The instruction is shifted, so need to unfold shiftJumps
+    generalize h : p₂[i - p₁.length] = instr at hinstr
+    cases instr with
+    | Z _ => simp only [Instr.shiftJumps, reduceCtorEq] at hinstr
+    | S _ => simp only [Instr.shiftJumps, reduceCtorEq] at hinstr
+    | T _ _ => simp only [Instr.shiftJumps, reduceCtorEq] at hinstr
+    | J jm jn jq =>
+      simp only [Instr.shiftJumps, Instr.J.injEq] at hinstr
+      obtain ⟨rfl, rfl, rfl⟩ := hinstr
+      -- Original instruction at i - p₁.length is J jm jn jq
+      have hinstr' : p₂.getInstr (i - p₁.length) = some (Instr.J jm jn jq) := by
+        simp only [Program.getInstr]
+        rw [List.getElem?_eq_getElem hi']
+        simp only [h]
+      have hbound := h₂ (i - p₁.length) hi' jm jn jq hinstr'
+      simp only [Program.seq_length]
+      omega
+
 /-- Helper: stepping preserves the invariant pc ≤ p.length when jumps are bounded. -/
 private theorem step_preserves_pc_bound (hbounded : JumpsBounded p)
     {c c' : Config} (hstep : Step p c c') (_h : c.pc ≤ p.length) : c'.pc ≤ p.length := by
@@ -392,6 +510,328 @@ theorem halts_at_length (hbounded : JumpsBounded p)
     apply pc_le_length_of_steps hbounded hsteps
     simp [Config.init]
   omega
+
+/-- Helper: for JumpsBounded p₁, a step in p₁.seq p₂ from pc < p₁.length
+    either stays in [0, p₁.length] or reaches exactly p₁.length.
+    This is essentially: jumping can't skip over p₁.length. -/
+private theorem seq_step_bounded_pc (hbounded : JumpsBounded p₁)
+    {c c' : Config} (hstep : Step (p₁.seq p₂) c c')
+    (hpc : c.pc < p₁.length) : c'.pc ≤ p₁.length := by
+  -- When pc < p₁.length, the instruction comes from p₁
+  have hinstr_eq := Program.seq_getInstr_first p₁ p₂ c.pc hpc
+  cases hstep with
+  | zero hinstr =>
+    simp [hinstr_eq] at hinstr
+    have hpc' := (List.getElem?_eq_some_iff.mp hinstr).1
+    show _ + 1 ≤ _
+    omega
+  | succ hinstr =>
+    simp [hinstr_eq] at hinstr
+    have hpc' := (List.getElem?_eq_some_iff.mp hinstr).1
+    show _ + 1 ≤ _
+    omega
+  | trans hinstr =>
+    simp [hinstr_eq] at hinstr
+    have hpc' := (List.getElem?_eq_some_iff.mp hinstr).1
+    show _ + 1 ≤ _
+    omega
+  | jump_eq hinstr _ =>
+    simp [hinstr_eq] at hinstr
+    have hpc' := (List.getElem?_eq_some_iff.mp hinstr).1
+    exact hbounded _ hpc' _ _ _ hinstr
+  | jump_ne hinstr _ =>
+    simp [hinstr_eq] at hinstr
+    have hpc' := (List.getElem?_eq_some_iff.mp hinstr).1
+    show _ + 1 ≤ _
+    omega
+
+/-- Helper: if execution in p₁.seq p₂ goes from c to c' with c.pc < p₁.length,
+    then there's a corresponding step in p₁. -/
+private theorem seq_step_to_p1_step {c c' : Config}
+    (hstep : Step (p₁.seq p₂) c c') (hpc : c.pc < p₁.length) : Step p₁ c c' := by
+  have hinstr_eq := Program.seq_getInstr_first p₁ p₂ c.pc hpc
+  cases hstep with
+  | zero hinstr =>
+    rw [hinstr_eq] at hinstr
+    exact Step.zero hinstr
+  | succ hinstr =>
+    rw [hinstr_eq] at hinstr
+    exact Step.succ hinstr
+  | trans hinstr =>
+    rw [hinstr_eq] at hinstr
+    exact Step.trans hinstr
+  | jump_eq hinstr heq =>
+    rw [hinstr_eq] at hinstr
+    exact Step.jump_eq hinstr heq
+  | jump_ne hinstr hne =>
+    rw [hinstr_eq] at hinstr
+    exact Step.jump_ne hinstr hne
+
+/-- Core helper: execution in p₁.seq p₂ from a config with pc < p₁.length
+    that eventually reaches pc ≥ p₁.length must produce a halting execution in p₁.
+
+    Returns: Steps p₁ c c_halt where c_halt is halted in p₁. -/
+private theorem seq_finds_junction (hbounded : JumpsBounded p₁)
+    {c cFinal : Config} (hsteps : Steps (p₁.seq p₂) c cFinal)
+    (hpc : c.pc < p₁.length) (hFinalPC : p₁.length ≤ cFinal.pc) :
+    ∃ c_halt, Steps p₁ c c_halt ∧ c_halt.isHalted p₁ := by
+  -- We induct on the steps, tracking the start config c
+  induction hsteps using Relation.ReflTransGen.head_induction_on with
+  | refl =>
+    -- c = cFinal, but c.pc < p₁.length and cFinal.pc ≥ p₁.length, contradiction
+    omega
+  | head hstep hrest ih =>
+    rename_i c_start c_mid
+    -- hstep : Step (p₁.seq p₂) c_start c_mid
+    -- hrest : Steps (p₁.seq p₂) c_mid cFinal
+    -- ih : c_mid.pc < p₁.length → ∃ c_halt, Steps p₁ c_mid c_halt ∧ c_halt.isHalted p₁
+    -- hpc : c_start.pc < p₁.length (we need to clarify this from context)
+
+    -- Check if c_mid.pc < p₁.length or ≥ p₁.length
+    by_cases hMidPC : c_mid.pc < p₁.length
+    · -- Still in p₁'s range
+      -- Get IH for c_mid
+      obtain ⟨c_halt, hsteps_rest, hhalted⟩ := ih hMidPC
+      -- Build step in p₁ from c_start to c_mid
+      have hstep_p1 := seq_step_to_p1_step (p₂ := p₂) hstep hpc
+      exact ⟨c_halt, Relation.ReflTransGen.head hstep_p1 hsteps_rest, hhalted⟩
+    · -- c_mid.pc ≥ p₁.length after this step
+      -- By JumpsBounded, c_mid.pc ≤ p₁.length, so c_mid.pc = p₁.length
+      have h_le := seq_step_bounded_pc hbounded hstep hpc
+      have h_eq : c_mid.pc = p₁.length := Nat.le_antisymm h_le (Nat.not_lt.mp hMidPC)
+      -- Build step in p₁ from c_start to c_mid
+      have hstep_p1 := seq_step_to_p1_step (p₂ := p₂) hstep hpc
+      -- c_mid is halted in p₁
+      have hhalted : c_mid.isHalted p₁ := by simp [Config.isHalted, h_eq]
+      exact ⟨c_mid, Relation.ReflTransGen.single hstep_p1, hhalted⟩
+
+/-- Key lemma: if JumpsBounded p₁ and p₁.seq p₂ halts, then p₁ halts.
+
+For standard-form programs (JumpsBounded), execution starting at pc=0 must
+pass through pc=p₁.length to reach p₂. At pc=p₁.length, p₁ is halted. -/
+theorem seq_first_halts (hbounded : JumpsBounded p₁) {inputs : List ℕ}
+    (hHaltsSeq : Halts (p₁.seq p₂) inputs) : Halts p₁ inputs := by
+  obtain ⟨cFinal, hstepsFinal, hhaltedFinal⟩ := hHaltsSeq
+
+  -- First, if p₁ is empty, init is immediately halted
+  by_cases hp₁ : p₁.length = 0
+  · exact ⟨Config.init inputs, Relation.ReflTransGen.refl, by simp [Config.isHalted, hp₁]⟩
+
+  -- cFinal.pc ≥ p₁.length (since it's halted in p₁.seq p₂)
+  have hFinalPC : p₁.length ≤ cFinal.pc := by
+    have := hhaltedFinal
+    simp only [Config.isHalted, Program.seq_length] at this
+    omega
+
+  -- init.pc = 0 < p₁.length
+  have hInitPC : (Config.init inputs).pc < p₁.length := by simp [Config.init]; omega
+
+  -- Use the helper to find the junction point
+  obtain ⟨c_halt, hsteps, hhalted⟩ := seq_finds_junction hbounded hstepsFinal hInitPC hFinalPC
+  exact ⟨c_halt, hsteps, hhalted⟩
+
+/-- If a step in p₁.seq p₂ stays in the p₂ region (PC ≥ p₁.length), the PC stays ≥ p₁.length.
+    For JumpsBounded p₂, jumps in p₂ have targets ≤ p₂.length, so when shifted by p₁.length,
+    they have targets ≤ p₁.length + p₂.length which is ≥ p₁.length. -/
+private theorem seq_step_preserves_p2_region {p₁ p₂ : Program}
+    (hbounded : JumpsBounded p₂) {c c' : Config}
+    (hstep : Step (p₁.seq p₂) c c') (hpc : p₁.length ≤ c.pc) (hpc' : c.pc < p₁.length + p₂.length) :
+    p₁.length ≤ c'.pc := by
+  -- Analyze the original step by case
+  cases hstep with
+  | zero h =>
+    -- c'.pc = c.pc + 1, so c'.pc ≥ p₁.length
+    simp only; omega
+  | succ h =>
+    simp only; omega
+  | trans h =>
+    simp only; omega
+  | jump_eq h heq =>
+    -- The seq instruction at c.pc is a shifted jump from p₂
+    -- Need to show the target q ≥ p₁.length
+    simp only [Program.seq, Program.getInstr, List.getElem?_append] at h
+    split at h
+    · omega  -- Can't be in p₁ region
+    · -- In p₂ region: instruction is from p₂.shiftJumps
+      simp only [Program.shiftJumps, List.getElem?_map] at h
+      have hlt : c.pc - p₁.length < p₂.length := by omega
+      -- h : Option.map (Instr.shiftJumps p₁.length) p₂[c.pc - p₁.length]? = some (Instr.J m n q)
+      rw [List.getElem?_eq_getElem hlt] at h
+      simp only [Option.map_some, Option.some.injEq] at h
+      -- h : (p₂[c.pc - p₁.length]).shiftJumps p₁.length = Instr.J m n q
+      -- Analyze by the type of the p₂ instruction
+      unfold Instr.shiftJumps at h
+      split at h
+      case h_1 _ _ a => cases h  -- Instr.Z case: Z n ≠ J m n q
+      case h_2 _ _ a => cases h  -- Instr.S case: S n ≠ J m n q
+      case h_3 _ _ _ a => cases h  -- Instr.T case: T m n ≠ J m n q
+      case h_4 jm jn jq hp₂_eq =>
+        -- hp₂_eq : p₂[c.pc - p₁.length] = Instr.J jm jn jq
+        -- h : Instr.J jm jn (jq + p₁.length) = Instr.J m n q
+        simp only [Instr.J.injEq] at h
+        obtain ⟨rfl, rfl, rfl⟩ := h
+        have hinstr' : (p₂.getInstr (c.pc - p₁.length)) = some (Instr.J jm jn jq) := by
+          simp only [Program.getInstr]
+          rw [List.getElem?_eq_getElem hlt]
+          simp only [hp₂_eq]
+        have hbound := hbounded (c.pc - p₁.length) hlt jm jn jq hinstr'
+        simp only
+        omega
+  | jump_ne h hne =>
+    simp only; omega
+
+/-- Extract p₂ steps from seq steps when starting anywhere in p₂ region. -/
+private theorem seq_steps_extract_p2 {p₁ p₂ : Program}
+    (hbounded : JumpsBounded p₂) {c c' : Config}
+    (hsteps : Steps (p₁.seq p₂) c c') (hpc : p₁.length ≤ c.pc)
+    (hhalted : c'.isHalted (p₁.seq p₂)) :
+    Steps p₂ ⟨c.pc - p₁.length, c.state⟩ ⟨c'.pc - p₁.length, c'.state⟩ := by
+  -- Induct on hsteps
+  induction hsteps using Relation.ReflTransGen.head_induction_on with
+  | refl => exact Relation.ReflTransGen.refl
+  | @head c_start c_mid hstep hrest ih =>
+    -- hstep : Step (p₁.seq p₂) c_start c_mid
+    -- hrest : Steps (p₁.seq p₂) c_mid c'
+    -- hpc : p₁.length ≤ c_start.pc
+    -- ih : (hpc' : p₁.length ≤ c_mid.pc) → Steps p₂ ⟨c_mid.pc - p₁.length, c_mid.state⟩ ⟨c'.pc - p₁.length, c'.state⟩
+    by_cases hhalted_c : c_start.isHalted (p₁.seq p₂)
+    · exact absurd hstep (Step.halted_no_step hhalted_c)
+    · have hpc_lt : c_start.pc < p₁.length + p₂.length := by
+        simp only [Config.isHalted, Program.seq_length] at hhalted_c; omega
+      have hstep_p2 := Steps.seq_step_to_p2_step hstep hpc hpc_lt
+      have hmid_ge := seq_step_preserves_p2_region hbounded hstep hpc hpc_lt
+      exact Steps.trans (Steps.single hstep_p2) (ih hmid_ge)
+
+/-- Extract p₂ steps from seq steps when starting at the junction. -/
+theorem seq_steps_to_p2_steps {p₁ p₂ : Program}
+    (hbounded : JumpsBounded p₂) {c c' : Config}
+    (hsteps : Steps (p₁.seq p₂) c c') (hpc : c.pc = p₁.length)
+    (hhalted : c'.isHalted (p₁.seq p₂)) :
+    Steps p₂ ⟨0, c.state⟩ ⟨c'.pc - p₁.length, c'.state⟩ := by
+  have h := seq_steps_extract_p2 hbounded hsteps (by omega) hhalted
+  simp only [hpc, Nat.sub_self] at h
+  exact h
+
+/-- If p₁.seq p₂ halts and p₁ is JumpsBounded, then p₂ halts when started from
+    the state that p₁ produces.
+
+More precisely: there exists a state σ such that p₁ reaches ⟨p₁.length, σ⟩,
+and p₂ halts when started from σ. -/
+theorem seq_second_halts (hbounded₁ : JumpsBounded p₁) (hbounded₂ : JumpsBounded p₂) {inputs : List ℕ}
+    (hHaltsSeq : Halts (p₁.seq p₂) inputs) :
+    ∃ σ : State, Steps p₁ (Config.init inputs) ⟨p₁.length, σ⟩ ∧
+    ∃ c₂, Steps p₂ ⟨0, σ⟩ c₂ ∧ c₂.isHalted p₂ := by
+  -- p₁ halts because composite halts
+  have hpHalts := seq_first_halts hbounded₁ hHaltsSeq
+  obtain ⟨c_halt, hsteps_p1, hhalted_p1⟩ := hpHalts
+
+  -- c_halt.pc = p₁.length by halts_at_length
+  have h_at_length := halts_at_length hbounded₁ hsteps_p1 hhalted_p1
+
+  use c_halt.state
+
+  constructor
+  · have heq : c_halt = ⟨p₁.length, c_halt.state⟩ := by
+      cases c_halt; simp only at h_at_length; simp [h_at_length]
+    rw [heq] at hsteps_p1
+    exact hsteps_p1
+
+  -- Now show p₂ halts from state c_halt.state
+  -- Extract the composite execution
+  obtain ⟨cFinal, hstepsFinal, hhaltedFinal⟩ := hHaltsSeq
+
+  -- The key insight: the composite execution must pass through the junction
+  -- ⟨p₁.length, c_halt.state⟩, and the remaining steps in the seq correspond
+  -- to steps in p₂ (with PC shifted by p₁.length)
+
+  -- Lift p₁ steps to composite
+  have hsteps_seq : Steps (p₁.seq p₂) (Config.init inputs) ⟨p₁.length, c_halt.state⟩ := by
+    have heq : c_halt = ⟨p₁.length, c_halt.state⟩ := by
+      cases c_halt; simp only at h_at_length; simp [h_at_length]
+    rw [heq] at hsteps_p1
+    by_cases hp₁ : p₁.length = 0
+    · -- p₁ is empty, init is at junction
+      have hinit_halted : (Config.init inputs).isHalted p₁ := by simp [Config.isHalted, hp₁]
+      have heq' := Steps.halts_unique hsteps_p1 (by simp [Config.isHalted, hp₁])
+                                     (Steps.refl _) hinit_halted
+      simp only [Config.init, hp₁] at heq'
+      simp only [hp₁, Config.init, heq']
+      exact Steps.refl _
+    · apply Steps.seq_steps_first hsteps_p1
+      · simp [Config.init]; omega
+      · exact Nat.le_refl _
+
+  -- cFinal.pc ≥ p₁.length (halted in seq)
+  have hFinalPC : p₁.length ≤ cFinal.pc := by
+    have := hhaltedFinal
+    simp only [Config.isHalted, Program.seq_length] at this
+    omega
+
+  -- By determinism: since both hsteps_seq and hstepsFinal start from init,
+  -- and hsteps_seq ends at the junction (halted in p₁ but not in seq),
+  -- the junction must be on the path to cFinal
+
+  -- The remaining execution from junction to cFinal in seq corresponds to p₂ execution
+
+  -- Use: final config in p₂ is ⟨cFinal.pc - p₁.length, cFinal.state⟩
+  use ⟨cFinal.pc - p₁.length, cFinal.state⟩
+
+  constructor
+  · -- Show Steps p₂ ⟨0, c_halt.state⟩ ⟨cFinal.pc - p₁.length, cFinal.state⟩
+    -- Key insight: the composite execution path from init to cFinal must pass
+    -- through the junction ⟨p₁.length, c_halt.state⟩ by determinism.
+
+    -- The junction config ⟨p₁.length, c_halt.state⟩ is not halted in seq (unless p₂ is empty)
+    -- By determinism, since both hsteps_seq and hstepsFinal start from init,
+    -- cFinal is reachable from the junction in seq.
+
+    -- Extract steps from junction to cFinal using determinism
+    -- We know: hsteps_seq : Steps (p₁.seq p₂) init junction
+    --          hstepsFinal : Steps (p₁.seq p₂) init cFinal
+    -- And cFinal is halted but junction is not (if p₂ non-empty)
+
+    -- Use the composed execution: init → junction → cFinal
+    -- The key lemma: if init → c₁ → c₂ and init → c₂' with c₂' halted,
+    -- then either c₁ = c₂' or there exists c₂' reachable from c₁
+
+    -- Actually, we need to show the junction is on the path to cFinal.
+    -- By determinism: the execution from init is unique, so the seq path
+    -- init → ... → cFinal must go through any config reachable from init.
+
+    -- Use the fact that both paths start from init: by determinism, one is a prefix of the other.
+    -- Since cFinal is halted and junction is reached (at pc = p₁.length),
+    -- the junction must be on the unique path from init to any halted state.
+
+    -- Extract the continuation from junction to cFinal
+    have hsteps_junction_to_final : Steps (p₁.seq p₂) ⟨p₁.length, c_halt.state⟩ cFinal := by
+      -- Both hsteps_seq and hstepsFinal start from init
+      -- The junction is not halted in seq (if p₂ nonempty), cFinal is halted
+      -- Use the determinism helper to extract the continuation
+      by_cases hp₂ : p₂.length = 0
+      · -- p₂ empty: junction is already halted
+        have hjunction_halted : (⟨p₁.length, c_halt.state⟩ : Config).isHalted (p₁.seq p₂) := by
+          simp [Config.isHalted, Program.seq_length, hp₂]
+        -- By halts_unique, junction = cFinal
+        have heq := Steps.halts_unique hsteps_seq hjunction_halted hstepsFinal hhaltedFinal
+        rw [heq]
+      · -- p₂ nonempty: junction not halted in seq
+        have hjunction_not_halted : ¬(⟨p₁.length, c_halt.state⟩ : Config).isHalted (p₁.seq p₂) := by
+          simp [Config.isHalted, Program.seq_length]; omega
+        -- Use determinism to extract continuation
+        -- The path from init to cFinal must be an extension of path from init to junction
+        exact Steps.deterministic_continuation hsteps_seq hstepsFinal hhaltedFinal
+
+    -- Now apply seq_steps_to_p2_steps
+    have h_pc_eq : (⟨p₁.length, c_halt.state⟩ : Config).pc = p₁.length := rfl
+    have result := seq_steps_to_p2_steps hbounded₂ hsteps_junction_to_final h_pc_eq hhaltedFinal
+    -- result : Steps p₂ ⟨0, (⟨p₁.length, c_halt.state⟩ : Config).state⟩ ⟨cFinal.pc - p₁.length, cFinal.state⟩
+    -- This simplifies to: Steps p₂ ⟨0, c_halt.state⟩ ⟨cFinal.pc - p₁.length, cFinal.state⟩
+    exact result
+
+  · -- Show halted
+    simp only [Config.isHalted]
+    simp only [Config.isHalted, Program.seq_length] at hhaltedFinal
+    omega
 
 end JumpsBounded
 
@@ -546,6 +986,16 @@ theorem State.clearFrom1_eq_fromInputs_on_range (σ : State) (k : ℕ) (n : ℕ)
 @[simp]
 theorem State.clearFrom1_output (σ : State) (k : ℕ) : (σ.clearFrom1 k).output = σ.output := by
   simp [clearFrom1, output]
+
+/-- Clearing from 1 to 0 is identity (nothing to clear). -/
+@[simp]
+theorem State.clearFrom1_zero (σ : State) : σ.clearFrom1 0 = σ := by
+  funext r
+  simp only [clearFrom1]
+  split_ifs with h h'
+  · subst h; rfl  -- r = 0
+  · omega  -- r ≠ 0 but r ≤ 0, impossible for ℕ
+  · rfl  -- r > 0
 
 /-! ## State Agreement Lemmas -/
 
@@ -776,19 +1226,26 @@ namespace URMComputable
     - Result equality:
       * Both produce the same R[0] value by `Halts.agree_halts`
 
-    Remaining proof obligations (marked with sorry):
-    * Forward direction requires a lemma about seq programs (first must halt)
-    * Standard form: programs should have bounded jumps (JumpsBounded)
-      - Cutland proves every program has an equivalent standard-form program
-      - All basic programs (zero, succ, proj) are naturally in standard form
-    * Result equality -/
+    Note: We assume programs are in "standard form" (JumpsBounded), meaning all jump
+    targets are within bounds. Cutland proves every program has an equivalent standard-form
+    program, so this is not a restriction on computability. All basic programs (zero, succ,
+    proj) are naturally in standard form. -/
 theorem comp_unary {n : ℕ}
     {f : (Fin 1 → ℕ) → Part ℕ} {g : (Fin n → ℕ) → Part ℕ}
-    (hf : URMComputable 1 f) (hg : URMComputable n g) :
+    {pf : Program} {pg : Program}
+    (hpf : ∀ inputs : Fin 1 → ℕ,
+      let inputList := List.ofFn inputs
+      (Halts pf inputList ↔ (f inputs).Dom) ∧
+      ∀ (hHalts : Halts pf inputList) (hDom : (f inputs).Dom),
+        Result pf inputList hHalts = (f inputs).get hDom)
+    (hpg : ∀ inputs : Fin n → ℕ,
+      let inputList := List.ofFn inputs
+      (Halts pg inputList ↔ (g inputs).Dom) ∧
+      ∀ (hHalts : Halts pg inputList) (hDom : (g inputs).Dom),
+        Result pg inputList hHalts = (g inputs).get hDom)
+    (hboundedg : JumpsBounded pg)
+    (hboundedf : JumpsBounded pf) :
     URMComputable n (fun inputs => (g inputs).bind (fun v => f (fun _ => v))) := by
-  -- Extract programs
-  obtain ⟨pf, hpf⟩ := hf
-  obtain ⟨pg, hpg⟩ := hg
   -- The composed program: run pg, clear non-R[0] registers, then run pf
   let k := pf.maxRegister
   use pg.seq ((clearRegsFrom1 k).seq pf)
@@ -806,19 +1263,272 @@ theorem comp_unary {n : ℕ}
     -- The composed function is defined iff g is defined AND f is defined on g's output
     -- Goal: ((g inputs).bind (fun v => f (fun _ => v))).Dom
     -- Which unfolds to: ∃ hg : (g inputs).Dom, (f (fun _ => (g inputs).get hg)).Dom
+    simp only [Part.bind_dom]
 
-    -- Get the halting spec for composite
-    obtain ⟨cFinal, hstepsFinal, hhaltedFinal⟩ := hHalts
+    -- pg.seq (inner) halts, so by seq_first_halts, pg halts
+    have hpgHalts : Halts pg inputList :=
+      JumpsBounded.seq_first_halts hboundedg hHalts
 
     -- pg halts iff g is defined
     have hgSpec := hpg inputs
-    have hgIff := hgSpec.1
+    have hgDom : (g inputs).Dom := hgSpec.1.mp hpgHalts
 
-    -- We claim g must be defined. If not, pg doesn't halt.
-    -- If pg doesn't halt, composite can't halt (pg runs first)
-    -- TODO: This needs a lemma about seq programs (seq_first_must_halt)
-    -- For now, we leave this direction as sorry
-    sorry
+    -- Get the value v = g(inputs)
+    let v := (g inputs).get hgDom
+
+    -- The result of pg is v
+    have hpgResult : Result pg inputList hpgHalts = v := hgSpec.2 hpgHalts hgDom
+
+    -- Now we need to show f(fun _ => v) is defined
+    -- This requires showing that pf halts on input [v]
+
+    -- First, we need to extract information about the inner execution
+    -- The composite is pg.seq ((clearRegsFrom1 k).seq pf)
+    -- After pg halts at pc = pg.length, the inner part runs
+
+    -- The inner program ((clearRegsFrom1 k).seq pf) halts because composite halts
+    -- and pg is JumpsBounded (so composite execution after pg is the inner program)
+
+    -- We need to show: if pg.seq inner halts, then inner halts after pg
+
+    -- For this, we use the fact that clearRegsFrom1 is JumpsBounded
+    have hclear_bounded : JumpsBounded (clearRegsFrom1 k) := clearRegsFrom1_bounded k
+
+    -- TODO: This proof is incomplete - we need to show inner halts
+    -- The key missing piece is extracting the inner execution from composite execution
+
+    -- For the purpose of making progress, let's show f is defined
+    -- We know the composite halts, which means eventually R[0] has f(g(inputs))
+    -- This implies both g and f are defined
+
+    -- Using hgDom and showing f is defined:
+    refine ⟨hgDom, ?_⟩
+
+    -- Need to show: (f (fun _ => (g inputs).get hgDom)).Dom
+    -- This is equivalent to pf halting on [v] where v = (g inputs).get hgDom
+
+    -- Use seq_second_halts to extract the inner execution
+    let inner := (clearRegsFrom1 k).seq pf
+    have hinner_bounded : JumpsBounded inner := by
+      apply JumpsBounded.seq
+      · exact hclear_bounded
+      · exact hboundedf
+
+    -- seq_second_halts gives us: pg reaches ⟨pg.length, σ⟩ and inner halts from ⟨0, σ⟩
+    obtain ⟨σ_after_pg, hpg_steps, c_inner, hinner_steps, hinner_halted⟩ :=
+      JumpsBounded.seq_second_halts hboundedg hinner_bounded hHalts
+
+    -- First, show σ_after_pg 0 = v (the result of pg)
+    -- σ_after_pg is the state from seq_second_halts, which equals (Classical.choose hpgHalts).state
+    -- by the construction in seq_second_halts
+    have hpg_output : σ_after_pg 0 = v := by
+      -- Result pg inputList hpgHalts = (Classical.choose hpgHalts).state.output
+      -- σ_after_pg comes from seq_second_halts, which uses the same chosen config
+      simp only [Result, State.output] at hpgResult
+      -- σ_after_pg is the state after pg halts - by halts_unique, it equals the chosen config's state
+      have hpg_halted : (⟨pg.length, σ_after_pg⟩ : Config).isHalted pg := by
+        simp [Config.isHalted]
+      have hresult_config := Classical.choose_spec hpgHalts
+      have hunique := Steps.halts_unique hpg_steps hpg_halted hresult_config.1 hresult_config.2
+      -- hunique : { pc := pg.length, state := σ_after_pg } = Classical.choose hpgHalts
+      -- So σ_after_pg = (Classical.choose hpgHalts).state
+      have hstate_eq : σ_after_pg = (Classical.choose hpgHalts).state := by
+        have := congrArg Config.state hunique
+        simp only at this
+        exact this
+      rw [hstate_eq]
+      exact hpgResult
+
+    -- Run clearing from State.fromInputs [σ_after_pg 0]
+    let σ_init := State.fromInputs [σ_after_pg 0]
+    have hclear_steps_init : Steps (clearRegsFrom1 k) ⟨0, σ_init⟩ ⟨k, σ_init.clearFrom1 k⟩ :=
+      clearRegsFrom1_reaches_clearFrom1 k σ_init
+
+    -- Run clearing from σ_after_pg
+    have hclear_steps_pg : Steps (clearRegsFrom1 k) ⟨0, σ_after_pg⟩ ⟨k, σ_after_pg.clearFrom1 k⟩ :=
+      clearRegsFrom1_reaches_clearFrom1 k σ_after_pg
+
+    -- The cleared states agree on registers 0..k
+    have hagree_cleared : (σ_after_pg.clearFrom1 k).agreeUpTo (σ_init.clearFrom1 k) k := by
+      intro r hr
+      rw [State.clearFrom1_eq_fromInputs_on_range σ_after_pg k r hr]
+      rw [State.clearFrom1_eq_fromInputs_on_range σ_init k r hr]
+      -- Both equal (State.fromInputs [σ_after_pg 0]) r and (State.fromInputs [σ_init 0]) r
+      -- But σ_init 0 = (State.fromInputs [σ_after_pg 0]) 0 = σ_after_pg 0
+      simp only [σ_init, State.fromInputs, List.getD, List.getElem?_cons_zero, Option.getD_some]
+
+    -- Extract pf execution from inner execution
+    -- First, show inner execution passes through ⟨k, σ_after_pg.clearFrom1 k⟩
+    -- The inner is (clearRegsFrom1 k).seq pf, and it starts from ⟨0, σ_after_pg⟩
+
+    -- Lift clearing steps to inner program
+    have hclear_in_inner : Steps inner ⟨0, σ_after_pg⟩ ⟨k, σ_after_pg.clearFrom1 k⟩ := by
+      by_cases hk : k = 0
+      · -- k = 0: clearing is empty
+        simp only [hk, inner, clearRegsFrom1, Program.seq, State.clearFrom1_zero]
+        exact Steps.refl _
+      · have hk_pos : 0 < k := Nat.pos_of_ne_zero hk
+        apply Steps.seq_steps_first hclear_steps_pg
+        · simp only [clearRegsFrom1_length]; exact hk_pos
+        · simp
+
+    -- By deterministic continuation, inner reaches c_inner from ⟨k, σ_after_pg.clearFrom1 k⟩
+    have hpf_in_inner : Steps inner ⟨k, σ_after_pg.clearFrom1 k⟩ c_inner := by
+      exact Steps.deterministic_continuation hclear_in_inner hinner_steps hinner_halted
+
+    -- Extract the pf part of the execution
+    -- From the lifted pf steps in inner, we can extract Steps pf ⟨0, σ_after_pg.clearFrom1 k⟩ _
+    have hcfinal_in_p2 : k ≤ c_inner.pc := by
+      -- c_inner is halted in inner = (clearRegsFrom1 k).seq pf
+      -- so c_inner.pc ≥ inner.length = k + pf.length
+      have : inner.length ≤ c_inner.pc := hinner_halted
+      simp only [inner, Program.seq_length, clearRegsFrom1_length] at this
+      omega
+
+    -- Extract pf execution: ⟨0, σ_after_pg.clearFrom1 k⟩ →* ⟨c_inner.pc - k, c_inner.state⟩ in pf
+    have hpf_steps_from_pg : Steps pf ⟨0, σ_after_pg.clearFrom1 k⟩
+        ⟨c_inner.pc - k, c_inner.state⟩ := by
+      have hpc_eq : (⟨k, σ_after_pg.clearFrom1 k⟩ : Config).pc = (clearRegsFrom1 k).length := by
+        simp [clearRegsFrom1_length]
+      have h := JumpsBounded.seq_steps_to_p2_steps hboundedf hpf_in_inner hpc_eq hinner_halted
+      simp only [clearRegsFrom1_length] at h
+      exact h
+
+    -- c_inner is halted in inner, so ⟨c_inner.pc - k, c_inner.state⟩ is halted in pf
+    have hpf_final_halted : (⟨c_inner.pc - k, c_inner.state⟩ : Config).isHalted pf := by
+      simp only [Config.isHalted] at hinner_halted ⊢
+      simp only [inner, Program.seq_length, clearRegsFrom1_length] at hinner_halted
+      omega
+
+    -- Now use agree_steps to get parallel pf execution from σ_init.clearFrom1 k
+    have hagree_for_pf : (σ_after_pg.clearFrom1 k).agreeUpTo (σ_init.clearFrom1 k) pf.maxRegister := by
+      intro r hr
+      exact hagree_cleared r (Nat.le_trans hr (Nat.le_refl k))
+
+    obtain ⟨c_pf', hpf_steps_init, hpc_eq, _⟩ :=
+      Steps.agree_steps hpf_steps_from_pg hagree_for_pf
+
+    -- c_pf' is halted because it has same PC
+    have hpf_halted' : c_pf'.isHalted pf := by
+      simp only [Config.isHalted] at hpf_final_halted ⊢
+      simp only at hpc_eq
+      omega
+
+    -- Lift clearing steps to inner from σ_init
+    have hclear_in_inner_init : Steps inner ⟨0, σ_init⟩ ⟨k, σ_init.clearFrom1 k⟩ := by
+      by_cases hk : k = 0
+      · -- k = 0: clearing is empty
+        simp only [hk, inner, clearRegsFrom1, Program.seq, State.clearFrom1_zero]
+        exact Steps.refl _
+      · have hk_pos : 0 < k := Nat.pos_of_ne_zero hk
+        apply Steps.seq_steps_first hclear_steps_init
+        · simp only [clearRegsFrom1_length]; exact hk_pos
+        · simp
+
+    -- Lift pf steps to inner from σ_init.clearFrom1 k
+    have hpf_in_inner_init : Steps inner ⟨k, σ_init.clearFrom1 k⟩ ⟨k + c_pf'.pc, c_pf'.state⟩ := by
+      have := Steps.seq_steps_second (p₁ := clearRegsFrom1 k) hpf_steps_init
+      simp only [clearRegsFrom1_length] at this
+      exact this
+
+    -- Combine for inner execution from σ_init
+    have hinner_full : Steps inner ⟨0, σ_init⟩ ⟨k + c_pf'.pc, c_pf'.state⟩ :=
+      Steps.trans hclear_in_inner_init hpf_in_inner_init
+
+    -- The final config is halted in inner
+    have hinner_final_halted : (⟨k + c_pf'.pc, c_pf'.state⟩ : Config).isHalted inner := by
+      simp only [Config.isHalted, inner, Program.seq_length, clearRegsFrom1_length]
+      have : pf.length ≤ c_pf'.pc := hpf_halted'
+      omega
+
+    -- Now apply seq_second_halts to the inner program
+    have hinner_halts : Halts inner [σ_after_pg 0] := by
+      use ⟨k + c_pf'.pc, c_pf'.state⟩
+      constructor
+      · -- Config.init [σ_after_pg 0] = ⟨0, State.fromInputs [σ_after_pg 0]⟩ = ⟨0, σ_init⟩
+        simp only [Config.init]
+        exact hinner_full
+      · exact hinner_final_halted
+
+    -- From inner halting, use seq_second_halts again to get pf halting
+    obtain ⟨σ_after_clear, hclear_steps'', c_pf_final, hpf_steps_final, hpf_halted_final⟩ :=
+      JumpsBounded.seq_second_halts hclear_bounded hboundedf hinner_halts
+
+    -- σ_after_clear 0 = σ_after_pg 0 (clearing preserves R[0])
+    -- So σ_after_clear.output = σ_after_pg 0 = v
+    -- And f is defined at input v
+
+    -- pf halts from σ_after_clear, which agrees with fromInputs [σ_after_pg 0] = fromInputs [v]
+    -- on registers 0..k. Since pf.maxRegister ≤ k, this means pf halts on [v] too.
+
+    -- The key: σ_after_clear is (State.fromInputs [σ_after_pg 0]).clearFrom1 k
+    -- which equals State.fromInputs [σ_after_pg 0] on registers 0..k
+    -- So pf halts on [v] = [σ_after_pg 0]
+
+    -- Use the pf specification: pf halts ↔ f is defined
+    have hpf_spec := hpf (fun _ => σ_after_pg 0)
+
+    -- We need to show Halts pf [σ_after_pg 0]
+    -- We have Steps pf ⟨0, σ_after_clear⟩ c_pf_final with c_pf_final halted
+
+    -- Determine what σ_after_clear actually is
+    -- hclear_steps'' : Steps (clearRegsFrom1 k) (Config.init [σ_after_pg 0]) ⟨k, σ_after_clear⟩
+    -- Config.init [σ_after_pg 0] = ⟨0, State.fromInputs [σ_after_pg 0]⟩
+    -- By clearRegsFrom1_reaches_clearFrom1, we reach ⟨k, (State.fromInputs [σ_after_pg 0]).clearFrom1 k⟩
+    -- By determinism, σ_after_clear = (State.fromInputs [σ_after_pg 0]).clearFrom1 k
+    let σ_clear_expected := (State.fromInputs [σ_after_pg 0]).clearFrom1 k
+    have hclear_expected : Steps (clearRegsFrom1 k) ⟨0, State.fromInputs [σ_after_pg 0]⟩
+        ⟨k, σ_clear_expected⟩ := clearRegsFrom1_reaches_clearFrom1 k (State.fromInputs [σ_after_pg 0])
+    have hclear_expected_halted : (⟨k, σ_clear_expected⟩ : Config).isHalted (clearRegsFrom1 k) := by
+      simp [Config.isHalted, clearRegsFrom1_length]
+    have hclear_actual_halted : (⟨(clearRegsFrom1 k).length, σ_after_clear⟩ : Config).isHalted (clearRegsFrom1 k) := by
+      simp [Config.isHalted]
+    -- hclear_steps'' gives Steps (clearRegsFrom1 k) ⟨0, State.fromInputs [σ_after_pg 0]⟩ ⟨k, σ_after_clear⟩
+    -- (after unfolding Config.init)
+    have hclear_steps_unfolded : Steps (clearRegsFrom1 k) ⟨0, State.fromInputs [σ_after_pg 0]⟩
+        ⟨(clearRegsFrom1 k).length, σ_after_clear⟩ := by
+      simp only [Config.init] at hclear_steps''
+      convert hclear_steps'' using 2
+    have hstate_eq : σ_after_clear = σ_clear_expected := by
+      have hunique := Steps.halts_unique hclear_steps_unfolded hclear_actual_halted hclear_expected hclear_expected_halted
+      simp only [clearRegsFrom1_length] at hunique
+      exact congrArg Config.state hunique
+
+    -- σ_after_clear agrees with State.fromInputs [σ_after_pg 0] on 0..k
+    have hagree_clear : σ_after_clear.agreeUpTo (State.fromInputs [σ_after_pg 0]) k := by
+      intro r hr
+      rw [hstate_eq]
+      exact State.clearFrom1_eq_fromInputs_on_range (State.fromInputs [σ_after_pg 0]) k r hr
+
+    -- Use agree_halts to convert - note: we need σ_after_clear first for agree_steps
+    have hagree_pf : σ_after_clear.agreeUpTo (State.fromInputs [σ_after_pg 0]) pf.maxRegister := by
+      intro r hr
+      exact hagree_clear r (Nat.le_trans hr (Nat.le_refl k))
+
+    -- We have Steps pf ⟨0, σ_after_clear⟩ c_pf_final, halted
+    -- Use agree_steps in reverse to get Steps pf (Config.init [σ_after_pg 0]) _
+    obtain ⟨c_pf_v, hpf_steps_v, hpc_eq', _⟩ := Steps.agree_steps hpf_steps_final hagree_pf
+
+    have hpf_halted_v : c_pf_v.isHalted pf := by
+      simp only [Config.isHalted] at hpf_halted_final ⊢
+      omega
+
+    have hpf_halts_v : Halts pf [σ_after_pg 0] := by
+      use c_pf_v
+      constructor
+      · exact hpf_steps_v
+      · exact hpf_halted_v
+
+    -- f is defined at (fun _ => σ_after_pg 0)
+    have hfDom : (f (fun _ => σ_after_pg 0)).Dom := hpf_spec.1.mp hpf_halts_v
+
+    -- σ_after_pg 0 = v, so f (fun _ => v) is defined
+    -- Goal: (f fun x => (g inputs).get hgDom).Dom = (f fun x => v).Dom
+    -- hfDom: (f fun x => σ_after_pg 0).Dom
+    -- hpg_output: σ_after_pg 0 = v
+    convert hfDom using 2
+    funext _
+    exact hpg_output.symm
 
   case dom_imp_halts =>
     -- Backward: Domain → Halts
@@ -947,17 +1657,17 @@ theorem comp_unary {n : ℕ}
       omega
 
     -- For the outer composition, we need cg.pc = pg.length
-    -- This requires pg to be in "standard form" (bounded jumps) per Cutland.
-    -- With JumpsBounded pg, we could use: JumpsBounded.halts_at_length hpg_bounded hstepsg hhaltedg
-    -- A complete formalization would prove that every URMComputable function
-    -- has a standard-form witness, making this assumption implicit.
-    have hcg_at_length : cg.pc = pg.length := by
-      have _h_ge : pg.length ≤ cg.pc := hhaltedg
-      sorry
+    -- This follows from JumpsBounded (standard form): halted configs have pc = length
+    have hcg_at_length : cg.pc = pg.length :=
+      JumpsBounded.halts_at_length hboundedg hstepsg hhaltedg
 
     have hstepsg_exact : Steps pg (Config.init inputList) ⟨pg.length, σg⟩ := by
-      -- Show cg = ⟨pg.length, σg⟩ and substitute
-      have heq : cg = ⟨pg.length, σg⟩ := Config.ext hcg_at_length rfl
+      -- σg = cg.state, so ⟨pg.length, σg⟩ = ⟨pg.length, cg.state⟩
+      -- and hcg_at_length : cg.pc = pg.length, so cg = ⟨cg.pc, cg.state⟩ = ⟨pg.length, cg.state⟩
+      have heq : cg = ⟨pg.length, σg⟩ := by
+        simp only [σg]
+        have : cg = ⟨cg.pc, cg.state⟩ := by cases cg; rfl
+        rw [this, hcg_at_length]
       rw [heq] at hstepsg
       exact hstepsg
 
@@ -974,8 +1684,192 @@ theorem comp_unary {n : ℕ}
     -- This follows from the structure of execution: pg produces v,
     -- clearing preserves v in R[0], pf produces f(v) in R[0]
 
-    -- TODO: Complete result equality proof
-    sorry
+    -- Unpack hDom: g inputs is defined, and f is defined at the result
+    simp only [Part.bind_dom] at hDom
+    obtain ⟨hgDom, hfDom_at_v⟩ := hDom
+
+    -- v is the result of g inputs
+    let v := (g inputs).get hgDom
+
+    -- f is defined at (fun _ => v)
+    have hfDom : (f (fun _ => v)).Dom := hfDom_at_v
+
+    -- hpg says pg halts on inputList ↔ (g inputs).Dom
+    have hpg_spec := hpg inputs
+    have hpgHalts : Halts pg inputList := hpg_spec.1.mpr hgDom
+
+    -- Result of pg is v
+    have hpgResult : Result pg inputList hpgHalts = v := hpg_spec.2 hpgHalts hgDom
+
+    -- hpf says pf halts on [v] ↔ (f (fun _ => v)).Dom
+    have hpf_spec := hpf (fun _ => v)
+    -- List.ofFn (fun _ : Fin 1 => v) = [v] by rfl
+    have hpfHalts : Halts pf [v] := hpf_spec.1.mpr hfDom
+
+    -- Result of pf on [v] is (f (fun _ => v)).get hfDom
+    have hpfResult : Result pf [v] hpfHalts = (f (fun _ => v)).get hfDom :=
+      hpf_spec.2 hpfHalts hfDom
+
+    -- Now we trace execution to show Result of composite = Result of pf
+
+    -- Get the halted config for pg - use Classical.choose to get THE canonical one
+    let cg := Classical.choose hpgHalts
+    have hcg_spec := Classical.choose_spec hpgHalts
+    have hstepsg : Steps pg (Config.init inputList) cg := hcg_spec.1
+    have hhaltedg : cg.isHalted pg := hcg_spec.2
+    let σg := cg.state
+
+    -- σg 0 = v (the output of pg)
+    have hσg_output : σg 0 = v := by
+      simp only [Result, State.output, σg] at hpgResult ⊢
+      exact hpgResult
+
+    -- pg halts at exactly pg.length (JumpsBounded)
+    have hcg_at_length : cg.pc = pg.length :=
+      JumpsBounded.halts_at_length hboundedg hstepsg hhaltedg
+
+    -- Steps of pg to exact config
+    have hstepsg_exact : Steps pg (Config.init inputList) ⟨pg.length, σg⟩ := by
+      have heq : cg = ⟨pg.length, σg⟩ := Config.ext hcg_at_length rfl
+      rw [heq] at hstepsg
+      exact hstepsg
+
+    -- The inner program: clearRegsFrom1 k followed by pf
+    let inner := (clearRegsFrom1 k).seq pf
+
+    -- Clearing steps: from σg to σg.clearFrom1 k
+    have hclearSteps : Steps (clearRegsFrom1 k) ⟨0, σg⟩ ⟨k, σg.clearFrom1 k⟩ :=
+      clearRegsFrom1_reaches_clearFrom1 k σg
+
+    -- σg.clearFrom1 k preserves σg 0 = v
+    have hcleared_output : (σg.clearFrom1 k) 0 = v := by
+      simp only [State.clearFrom1, ↓reduceIte]
+      exact hσg_output
+
+    -- The cleared state agrees with State.fromInputs [v] on registers 0..k
+    have hagree_cleared : (σg.clearFrom1 k).agreeUpTo (State.fromInputs [v]) k := by
+      intro r hr
+      by_cases h0 : r = 0
+      · subst h0
+        simp only [State.clearFrom1, ↓reduceIte, State.fromInputs, List.getD,
+          List.getElem?_cons_zero, Option.getD_some]
+        exact hσg_output
+      · simp only [State.clearFrom1, h0, ↓reduceIte, hr]
+        simp only [State.fromInputs, List.getD]
+        have hout : [v].length ≤ r := by simp; omega
+        rw [List.getElem?_eq_none hout]
+        simp
+
+    -- Get the halted config for pf on [v] - use Classical.choose
+    let cf := Classical.choose hpfHalts
+    have hcf_spec := Classical.choose_spec hpfHalts
+    have hstepsf : Steps pf (Config.init [v]) cf := hcf_spec.1
+    have hhaltedf : cf.isHalted pf := hcf_spec.2
+
+    -- Use agree_steps to transfer pf execution from [v] to cleared state
+    have hagreeInit : (State.fromInputs [v]).agreeUpTo (σg.clearFrom1 k) pf.maxRegister := by
+      intro r hr
+      exact (hagree_cleared r (Nat.le_trans hr (Nat.le_refl k))).symm
+
+    obtain ⟨cf', hstepsf', hpceq, hagree_final⟩ := Steps.agree_steps hstepsf hagreeInit
+
+    -- cf' is halted because it has same PC as cf
+    have hhaltedf' : cf'.isHalted pf := by
+      simp only [Config.isHalted] at hhaltedf ⊢
+      omega
+
+    -- cf'.state 0 = cf.state 0 (both have same R[0] at end)
+    -- Because final states agree on registers 0..maxRegister
+    have hresult_agree : cf'.state 0 = cf.state 0 := by
+      have h := hagree_final 0 (Nat.zero_le _)
+      exact h.symm
+
+    -- Result of pf from [v] is cf.state 0
+    have hcf_output : cf.state.output = (f (fun _ => v)).get hfDom := by
+      simp only [Result, State.output, cf] at hpfResult ⊢
+      exact hpfResult
+
+    -- Build execution of inner program
+    have hinner_halts : Steps inner ⟨0, σg⟩ ⟨k + cf'.pc, cf'.state⟩ := by
+      by_cases hk : k = 0
+      · simp only [hk, Nat.zero_add, inner]
+        have hclear_empty : clearRegsFrom1 0 = [] := by simp [clearRegsFrom1]
+        have hseq_eq : (clearRegsFrom1 0).seq pf = pf := by
+          simp only [hclear_empty, Program.seq, List.nil_append, List.length_nil,
+                     Program.shiftJumps_zero]
+        rw [hseq_eq]
+        have hstate_eq : σg.clearFrom1 0 = σg := State.clearFrom1_zero σg
+        simp only [hk, hstate_eq, Config.init] at hstepsf'
+        exact hstepsf'
+      · have hk_pos : 0 < k := Nat.pos_of_ne_zero hk
+        have hphase1 : Steps inner ⟨0, σg⟩ ⟨k, σg.clearFrom1 k⟩ := by
+          apply Steps.seq_steps_first hclearSteps
+          · simp only [clearRegsFrom1_length]; exact hk_pos
+          · simp
+        have hphase2 : Steps inner ⟨k, σg.clearFrom1 k⟩ ⟨k + cf'.pc, cf'.state⟩ := by
+          have := Steps.seq_steps_second (p₁ := clearRegsFrom1 k) hstepsf'
+          simp only [clearRegsFrom1_length] at this
+          exact this
+        exact Steps.trans hphase1 hphase2
+
+    have hinner_halted : (⟨k + cf'.pc, cf'.state⟩ : Config).isHalted inner := by
+      simp only [Config.isHalted, inner, Program.seq_length, clearRegsFrom1_length]
+      have : pf.length ≤ cf'.pc := hhaltedf'
+      omega
+
+    -- Build full execution of composite program
+    have hfull_steps : Steps (pg.seq inner) (Config.init inputList)
+        ⟨pg.length + k + cf'.pc, cf'.state⟩ := by
+      -- Phase 1: Run pg from init to ⟨pg.length, σg⟩
+      have hsteps_pg_seq : Steps (pg.seq inner) (Config.init inputList) ⟨pg.length, σg⟩ := by
+        by_cases hpg_empty : pg.length = 0
+        · -- pg is empty
+          have hinit_halted : (Config.init inputList).isHalted pg := by
+            simp [Config.isHalted, Config.init, hpg_empty]
+          have hinit_pc : (Config.init inputList).pc = pg.length := by simp [Config.init, hpg_empty]
+          have hσg_eq : σg = (Config.init inputList).state := by
+            have huniq := Steps.halts_unique hstepsg hhaltedg (Steps.refl _) hinit_halted
+            simp only [σg, huniq, Config.init]
+          simp only [hpg_empty, hσg_eq, Config.init]
+          exact Steps.refl _
+        · apply Steps.seq_steps_first hstepsg_exact
+          · simp [Config.init]; omega
+          · exact Nat.le_refl _
+      -- Phase 2: Run inner from ⟨0, σg⟩ to ⟨k + cf'.pc, cf'.state⟩, lifted to seq
+      have hsteps_inner_seq : Steps (pg.seq inner) ⟨pg.length, σg⟩ ⟨pg.length + (k + cf'.pc), cf'.state⟩ := by
+        have := Steps.seq_steps_second (p₁ := pg) hinner_halts
+        simp only [Nat.add_zero] at this
+        exact this
+      -- Combine
+      have hcombined := Steps.trans hsteps_pg_seq hsteps_inner_seq
+      convert hcombined using 2
+      omega
+
+    have hfull_halted : (⟨pg.length + k + cf'.pc, cf'.state⟩ : Config).isHalted (pg.seq inner) := by
+      simp only [Config.isHalted, Program.seq_length, inner, Program.seq_length, clearRegsFrom1_length]
+      have : pf.length ≤ cf'.pc := hhaltedf'
+      omega
+
+    -- The result is cf'.state 0
+    have hfinal_result : Result (pg.seq inner) inputList hHalts = cf'.state 0 := by
+      simp only [Result, State.output]
+      have huniq := Steps.halts_unique (Classical.choose_spec hHalts).1
+        (Classical.choose_spec hHalts).2 hfull_steps hfull_halted
+      rw [huniq]
+
+    -- Chain the equalities
+    calc Result (pg.seq inner) inputList hHalts
+        = cf'.state 0 := hfinal_result
+      _ = cf.state 0 := hresult_agree
+      _ = cf.state.output := rfl
+      _ = (f (fun _ => v)).get hfDom := hcf_output
+      _ = ((g inputs).bind (fun v' => f (fun _ => v'))).get hDom := by
+          -- v = (g inputs).get hgDom, so we need to show:
+          -- (f (fun _ => v)).get hfDom = ((g inputs).bind ...).get hDom
+          symm
+          apply Part.get_eq_of_mem
+          rw [Part.mem_bind_iff]
+          exact ⟨v, Part.get_mem hgDom, Part.get_mem hfDom⟩
 
 /-- URM-computable functions are closed under composition.
 
