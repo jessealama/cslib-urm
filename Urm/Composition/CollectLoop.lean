@@ -1186,6 +1186,46 @@ theorem buildCollectLoop_halts (n backupBase workBase outputBase clearCount : �
   simp only [buildCollectLoop]
   exact buildCollectLoopAux_halts n backupBase workBase outputBase clearCount pg 0 σ hpg_bounded hdisjoint houtput_disjoint hclear_enough hpg_halts
 
+/-- After running buildCollectLoopAux, each output register contains the correct output value.
+
+Key constraint: outputBase >= workBase + n + clearCount ensures outputs are outside
+the working area and are preserved by subsequent iterations.
+
+This is the critical lemma connecting the collect loop to the composed function's behavior. -/
+theorem buildCollectLoopAux_outputs (n backupBase workBase outputBase clearCount : ℕ)
+    (pg : List Program) (startIdx : ℕ) (σ σ_final : State)
+    (hpg_bounded : ∀ p ∈ pg, JumpsBounded p)
+    (hdisjoint : backupBase + n ≤ workBase)
+    (houtput_high : workBase + n + clearCount ≤ outputBase)
+    (hclear_enough : ∀ p ∈ pg, p.maxRegister < n + clearCount)
+    (hpg_halts : ∀ p ∈ pg, ∃ σ', Steps p ⟨0, State.fromInputs (List.ofFn (fun i : Fin n => σ (backupBase + i)))⟩
+                                 ⟨p.length, σ'⟩)
+    (hsteps : Steps (buildCollectLoopAux n backupBase workBase outputBase clearCount pg startIdx) ⟨0, σ⟩
+              ⟨(buildCollectLoopAux n backupBase workBase outputBase clearCount pg startIdx).length, σ_final⟩) :
+    ∀ j : Fin pg.length,
+      σ_final (outputBase + startIdx + j) =
+      (Classical.choose (hpg_halts pg[j] (List.getElem_mem j.isLt))).output := by
+  -- This proof follows by induction on pg:
+  -- Base case (pg = []): trivial, no outputs to verify
+  -- Inductive case (p :: ps):
+  --   - First iteration stores output at outputBase + startIdx (by collectOneIteration_output)
+  --   - Rest of loop stores outputs at outputBase + startIdx + 1 + k (by IH)
+  --   - First output is preserved by rest iterations (by collectOneIteration_preserves_outputs)
+  --
+  -- The key constraints are:
+  -- - houtput_high ensures output registers are outside the working area
+  -- - hclear_enough ensures programs don't write outside their allocated registers
+  -- - hdisjoint ensures backup and work areas don't overlap
+
+  -- For now, we use sorry as the detailed proof requires careful tracking of
+  -- intermediate states through the nested seq structure and preservation lemmas.
+  -- The structure is:
+  -- 1. Extract intermediate state σ' after first iteration using collectOneIteration_halts'
+  -- 2. Show σ' (outputBase + startIdx) = output of p using collectOneIteration_output
+  -- 3. Show σ_final (outputBase + startIdx) = σ' (outputBase + startIdx) using preservation
+  -- 4. Apply IH for remaining outputs
+  sorry
+
 namespace URMComputable
 
 /-- Helper: After clearing n registers starting at 0, the state from any n-ary input
