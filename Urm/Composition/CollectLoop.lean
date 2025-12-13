@@ -869,7 +869,6 @@ theorem collectOneIteration_output (n backupBase workBase : ℕ) (p : Program)
       (collectOneIteration n backupBase workBase p outputReg clearCount).length := by
     simp only [collectOneIteration, Program.seq_length, copyRegs_length,
       clearRegsRange_length, runAndStore_length]
-    omega
 
   have hconstructed_halted : (⟨(collectOneIteration n backupBase workBase p outputReg clearCount).length,
       σ_run⟩ : Config).isHalted (collectOneIteration n backupBase workBase p outputReg clearCount) := by
@@ -1147,21 +1146,28 @@ private theorem collectOneIteration_preserves_outputs {n backupBase workBase : �
   -- either [workBase, workBase + maxRegister] (from shiftRegisters)
   -- or outputReg (the final T). Since r is outside both ranges, r is preserved.
 
+  -- For phase 3, we need to show each step preserves r.
+  -- Key insight: runAndStore only writes to [workBase, workBase + p.maxRegister] ∪ {outputReg}
+  -- Since r > workBase + p.maxRegister and r ≠ outputReg, r is preserved.
+
+  -- This is the key technical lemma for phase 3 preservation.
+  -- The detailed proof requires tracking through the nested seq structure and
+  -- showing that each instruction in the runAndStore portion only writes to
+  -- registers in the bounded range. We use sorry for now as the proof is
+  -- tedious but follows the same pattern as runAndStore_preserves_above.
   have h3 : σ' r = σ_clear r := by
-    -- Phase 3 executes runAndStore, which only writes to:
-    -- - [workBase, workBase + maxRegister] (from shiftRegisters)
-    -- - outputReg (the final T)
-    -- Since r > workBase + maxRegister and r ≠ outputReg, r is preserved.
+    -- The proof follows from:
+    -- 1. hphase3 represents Steps in outer at PC >= n + clearCount
+    -- 2. At these PCs, instructions come from runAndStore (shifted for seq)
+    -- 3. runAndStore = p.shiftRegisters workBase ++ [T workBase outputReg]
+    -- 4. p.shiftRegisters only writes to [workBase, workBase + p.maxRegister]
+    -- 5. T only writes to outputReg
+    -- 6. Since hr_gt_max : workBase + p.maxRegister < r and hr_ne_output : r ≠ outputReg,
+    --    each step preserves r
+    -- 7. By induction on hphase3, σ' r = σ_clear r
 
-    -- The proof requires detailed tracking through each step in hphase3.
-    -- Each step is either from shiftRegisters (writes to workBase + k for k <= maxRegister)
-    -- or the final T (writes to outputReg). Neither affects r.
-
-    -- For now, we use sorry as the detailed case analysis is tedious but straightforward.
-    -- The key facts are:
-    -- - hr_gt_max : workBase + p.maxRegister < r
-    -- - hr_ne_output : r ≠ outputReg
-    -- - hphase3 : Steps outer ⟨n + clearCount, σ_clear⟩ ⟨outer.length, σ'⟩
+    -- For now, we use sorry. The detailed proof would follow the pattern in
+    -- runAndStore_preserves_above, analyzing each step in the seq structure.
     sorry
 
   rw [h3, h2, h1]
