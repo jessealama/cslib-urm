@@ -1156,18 +1156,17 @@ private theorem collectOneIteration_preserves_outputs {n backupBase workBase : �
   -- registers in the bounded range. We use sorry for now as the proof is
   -- tedious but follows the same pattern as runAndStore_preserves_above.
   have h3 : σ' r = σ_clear r := by
-    -- The proof follows from:
-    -- 1. hphase3 represents Steps in outer at PC >= n + clearCount
-    -- 2. At these PCs, instructions come from runAndStore (shifted for seq)
-    -- 3. runAndStore = p.shiftRegisters workBase ++ [T workBase outputReg]
-    -- 4. p.shiftRegisters only writes to [workBase, workBase + p.maxRegister]
-    -- 5. T only writes to outputReg
-    -- 6. Since hr_gt_max : workBase + p.maxRegister < r and hr_ne_output : r ≠ outputReg,
-    --    each step preserves r
-    -- 7. By induction on hphase3, σ' r = σ_clear r
-
-    -- For now, we use sorry. The detailed proof would follow the pattern in
-    -- runAndStore_preserves_above, analyzing each step in the seq structure.
+    -- Phase 3 executes runAndStore (shifted within outer)
+    -- runAndStore only writes to [workBase, workBase + p.maxRegister] ∪ {outputReg}
+    -- Since r > workBase + p.maxRegister and r ≠ outputReg, r is preserved
+    --
+    -- The detailed proof requires:
+    -- 1. Induction on hphase3 tracking PC >= n + clearCount at each step
+    -- 2. For each step, analyzing the instruction in outer at that PC
+    -- 3. Showing instructions come from runAndStore (via nested seq structure)
+    -- 4. Each Z/S/T from shiftRegisters writes to [workBase, workBase + maxRegister]
+    -- 5. The final T writes to outputReg
+    -- 6. Since r > workBase + maxRegister and r ≠ outputReg, r is preserved
     sorry
 
   rw [h3, h2, h1]
@@ -1784,9 +1783,46 @@ theorem comp {m n : ℕ}
 
     case result_eq =>
       -- Result of prog equals composePartial value
+      -- Result prog (List.ofFn inputs) hHalts = (composePartial f g inputs).get hDom
       intro hHalts hDom
-      -- Track R[0] through all phases
-      -- After phase 4, R[0] = f(g_0(inputs), ..., g_k(inputs))
+
+      -- Extract domain info from hDom using composePartial_dom
+      have hcomp_dom := composePartial_dom.mp hDom
+      obtain ⟨hall_g_dom, hg_witness, hf_dom⟩ := hcomp_dom
+
+      -- The output values that f receives
+      let outputs : Fin (k + 1) → ℕ := fun i => (g i inputs).get (hall_g_dom i)
+
+      -- Track state through all 4 phases:
+      -- Phase 1: copyRegs n 0 backupBase → σ1 (backup inputs at backupBase+i)
+      -- Phase 2: buildCollectLoop → σ2 (g_i outputs at outputBase+i)
+      -- Phase 3: copyRegs (k+1) outputBase 0 → σ3 (outputs at R[0..k])
+      -- Phase 4: pf → σ4 (f result at R[0])
+
+      -- The key tracking requirements (using lemmas we've defined):
+      -- 1. σ1(backupBase + j) = inputs(j) for j < n [by copyRegs spec]
+      -- 2. σ2(outputBase + i) = outputs(i) for i < k+1 [by buildCollectLoopAux_outputs]
+      -- 3. σ3(i) = σ2(outputBase + i) = outputs(i) for i < k+1 [by copyRegs spec]
+      -- 4. σ4(0) = f(outputs).get hf_dom [by hf spec with state agreement]
+
+      -- For the complete proof, we would:
+      -- 1. Extract the halted config using JumpsBounded decomposition
+      -- 2. Use halts_unique to match execution traces
+      -- 3. Apply buildCollectLoopAux_outputs for phase 2 tracking
+      -- 4. Apply copyRegs spec for phase 3 tracking
+      -- 5. Apply hf spec with state agreement for phase 4
+
+      -- The result is:
+      -- Result prog ... = σ4(0) = f(outputs).get hf_dom
+      --                 = f(fun i => (g i inputs).get (hall_g_dom i)).get hf_dom
+      --                 = (composePartial f g inputs).get hDom
+      -- (The last step follows from the definition of composePartial)
+
+      -- Key lemma applications needed:
+      -- - buildCollectLoopAux_outputs (with houtput_high constraint)
+      -- - State agreement between σ3 and State.fromInputs (List.ofFn outputs)
+      -- - hf specification: Result pf (List.ofFn outputs) _ = (f outputs).get _
+
       sorry
 
 end URMComputable
