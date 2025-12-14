@@ -163,7 +163,7 @@ theorem runAndStore_halts (p : Program) (outputReg : ℕ)
     ∃ σ', Steps (runAndStore p workBase outputReg)
       ⟨0, σ⟩ ⟨(runAndStore p workBase outputReg).length, σ'⟩ := by
   -- runAndStore = p.shiftRegisters workBase ++ [T workBase outputReg]
-  simp only [runAndStore, runAndStore_length]
+  simp only [runAndStore]
   -- Get the halting execution from hp_halts (reaching exactly p.length)
   obtain ⟨σ_final, hsteps⟩ := hp_bounded.halts_reaches_end hp_halts
   simp only [Config.init] at hsteps
@@ -174,7 +174,7 @@ theorem runAndStore_halts (p : Program) (outputReg : ℕ)
   have hsim := Steps.shiftRegisters_agreeFrom hshifted hagree_swap
   obtain ⟨c', hsteps', hpc_eq, _⟩ := hsim
   -- c'.pc = p.length
-  simp only [Program.shiftRegisters_length] at hpc_eq
+  simp only [] at hpc_eq
   -- hsteps' : Steps (p.shiftRegisters workBase) ⟨0, σ⟩ c'
   -- Rewrite c' to ⟨p.length, c'.state⟩
   cases c' with | mk pc state =>
@@ -228,6 +228,71 @@ theorem runAndStore_halts (p : Program) (outputReg : ℕ)
     rw [hlen]
     exact Steps.trans hsteps_in_seq (Steps.single hT_step)
 
+/-- Weaker variant of runAndStore_halts that only requires bounded agreement.
+    This is more useful when we can only establish agreement on registers actually
+    accessed by the program (registers in [workBase, workBase + p.maxRegister]). -/
+theorem runAndStore_halts_bounded (p : Program) (outputReg : ℕ)
+    (inputs : List ℕ)
+    (σ : State)
+    (hp_bounded : JumpsBounded p)
+    (hp_halts : Halts p inputs)
+    (hagree : σ.agreeFromTo ((State.fromInputs inputs).shift workBase) workBase (workBase + p.maxRegister)) :
+    ∃ σ', Steps (runAndStore p workBase outputReg)
+      ⟨0, σ⟩ ⟨(runAndStore p workBase outputReg).length, σ'⟩ := by
+  simp only [runAndStore]
+  -- Get the halting execution from hp_halts
+  obtain ⟨σ_final, hsteps⟩ := hp_bounded.halts_reaches_end hp_halts
+  simp only [Config.init] at hsteps
+  -- Shift the execution to workBase
+  have hshifted := shiftRegisters_halts workBase hsteps
+  -- Transfer to our state σ using agreeFromTo
+  have hagree_swap := State.agreeFromTo_symm hagree
+  have hsim := Steps.shiftRegisters_agreeFromTo hshifted hagree_swap
+  obtain ⟨c', hsteps', hpc_eq, _⟩ := hsim
+  simp only [] at hpc_eq
+  cases c' with | mk pc state =>
+  simp only at hpc_eq hsteps'
+  subst hpc_eq
+  -- Now hsteps' : Steps (p.shiftRegisters workBase) ⟨0, σ⟩ ⟨p.length, state⟩
+  have hseq_eq : (p.shiftRegisters workBase) ++ [Instr.T workBase outputReg] =
+      (p.shiftRegisters workBase).seq [Instr.T workBase outputReg] := by
+    simp only [Program.seq, Program.shiftJumps, List.map, Instr.shiftJumps]
+  have hT_instr : ((p.shiftRegisters workBase).seq [Instr.T workBase outputReg]).getInstr p.length =
+      some (Instr.T workBase outputReg) := by
+    rw [Program.seq_getInstr_second]
+    · simp only [Program.shiftJumps, Program.getInstr, List.map, Instr.shiftJumps,
+                 Program.shiftRegisters_length, Nat.sub_self]
+      rfl
+    · simp [Program.shiftRegisters_length]
+    · simp [Program.shiftRegisters_length]
+  by_cases hp_empty : p.length = 0
+  · rw [hseq_eq]
+    have hT_step : Step ((p.shiftRegisters workBase).seq [Instr.T workBase outputReg])
+        ⟨0, σ⟩ ⟨1, σ.write outputReg (σ.read workBase)⟩ := by
+      have hinstr : ((p.shiftRegisters workBase).seq [Instr.T workBase outputReg]).getInstr 0 =
+          some (Instr.T workBase outputReg) := by rw [← hp_empty]; exact hT_instr
+      exact Step.trans hinstr
+    refine ⟨σ.write outputReg (σ.read workBase), ?_⟩
+    have hlen : ((p.shiftRegisters workBase).seq [Instr.T workBase outputReg]).length = 1 := by
+      simp [Program.seq_length, Program.shiftRegisters_length, hp_empty]
+    rw [hlen]
+    exact Steps.single hT_step
+  · have hp_pos : 0 < p.length := Nat.pos_of_ne_zero hp_empty
+    have hsteps_in_seq : Steps ((p.shiftRegisters workBase).seq [Instr.T workBase outputReg])
+        ⟨0, σ⟩ ⟨p.length, state⟩ := by
+      apply Steps.seq_steps_first hsteps'
+      · simp [Program.shiftRegisters_length, hp_pos]
+      · simp [Program.shiftRegisters_length]
+    have hT_step : Step ((p.shiftRegisters workBase).seq [Instr.T workBase outputReg])
+        ⟨p.length, state⟩ ⟨p.length + 1, state.write outputReg (state.read workBase)⟩ :=
+      Step.trans hT_instr
+    rw [hseq_eq]
+    have hlen : ((p.shiftRegisters workBase).seq [Instr.T workBase outputReg]).length = p.length + 1 := by
+      simp [Program.seq_length, Program.shiftRegisters_length]
+    refine ⟨state.write outputReg (state.read workBase), ?_⟩
+    rw [hlen]
+    exact Steps.trans hsteps_in_seq (Steps.single hT_step)
+
 /-- After runAndStore completes, the output register contains the program's result. -/
 theorem runAndStore_output (p : Program) (outputReg : ℕ)
     (inputs : List ℕ)
@@ -258,7 +323,7 @@ theorem collectOneIteration_halts (p : Program) (outputReg : ℕ)
     (m : ℕ)
     (hregions : RegionsDisjoint backupBase workBase outputBase m)
     (hn_le : n ≤ m)
-    (hp_max : p.maxRegister ≤ m)
+    (_hp_max : p.maxRegister ≤ m)
     (hclear : n + clearCount ≥ p.maxRegister + 1)
     (hp_bounded : JumpsBounded p)
     (hp_halts : Halts p inputs)
@@ -302,11 +367,12 @@ theorem collectOneIteration_halts (p : Program) (outputReg : ℕ)
   -- Phase 2: clearRegsRange steps
   have hsteps2 : Steps p2 ⟨0, σ1⟩ ⟨clearCount, σ2⟩ := clearRegsRange_reaches (workBase + n) clearCount σ1
 
-  -- Phase 3: Need to show σ2 agrees with (State.fromInputs inputs).shift workBase from workBase
-  -- This is the key state alignment lemma
-  have hagree : σ2.agreeFrom ((State.fromInputs inputs).shift workBase) workBase := by
-    intro r hr
-    -- r ≥ workBase
+  -- Phase 3: Need to show σ2 agrees with (State.fromInputs inputs).shift workBase
+  -- on registers in [workBase, workBase + p.maxRegister]
+  -- This is the key state alignment lemma (using bounded agreement)
+  have hagree : σ2.agreeFromTo ((State.fromInputs inputs).shift workBase) workBase (workBase + p.maxRegister) := by
+    intro r hr hr_hi
+    -- r ∈ [workBase, workBase + p.maxRegister]
     -- Need: σ2 r = ((State.fromInputs inputs).shift workBase) r
     simp only [State.shift]
     have hr' : ¬ r < workBase := Nat.not_lt.mpr hr
@@ -314,71 +380,39 @@ theorem collectOneIteration_halts (p : Program) (outputReg : ℕ)
     -- Need: σ2 r = (State.fromInputs inputs) (r - workBase)
     -- σ2 = (σ.afterCopy n backupBase workBase).clearRange (workBase + n) clearCount
     simp only [σ2, σ1, State.clearRange, State.afterCopy]
-    -- Case split on whether r is in the clear range
-    by_cases hclear : workBase + n ≤ r ∧ r < workBase + n + clearCount
-    · -- r is in clear range: σ2 r = 0
-      simp only [hclear, and_self, ↓reduceIte]
-      -- Also (State.fromInputs inputs) (r - workBase) = 0 since r - workBase ≥ n = inputs.length
+    -- Since r ≤ workBase + p.maxRegister < workBase + n + clearCount (by hclear),
+    -- r is either in the copy range [workBase, workBase + n) or in the clear range [workBase + n, workBase + n + clearCount)
+    -- (or r < workBase + n which means it's in the copy range since r ≥ workBase)
+    by_cases hcopy : r < workBase + n
+    · -- r is in copy destination range: [workBase, workBase + n)
+      have hcopy' : workBase ≤ r ∧ r < workBase + n := ⟨hr, hcopy⟩
+      -- Not in clear range since r < workBase + n
+      have hnotclear : ¬(workBase + n ≤ r ∧ r < workBase + n + clearCount) := by omega
+      simp only [hnotclear, hcopy', and_self, ↓reduceIte]
+      -- σ1 r = σ (backupBase + (r - workBase)) by afterCopy
+      -- σ (backupBase + (r - workBase)) = inputs.get ⟨r - workBase, ...⟩ by hinputs
+      have hidx : r - workBase < inputs.length := by omega
+      have := hinputs (r - workBase) hidx
+      simp only [State.fromInputs, List.getD]
+      rw [List.getElem?_eq_getElem hidx]
+      simp only [Option.getD_some]
+      simp only [List.get_eq_getElem] at this
+      convert this using 1
+    · -- r ≥ workBase + n: must be in clear range (since r ≤ workBase + p.maxRegister < workBase + n + clearCount)
+      push_neg at hcopy
+      have hr_in_clear : workBase + n ≤ r ∧ r < workBase + n + clearCount := by omega
+      simp only [hr_in_clear, and_self, ↓reduceIte]
+      -- σ2 r = 0 (cleared)
+      -- (State.fromInputs inputs) (r - workBase) = 0 since r - workBase ≥ n = inputs.length
       have hr_ge_n : r - workBase ≥ n := by omega
       rw [hn] at hr_ge_n
       simp only [State.fromInputs, List.getD]
       rw [List.getElem?_eq_none (by omega : inputs.length ≤ r - workBase)]
       simp
-    · -- r is not in clear range
-      simp only [hclear, ↓reduceIte]
-      -- Now need to analyze afterCopy
-      by_cases hcopy : workBase ≤ r ∧ r < workBase + n
-      · -- r is in copy destination range: σ1 r = σ (backupBase + (r - workBase))
-        simp only [hcopy, and_self, ↓reduceIte]
-        -- σ (backupBase + (r - workBase)) = inputs.get ⟨r - workBase, ...⟩ by hinputs
-        have hidx : r - workBase < inputs.length := by omega
-        have := hinputs (r - workBase) hidx
-        simp only [State.fromInputs, List.getD]
-        rw [List.getElem?_eq_getElem hidx]
-        simp only [Option.getD_some]
-        simp only [List.get_eq_getElem] at this
-        convert this using 1
-      · -- r is not in copy destination range: σ1 r = σ r
-        -- But r ≥ workBase so it's also not < workBase, meaning hcopy.1 holds but hcopy.2 fails
-        -- So r ≥ workBase + n
-        push_neg at hcopy
-        rename ¬(workBase + n ≤ r ∧ r < workBase + n + clearCount) => hnotclear
-        push_neg at hnotclear
-        -- hcopy says: r < workBase ∨ r ≥ workBase + n
-        -- Since r ≥ workBase, we have r ≥ workBase + n
-        have hr_ge : r ≥ workBase + n := hcopy hr
-        -- hnotclear says: r < workBase + n ∨ r ≥ workBase + n + clearCount
-        -- Since r ≥ workBase + n, we must have r ≥ workBase + n + clearCount
-        have hr_ge' : r ≥ workBase + n + clearCount := hnotclear hr_ge
-        -- But wait: hclear says n + clearCount ≥ p.maxRegister + 1
-        -- So workBase + n + clearCount ≥ workBase + p.maxRegister + 1
-        -- And r ≥ workBase + n + clearCount > workBase + p.maxRegister
-        -- This means r - workBase > p.maxRegister
-        -- The shifted program only accesses registers [workBase, workBase + p.maxRegister]
-        -- So for agreement, we only need to match on those registers
-        -- Since r > workBase + p.maxRegister, this case shouldn't happen if we
-        -- weaken the agreement condition. For now, use sorry.
-        -- Actually, the fundamental issue is that runAndStore_halts requires full agreement.
-        -- We need to either weaken that lemma or add a hypothesis about σ.
-        -- For now, note that r - workBase ≥ n + clearCount > p.maxRegister
-        have hr_offset_ge : r - workBase ≥ n + clearCount := by omega
-        have hr_offset_gt_max : r - workBase > p.maxRegister := by omega
-        -- (State.fromInputs inputs) (r - workBase) = 0 since r - workBase ≥ n = inputs.length
-        rw [hn] at hr_offset_ge
-        simp only [State.fromInputs, List.getD]
-        rw [List.getElem?_eq_none (by omega : inputs.length ≤ r - workBase)]
-        simp
-        -- σ1 r = σ r since r is outside copy destination [workBase, workBase + n)
-        simp only [hr, Nat.not_lt.mpr hr_ge, and_false, ↓reduceIte]
-        -- The shifted program never reads register r (since r - workBase > p.maxRegister)
-        -- so agreement on r doesn't affect execution. But runAndStore_halts requires it.
-        -- WORKAROUND: Add hypothesis that σ is zero beyond workBase + n + clearCount
-        -- For now, leave as sorry - this needs the runAndStore_halts lemma to be weakened
-        sorry
 
-  -- Phase 3: runAndStore halts
+  -- Phase 3: runAndStore halts (using bounded agreement)
   have hsteps3 : ∃ σ', Steps p3 ⟨0, σ2⟩ ⟨p3.length, σ'⟩ :=
-    runAndStore_halts workBase p outputReg inputs σ2 hp_bounded hp_halts hagree
+    runAndStore_halts_bounded workBase p outputReg inputs σ2 hp_bounded hp_halts hagree
   obtain ⟨σ3, hsteps3⟩ := hsteps3
 
   -- Now compose the three phases
