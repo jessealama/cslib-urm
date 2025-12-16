@@ -228,6 +228,16 @@ theorem Steps.preserves_high_register {c c' : Config} (hsteps : Steps p c c') (r
     rw [ih]
     exact Step.preserves_high_register hstep r hr
 
+/-- Running a program preserves registers above its maxRegister.
+
+When a program halts, the final state agrees with the initial state on all registers
+that are never accessed by any instruction in the program. -/
+theorem Halts.preserves_high_registers {p : Program} {inputs : List ℕ}
+    (h : Halts p inputs) (r : ℕ) (hr : p.maxRegister < r) :
+    (Classical.choose h).state.read r = (Config.init inputs).state.read r := by
+  have ⟨hsteps, _⟩ := Classical.choose_spec h
+  exact Steps.preserves_high_register hsteps r hr
+
 end RegisterIsolation
 
 /-! ## Part.sequence for Partial Function Families -/
@@ -267,6 +277,21 @@ theorem Part.sequence_dom {α : Type*} {n : ℕ} {f : Fin n → Part α} :
         exact this ⟨j, Nat.lt_of_succ_lt_succ hlt⟩
     · intro hall
       exact ⟨hall 0, ih.mpr (fun i => hall i.succ)⟩
+
+theorem Part.sequence_get {α : Type*} {n : ℕ} {f : Fin n → Part α}
+    (hdom : (Part.sequence f).Dom) (i : Fin n) :
+    (Part.sequence f).get hdom i = (f i).get (Part.sequence_dom.mp hdom i) := by
+  induction n with
+  | zero => exact Fin.elim0 i
+  | succ n ih =>
+    match i with
+    | ⟨0, _⟩ =>
+      simp only [Part.sequence_succ, Part.bind, Part.map] at hdom ⊢
+      rfl
+    | ⟨j + 1, hlt⟩ =>
+      -- Technical: extract the recursive call from the bind/map structure
+      simp only [Part.sequence_succ, Part.bind, Part.map] at hdom ⊢
+      exact ih _ ⟨j, Nat.lt_of_succ_lt_succ hlt⟩
 
 /-! ## Sequential Halting Lemmas -/
 
@@ -483,6 +508,59 @@ theorem straightLine_halts {p : Program} (hsl : p.isStraightLine = true) (inputs
       obtain ⟨c'', hsteps'', hpc''⟩ := ih (p.length - c'.pc) hremaining c' hpc'_le rfl
       exact ⟨c'', Relation.ReflTransGen.head hstep' hsteps'', hpc''⟩
 
+/-- For straight-line programs, the halted config has pc exactly equal to the program length.
+
+Since straight-line programs can only advance pc by 1, and halting means pc ≥ length,
+the pc must be exactly length when halted. -/
+theorem straightLine_halts_at_length {p : Program} (hsl : p.isStraightLine = true) (inputs : List ℕ) :
+    let h := straightLine_halts hsl inputs
+    (Classical.choose h).pc = p.length := by
+  have h := straightLine_halts hsl inputs
+  obtain ⟨hsteps, hhalted⟩ := Classical.choose_spec h
+  simp only [Config.isHalted] at hhalted
+  -- Show pc ≤ p.length by showing pc can never exceed p.length from stepping
+  -- Each step of a straight-line program increases pc by exactly 1
+  suffices hsuff : ∀ c c' : Config, Steps p c c' → c'.pc ≤ max c.pc p.length by
+    have := hsuff (Config.init inputs) (Classical.choose h) hsteps
+    simp only [Config.init] at this
+    omega
+  intro c c' hsteps'
+  induction hsteps' using Relation.ReflTransGen.head_induction_on with
+  | refl => omega
+  | head hstep _ ih =>
+    -- Each step increases pc by 1 for non-jumping instructions
+    -- Now handle each case
+    cases hstep with
+    | zero hinstr =>
+      simp only [Program.getInstr] at hinstr
+      have hpc_lt := List.getElem?_eq_some_iff.mp hinstr |>.1
+      simp only at ih ⊢
+      omega
+    | succ hinstr =>
+      simp only [Program.getInstr] at hinstr
+      have hpc_lt := List.getElem?_eq_some_iff.mp hinstr |>.1
+      simp only at ih ⊢
+      omega
+    | trans hinstr =>
+      simp only [Program.getInstr] at hinstr
+      have hpc_lt := List.getElem?_eq_some_iff.mp hinstr |>.1
+      simp only at ih ⊢
+      omega
+    | jump_eq hinstr _ =>
+      -- Jump instructions don't appear in straight-line programs
+      simp only [Program.getInstr] at hinstr
+      have ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.mp hinstr
+      have hmem : (Instr.J _ _ _) ∈ p := heq ▸ List.getElem_mem hlt
+      simp only [Program.isStraightLine, List.all_eq_true] at hsl
+      exact absurd (hsl _ hmem) (by simp [Instr.isNonJumping])
+    | jump_ne hinstr _ =>
+      -- Jump instructions don't appear in straight-line programs
+      simp only [Program.getInstr] at hinstr
+      have ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.mp hinstr
+      have hmem : (Instr.J _ _ _) ∈ p := heq ▸ List.getElem_mem hlt
+      simp only [Program.isStraightLine, List.all_eq_true] at hsl
+      exact absurd (hsl _ hmem) (by simp [Instr.isNonJumping])
+
 /-- copyRegisterRange produces a straight-line program. -/
 theorem copyRegisterRange_isStraightLine (src dst n : ℕ) :
     (Program.copyRegisterRange src dst n).isStraightLine = true := by
@@ -513,6 +591,211 @@ theorem clearRegisters_halts (maxReg : ℕ) (inputs : List ℕ) :
     Halts (Program.clearRegisters maxReg) inputs := by
   exact straightLine_halts (clearRegisters_isStraightLine maxReg) inputs
 
+/-- Execute a straight-line program from a given state, returning the final state.
+For straight-line programs, the final state is deterministic. -/
+def executeStraightLine (p : Program) (start : State) : State :=
+  p.foldl (fun σ instr =>
+    match instr with
+    | .Z n => σ.write n 0
+    | .S n => σ.write n (σ.read n + 1)
+    | .T m n => σ.write n (σ.read m)
+    | .J _ _ _ => σ  -- Shouldn't happen in straight-line programs
+  ) start
+
+/-- Helper: executing a single T instruction. -/
+theorem executeStraightLine_transfer (src dst : ℕ) (σ : State) :
+    executeStraightLine [Instr.T src dst] σ = σ.write dst (σ.read src) := by
+  simp only [executeStraightLine, List.foldl]
+
+/-- Helper: executing concatenated programs. -/
+theorem executeStraightLine_append (p1 p2 : Program) (σ : State) :
+    executeStraightLine (p1 ++ p2) σ = executeStraightLine p2 (executeStraightLine p1 σ) := by
+  simp only [executeStraightLine, List.foldl_append]
+
+/-- copyRegisterRange preserves registers outside the destination range. -/
+theorem copyRegisterRange_preserves_outside (src dst n : ℕ) (σ : State) (r : ℕ)
+    (hOutside : r < dst ∨ dst + n ≤ r) :
+    (executeStraightLine (Program.copyRegisterRange src dst n) σ).read r = σ.read r := by
+  induction n with
+  | zero => simp [Program.copyRegisterRange, executeStraightLine]
+  | succ k ih =>
+    simp only [Program.copyRegisterRange, List.range_succ, List.map_append, List.map_cons,
+               List.map_nil]
+    rw [executeStraightLine_append]
+    simp only [executeStraightLine, List.foldl]
+    simp only [State.read, State.write, Function.update]
+    split_ifs with heq
+    · -- dst + k = r, but r is outside [dst, dst+n), contradiction
+      cases hOutside with
+      | inl h => omega
+      | inr h => omega
+    · -- dst + k ≠ r
+      apply ih
+      cases hOutside with
+      | inl h => left; exact h
+      | inr h => right; omega
+
+/-- copyRegisterRange correctly copies values when ranges don't overlap.
+
+When dst + n ≤ src (destination range entirely before source range),
+the destination registers receive exact copies of the source values. -/
+theorem copyRegisterRange_correct_nonoverlap (src dst n : ℕ) (σ : State)
+    (hNoOverlap : dst + n ≤ src) :
+    ∀ i : Fin n, (executeStraightLine (Program.copyRegisterRange src dst n) σ).read (dst + i) =
+                 σ.read (src + i) := by
+  induction n with
+  | zero => intro i; exact i.elim0
+  | succ k ih =>
+    intro ⟨i, hi_bound⟩
+    -- ih applies to the first k transfers
+    have hNoOverlap' : dst + k ≤ src := by omega
+    -- Case split on whether i < k or i = k
+    by_cases hi : i < k
+    · -- i < k: use IH
+      have ih' := ih hNoOverlap' ⟨i, hi⟩
+      simp only at ih' ⊢
+      -- After the last transfer, register dst + i (where i < k) is unchanged
+      simp only [Program.copyRegisterRange, List.range_succ, List.map_append, List.map_cons,
+                 List.map_nil, executeStraightLine_append, executeStraightLine_transfer,
+                 State.read, State.write, Function.update] at ih' ⊢
+      split_ifs with heq
+      · -- dst + k = dst + i, contradiction since i < k
+        omega
+      · -- dst + k ≠ dst + i, use IH
+        exact ih'
+    · -- i ≥ k, so i = k (since i < k + 1)
+      have hi_eq : i = k := by omega
+      -- Prepare the "source untouched" lemma before subst
+      have hSrcUntouched := copyRegisterRange_preserves_outside src dst k σ (src + k)
+        (Or.inr (by omega : dst + k ≤ src + k))
+      simp only [State.read, Program.copyRegisterRange] at hSrcUntouched
+      -- Now substitute i = k
+      subst hi_eq
+      simp only [Program.copyRegisterRange, List.range_succ, List.map_append, List.map_cons,
+                 List.map_nil, executeStraightLine_append, executeStraightLine_transfer,
+                 State.read, State.write, Function.update]
+      exact hSrcUntouched
+
+/-! ## State Invariants for Composition -/
+
+/-- Inputs are preserved in safe storage (for restore operations).
+
+During composition, the original inputs need to be preserved in safe storage
+so they can be restored before running each g_i. -/
+def InputsPreserved (n : ℕ) (inputs : Fin n → ℕ) (inputSafe : ℕ) (state : State) : Prop :=
+  ∀ j : Fin n, state.read (inputSafe + j) = inputs j
+
+/-- Values are loaded in registers 0..n-1 (ready to run a program).
+
+A program expecting n inputs needs those values in registers 0, 1, ..., n-1. -/
+def InputsLoaded (n : ℕ) (vals : Fin n → ℕ) (state : State) : Prop :=
+  ∀ j : Fin n, state.read j = vals j
+
+/-! ## Continuation Lemmas for Sequential Execution -/
+
+section Continuation
+
+variable {p1 p2 : Program}
+
+/-- Convert a state to a list of register values (first n registers). -/
+def State.toList (s : State) (n : ℕ) : List ℕ :=
+  (List.range n).map s
+
+/-- Get instruction from shifted program. -/
+theorem Program.getInstr_shiftJumps (offset : ℕ) (p : Program) (i : ℕ) :
+    (p.shiftJumps offset).getInstr i = (p.getInstr i).map (Instr.shiftJumps offset) := by
+  simp only [Program.shiftJumps, Program.getInstr, List.getElem?_map]
+
+/-- Stepping in the second part of a concatenated program.
+If we can step in p2 from pc=k, we can step in p1.concat p2 from pc=k+p1.length. -/
+theorem Step.concat_right {c c' : Config}
+    (hpc : c.pc < p2.length)
+    (hstep : Step p2 c c') :
+    Step (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ ⟨c'.pc + p1.length, c'.state⟩ := by
+  have hlen : c.pc + p1.length < p1.length + p2.length := by omega
+  have hinstr_eq : (p1.concat p2).getInstr (c.pc + p1.length) =
+      (p2.shiftJumps p1.length).getInstr c.pc := by
+    rw [Program.getInstr_concat_right (c.pc + p1.length) (by omega) hlen]
+    simp only [Nat.add_sub_cancel]
+  match hstep with
+  | .zero (n := n) h =>
+    have h' : (p1.concat p2).getInstr (c.pc + p1.length) = some (Instr.Z n) := by
+      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
+    convert @Step.zero (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ n h' using 2 <;> simp <;> omega
+  | .succ (n := n) h =>
+    have h' : (p1.concat p2).getInstr (c.pc + p1.length) = some (Instr.S n) := by
+      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
+    convert @Step.succ (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ n h' using 2 <;> simp <;> omega
+  | .trans (m := m) (n := n) h =>
+    have h' : (p1.concat p2).getInstr (c.pc + p1.length) = some (Instr.T m n) := by
+      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
+    convert @Step.trans (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ m n h' using 2 <;> simp <;> omega
+  | .jump_eq (m := m) (n := n) (q := q) h heq =>
+    have h' : (p1.concat p2).getInstr (c.pc + p1.length) = some (Instr.J m n (q + p1.length)) := by
+      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
+    exact @Step.jump_eq (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ m n (q + p1.length) h' heq
+  | .jump_ne (m := m) (n := n) (q := q) h hne =>
+    have h' : (p1.concat p2).getInstr (c.pc + p1.length) = some (Instr.J m n (q + p1.length)) := by
+      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
+    convert @Step.jump_ne (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ m n (q + p1.length) h' hne using 2 <;> simp <;> omega
+
+/-- Multi-step in the second part of a concatenated program. -/
+theorem Steps.concat_right {c c' : Config}
+    (hsteps : Steps p2 c c')
+    (hhalted : c'.isHalted p2) :
+    Steps (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ ⟨c'.pc + p1.length, c'.state⟩ := by
+  induction hsteps using Relation.ReflTransGen.head_induction_on with
+  | refl => exact Relation.ReflTransGen.refl
+  | @head a b hstep hrest ih =>
+    -- hstep : Step p2 a b
+    -- Need: a.pc < p2.length (since a can step)
+    have hpc : a.pc < p2.length := by
+      by_contra hc
+      simp only [not_lt] at hc
+      exact Step.halted_no_step hc hstep
+    have hstep' := Step.concat_right (p1 := p1) hpc hstep
+    exact Relation.ReflTransGen.head hstep' ih
+
+/-- If p1 halts (by falling through) and p2 halts when started from p1's final state,
+then p1.concat p2 halts.
+
+This is the key continuation lemma: we can chain halting programs.
+The hypothesis h1_pc ensures p1 halted by falling through (pc = p1.length),
+not by jumping beyond the program. -/
+theorem Halts.concat_continuation {inputs : List ℕ}
+    (h1 : Halts p1 inputs)
+    (h1_pc : (Classical.choose h1).pc = p1.length)
+    (h2 : ∃ c, Steps p2 ⟨0, (Classical.choose h1).state⟩ c ∧ c.isHalted p2) :
+    Halts (p1.concat p2) inputs := by
+  -- Get the halted config from p1
+  obtain ⟨hsteps1, hhalted1⟩ := Classical.choose_spec h1
+  let c1 := Classical.choose h1
+  -- Get the halted config from p2
+  obtain ⟨c2, hsteps2, hhalted2⟩ := h2
+  -- Lift p1's execution to the concatenation
+  have hsteps1' := Steps.concat_left_prefix (p2 := p2) hsteps1 hhalted1
+  -- Now continue from where p1 halted
+  -- After p1 halts: we're at ⟨c1.pc, c1.state⟩ = ⟨p1.length, c1.state⟩
+  -- p2 starts at ⟨0, c1.state⟩, so we need ⟨0 + p1.length, c1.state⟩ = ⟨p1.length, c1.state⟩
+  have hsteps2' := Steps.concat_right (p1 := p1) hsteps2 hhalted2
+  -- The start of p2's lifted execution: ⟨0 + p1.length, c1.state⟩
+  -- This matches where p1 halted: ⟨p1.length, c1.state⟩ (using h1_pc)
+  have hstart_eq : (⟨0 + p1.length, c1.state⟩ : Config) = ⟨c1.pc, c1.state⟩ := by
+    simp only [Nat.zero_add]
+    rw [← h1_pc]
+  -- Rewrite hsteps2' to start from c1
+  rw [hstart_eq] at hsteps2'
+  -- The concatenation is transitive: first do p1's steps, then p2's
+  have hsteps_total := Relation.ReflTransGen.trans hsteps1' hsteps2'
+  -- Final config: c2 shifted
+  refine ⟨⟨c2.pc + p1.length, c2.state⟩, hsteps_total, ?_⟩
+  -- Show the final config is halted in p1.concat p2
+  simp only [Config.isHalted, Program.concat, List.length_append, Program.shiftJumps,
+             List.length_map, Config.isHalted] at hhalted2 ⊢
+  omega
+
+end Continuation
+
 /-! ## Main Composition Theorem -/
 
 /-- Helper: Type abbreviation for the specification of a program computing a function. -/
@@ -534,6 +817,30 @@ theorem comp_halts_of_defined {n m : ℕ}
     (inputs : Fin n → ℕ)
     (hDom : ((Part.sequence (fun i => g i inputs)).bind f).Dom) :
     Halts (Program.compose n m Pf (List.ofFn Pg)) (List.ofFn inputs) := by
+  -- Extract definedness of each g_i from the domain condition
+  have hSeqDom : (Part.sequence (fun i => g i inputs)).Dom := Part.bind_dom.mp hDom |>.1
+  -- Each g_i is defined on inputs
+  have hGiDom : ∀ i, (g i inputs).Dom := Part.sequence_dom.mp hSeqDom
+  -- Each g_i halts (by ProgramSpec)
+  have hGiHalts : ∀ i, Halts (Pg i) (List.ofFn inputs) := fun i =>
+    (hPg i inputs).1.mpr (hGiDom i)
+  -- f is defined on the results (from Part.bind_dom)
+  -- When Part.sequence is defined, its get returns a function that gives (g i inputs).get
+  have hFDom : (f (fun i => (g i inputs).get (hGiDom i))).Dom := by
+    have h := Part.bind_dom.mp hDom |>.2
+    -- h is: (f (Part.sequence ...).get hSeqDom).Dom
+    -- Convert using Part.sequence_get which shows the values are equal
+    convert h using 2
+    ext i
+    exact (Part.sequence_get hSeqDom i).symm
+  -- f halts (by ProgramSpec)
+  have hFHalts : Halts Pf (List.ofFn (fun i => (g i inputs).get (hGiDom i))) := by
+    exact (hPf _).1.mpr hFDom
+  -- Now we need to chain the programs together
+  -- Program.compose creates: foldConcat [saveInputs, computeGs, prepareF, runF]
+  simp only [Program.compose, Program.foldConcat]
+  -- The proof requires showing that each stage halts and the state is preserved
+  -- This is complex due to state tracking; use sorry for now pending full infrastructure
   sorry
 
 /-- If H halts, then all g_i are defined and f is defined on the results.
