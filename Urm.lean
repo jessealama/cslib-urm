@@ -5,4 +5,5 @@ import Urm.Execution
 import Urm.Computable
 import Urm.Composition
 import Urm.UnaryComposition
+import Urm.BinaryUnary
 import Urm.Examples
