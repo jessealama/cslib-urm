@@ -595,6 +595,51 @@ theorem steps_concat_continuation_straightLine {p1 p2 : Program} {σ : State}
   simp only [Config.isHalted, Program.concat_length] at hhalted2 ⊢
   omega
 
+/-- The final state of p1.concat p2 equals the final state of p2 from p1's final state.
+This is the stronger version that exposes the state relationship. -/
+theorem concat_final_state_eq_straightLine {p1 p2 : Program} {σ : State}
+    (hsl1 : p1.isStraightLine = true)
+    (h1 : ∃ c, Steps p1 ⟨0, σ⟩ c ∧ c.isHalted p1)
+    (h2 : ∃ c, Steps p2 ⟨0, (Classical.choose h1).state⟩ c ∧ c.isHalted p2) :
+    let h12 := steps_concat_continuation_straightLine hsl1 h1 h2
+    (Classical.choose h12).state = (Classical.choose h2).state := by
+  simp only
+  -- Get the specific witnesses
+  obtain ⟨hsteps2, hhalted2⟩ := Classical.choose_spec h2
+  let h12 := steps_concat_continuation_straightLine hsl1 h1 h2
+  obtain ⟨hsteps12, hhalted12⟩ := Classical.choose_spec h12
+  -- By the construction in steps_concat_continuation_straightLine,
+  -- the final config is ⟨(Classical.choose h2).pc + p1.length, (Classical.choose h2).state⟩
+  -- We need to show this equals Classical.choose h12
+  -- First, build the explicit witness that the proof constructs
+  obtain ⟨hsteps1, hhalted1⟩ := Classical.choose_spec h1
+  have hsteps1' := Steps.concat_left_prefix (p2 := p2) hsteps1 hhalted1
+  have hsteps2' := Steps.concat_right (p1 := p1) hsteps2 hhalted2
+  have hc1_pc : (Classical.choose h1).pc = p1.length := by
+    simp only [Config.isHalted] at hhalted1
+    suffices hsuff : (Classical.choose h1).pc ≤ p1.length by omega
+    have hsteps_from := straightLine_halts_from_state hsl1 σ
+    have hpc_eq := straightLine_halts_from_state_at_length hsl1 σ
+    have hunique := Steps.halts_unique hsteps1 hhalted1
+        (Classical.choose_spec hsteps_from).1 (Classical.choose_spec hsteps_from).2
+    rw [hunique, hpc_eq]
+  have hstart_eq : (⟨0 + p1.length, (Classical.choose h1).state⟩ : Config) =
+                   ⟨(Classical.choose h1).pc, (Classical.choose h1).state⟩ := by
+    simp only [Nat.zero_add, hc1_pc]
+  -- The constructed config for h12
+  let c12_constructed : Config := ⟨(Classical.choose h2).pc + p1.length, (Classical.choose h2).state⟩
+  have hsteps_constructed : Steps (p1.concat p2) ⟨0, σ⟩ c12_constructed := by
+    rw [hstart_eq] at hsteps2'
+    exact Relation.ReflTransGen.trans hsteps1' hsteps2'
+  have hhalted_constructed : c12_constructed.isHalted (p1.concat p2) := by
+    simp only [Config.isHalted, Program.concat_length, c12_constructed]
+    have : p2.length ≤ (Classical.choose h2).pc := hhalted2
+    omega
+  -- By halts_unique, Classical.choose h12 = c12_constructed
+  have heq := Steps.halts_unique hsteps12 hhalted12 hsteps_constructed hhalted_constructed
+  simp only [c12_constructed] at heq
+  rw [heq]
+
 /-- Reverse of Step.concat_right: stepping in concat from p2 range gives step in p2. -/
 theorem Step.of_concat_right_bounded {p1 p2 : Program} {pc : ℕ} {σ : State} {c' : Config}
     (_hbounded : p2.boundedJumps)
@@ -763,6 +808,63 @@ theorem steps_concat_continuation_bounded {p1 p2 : Program} {σ : State}
   simp only [Config.isHalted, Program.concat_length] at hhalted2 ⊢
   omega
 
+/-- The final state of p1.concat p2 equals the final state of p2 from p1's final state.
+Version for bounded-jump first program. -/
+theorem concat_final_state_eq_bounded {p1 p2 : Program} {σ : State}
+    (hbounded : p1.boundedJumps)
+    (h1 : ∃ c, Steps p1 ⟨0, σ⟩ c ∧ c.isHalted p1)
+    (h2 : ∃ c, Steps p2 ⟨0, (Classical.choose h1).state⟩ c ∧ c.isHalted p2) :
+    let h12 := steps_concat_continuation_bounded hbounded h1 h2
+    (Classical.choose h12).state = (Classical.choose h2).state := by
+  simp only
+  obtain ⟨hsteps2, hhalted2⟩ := Classical.choose_spec h2
+  let h12 := steps_concat_continuation_bounded hbounded h1 h2
+  obtain ⟨hsteps12, hhalted12⟩ := Classical.choose_spec h12
+  obtain ⟨hsteps1, hhalted1⟩ := Classical.choose_spec h1
+  have hsteps1' := Steps.concat_left_prefix (p2 := p2) hsteps1 hhalted1
+  have hsteps2' := Steps.concat_right (p1 := p1) hsteps2 hhalted2
+  have hc1_pc : (Classical.choose h1).pc = p1.length := by
+    simp only [Config.isHalted] at hhalted1
+    have hpc_le := Steps.pc_bounded hbounded hsteps1 (by simp)
+    omega
+  have hstart_eq : (⟨0 + p1.length, (Classical.choose h1).state⟩ : Config) =
+                   ⟨(Classical.choose h1).pc, (Classical.choose h1).state⟩ := by
+    simp only [Nat.zero_add, hc1_pc]
+  let c12_constructed : Config := ⟨(Classical.choose h2).pc + p1.length, (Classical.choose h2).state⟩
+  have hsteps_constructed : Steps (p1.concat p2) ⟨0, σ⟩ c12_constructed := by
+    rw [hstart_eq] at hsteps2'
+    exact Relation.ReflTransGen.trans hsteps1' hsteps2'
+  have hhalted_constructed : c12_constructed.isHalted (p1.concat p2) := by
+    simp only [Config.isHalted, Program.concat_length, c12_constructed]
+    have : p2.length ≤ (Classical.choose h2).pc := hhalted2
+    omega
+  have heq := Steps.halts_unique hsteps12 hhalted12 hsteps_constructed hhalted_constructed
+  simp only [c12_constructed] at heq
+  rw [heq]
+
+/-- shiftJumps is identity on straight-line programs (no jump instructions). -/
+theorem Program.shiftJumps_straightLine {p : Program} (hsl : p.isStraightLine = true) (n : ℕ) :
+    p.shiftJumps n = p := by
+  simp only [Program.shiftJumps]
+  induction p with
+  | nil => simp
+  | cons hd tl ih =>
+    simp only [Program.isStraightLine, List.all_cons, Bool.and_eq_true] at hsl
+    obtain ⟨hhd, htl⟩ := hsl
+    simp only [List.map_cons, List.cons.injEq]
+    constructor
+    · cases hd with
+      | Z n => simp [Instr.shiftJumps]
+      | S n => simp [Instr.shiftJumps]
+      | T m n => simp [Instr.shiftJumps]
+      | J m n q => simp [Instr.isNonJumping] at hhd
+    · exact ih htl
+
+/-- concat of straight-line programs equals simple append. -/
+theorem Program.concat_straightLine_eq (p1 p2 : Program) (hsl : p2.isStraightLine = true) :
+    p1.concat p2 = p1 ++ p2 := by
+  simp only [concat, shiftJumps_straightLine hsl]
+
 /-! ## clearAbove: Generalized Register Clearing
 
 `clearAbove start maxReg` clears registers from `start` up to `maxReg`,
@@ -815,7 +917,11 @@ private theorem clearAbove_aux_preserves_below (n start : ℕ) (σ : State) (r :
   | succ k ih =>
     simp only [List.range_succ, List.map_append, List.map_cons, List.map_nil,
       executeStraightLine_append]
-    simp only [executeStraightLine, List.foldl, State.read, State.write]
+    -- Execute the single Z instruction at end, keeping executeStraightLine in goal
+    conv_lhs =>
+      rw [executeStraightLine]
+      simp only [List.foldl]
+    simp only [State.read, State.write]
     have hne : r ≠ start + k := by omega
     rw [Function.update_of_ne hne]
     exact ih σ
@@ -864,6 +970,37 @@ theorem Program.clearAbove_zeros (start maxReg : ℕ) (σ : State) (r : ℕ)
     have hr_lt : r < start + (maxReg - start + 1) := by omega
     exact clearAbove_aux_zeros (maxReg - start + 1) start σ r hr_ge hr_lt
 
+/-- Helper: executing a list of Z instructions preserves registers above the range. -/
+private theorem clearAbove_aux_preserves_above (n start : ℕ) (σ : State) (r : ℕ)
+    (hr : r ≥ start + n) :
+    (executeStraightLine ((List.range n).map fun i => Instr.Z (start + i)) σ).read r = σ.read r := by
+  induction n generalizing σ with
+  | zero => simp [executeStraightLine]
+  | succ k ih =>
+    simp only [List.range_succ, List.map_append, List.map_cons, List.map_nil,
+      executeStraightLine_append]
+    -- Use unfold_executeStraightLine_single instead of full simp
+    conv_lhs =>
+      rw [executeStraightLine]
+      simp only [List.foldl]
+    simp only [State.read, State.write]
+    have hne : r ≠ start + k := by omega
+    rw [Function.update_of_ne hne]
+    have hr' : r ≥ start + k := by omega
+    exact ih σ hr'
+
+/-- clearAbove preserves registers above maxReg. -/
+theorem Program.clearAbove_preserves_above (start maxReg : ℕ) (σ : State) (r : ℕ)
+    (hr : r > maxReg) :
+    (executeStraightLine (Program.clearAbove start maxReg) σ).read r = σ.read r := by
+  simp only [clearAbove]
+  split_ifs with h
+  · simp [executeStraightLine]
+  · -- The program zeroes registers start, start+1, ..., maxReg
+    -- Since r > maxReg, none of these Z instructions affect r
+    have hr_ge : r ≥ start + (maxReg - start + 1) := by omega
+    exact clearAbove_aux_preserves_above (maxReg - start + 1) start σ r hr_ge
+
 /-- Zero registers R1 through maxReg (preserving R0). Empty if maxReg = 0. -/
 def Program.clearScratch (maxReg : ℕ) : Program :=
   if maxReg = 0 then []
@@ -876,5 +1013,94 @@ theorem Program.clearScratch_eq_clearAbove (maxReg : ℕ) (h : maxReg ≥ 1) :
   -- clearScratch: Z (0+1), Z (1+1), ..., Z ((maxReg-1)+1)
   -- clearAbove 1: Z (1+0), Z (1+1), ..., Z (1+(maxReg-1))
   sorry
+
+/-- clearScratch produces a straight-line program (no jumps). -/
+theorem Program.clearScratch_isStraightLine (maxReg : ℕ) :
+    (Program.clearScratch maxReg).isStraightLine = true := by
+  simp only [clearScratch]
+  split_ifs with h
+  · simp [Program.isStraightLine]
+  · simp only [Program.isStraightLine, List.all_map, Function.comp_apply,
+      Instr.isNonJumping, List.all_eq_true, List.mem_range]
+    intro _ _
+    trivial
+
+/-- clearScratch has bounded jumps (trivially, since it's straight-line). -/
+theorem Program.clearScratch_boundedJumps (maxReg : ℕ) :
+    (Program.clearScratch maxReg).boundedJumps :=
+  Program.boundedJumps_of_straightLine (clearScratch_isStraightLine maxReg)
+
+/-- clearScratch halts from any state. -/
+theorem Program.clearScratch_halts_from_state (maxReg : ℕ) (σ : State) :
+    ∃ c, Steps (Program.clearScratch maxReg) ⟨0, σ⟩ c ∧ c.isHalted (Program.clearScratch maxReg) :=
+  straightLine_halts_from_state (clearScratch_isStraightLine maxReg) σ
+
+/-- Helper: executing Z instructions for R1..Rn preserves R0. -/
+private theorem clearScratch_aux_preserves_R0 (n : ℕ) (σ : State) :
+    (executeStraightLine ((List.range n).map fun i => Instr.Z (i + 1)) σ).read 0 = σ.read 0 := by
+  induction n generalizing σ with
+  | zero => simp [executeStraightLine]
+  | succ k ih =>
+    simp only [List.range_succ, List.map_append, List.map_cons, List.map_nil,
+      executeStraightLine_append]
+    simp only [executeStraightLine, List.foldl, State.read, State.write]
+    have hne : (0 : ℕ) ≠ k + 1 := by omega
+    rw [Function.update_of_ne hne]
+    exact ih σ
+
+/-- clearScratch preserves R0. -/
+theorem Program.clearScratch_preserves_R0 (maxReg : ℕ) (σ : State) :
+    (executeStraightLine (Program.clearScratch maxReg) σ).read 0 = σ.read 0 := by
+  simp only [clearScratch]
+  split_ifs with h
+  · simp [executeStraightLine]
+  · exact clearScratch_aux_preserves_R0 maxReg σ
+
+/-- Helper: executing Z instructions for R1..Rn zeros registers 1 through n. -/
+private theorem clearScratch_aux_zeros (n : ℕ) (σ : State) (r : ℕ)
+    (hr1 : 1 ≤ r) (hr2 : r ≤ n) :
+    (executeStraightLine ((List.range n).map fun i => Instr.Z (i + 1)) σ).read r = 0 := by
+  induction n generalizing σ r with
+  | zero => omega
+  | succ k ih =>
+    simp only [List.range_succ, List.map_append, List.map_cons, List.map_nil,
+      executeStraightLine_append]
+    simp only [executeStraightLine, List.foldl, State.read, State.write]
+    by_cases heq : r = k + 1
+    · -- r = k + 1, the last instruction zeroed it
+      subst heq
+      rw [Function.update_self]
+    · -- r ≠ k + 1, so r ≤ k
+      have hr_le_k : r ≤ k := by omega
+      rw [Function.update_of_ne heq]
+      exact ih σ r hr1 hr_le_k
+
+/-- clearScratch zeros registers 1 through maxReg. -/
+theorem Program.clearScratch_zeros (maxReg : ℕ) (σ : State) (r : ℕ)
+    (hr1 : 1 ≤ r) (hr2 : r ≤ maxReg) :
+    (executeStraightLine (Program.clearScratch maxReg) σ).read r = 0 := by
+  simp only [clearScratch]
+  split_ifs with h
+  · omega
+  · exact clearScratch_aux_zeros maxReg σ r hr1 hr2
+
+/-- After clearScratch with R0 = y, state agrees with fromInputs [y] on low registers. -/
+theorem Program.clearScratch_agreesLow (maxReg : ℕ) (σ : State) (y : ℕ)
+    (hR0 : σ.read 0 = y) :
+    (executeStraightLine (Program.clearScratch maxReg) σ).agreesLow
+      (State.fromInputs [y]) maxReg := by
+  intro r hr
+  by_cases hr0 : r = 0
+  · -- R0: preserved by clearScratch, and fromInputs [y] has y at R0
+    subst hr0
+    rw [clearScratch_preserves_R0, hR0]
+    simp only [State.fromInputs, State.read, List.getD, List.getElem?_cons_zero, Option.getD_some]
+  · -- R1..maxReg: zeroed by clearScratch, and fromInputs [y] has 0
+    have hr1 : 1 ≤ r := Nat.one_le_iff_ne_zero.mpr hr0
+    rw [clearScratch_zeros maxReg σ r hr1 hr]
+    simp only [State.fromInputs, State.read, List.getD]
+    have hlen : ([y] : List ℕ).length ≤ r := by simp; exact hr1
+    have hout : [y][r]? = none := List.getElem?_eq_none hlen
+    simp only [hout, Option.getD_none]
 
 end Urm
