@@ -5,6 +5,7 @@ Authors: Jesse Alama
 -/
 
 import Urm.Computable
+import Urm.Shift
 import Mathlib.Data.Finset.Basic
 import Mathlib.Data.Fin.Tuple.Basic
 
@@ -591,6 +592,46 @@ theorem clearRegisters_halts (maxReg : ℕ) (inputs : List ℕ) :
     Halts (Program.clearRegisters maxReg) inputs := by
   exact straightLine_halts (clearRegisters_isStraightLine maxReg) inputs
 
+/-- Straight-line programs halt from any starting state, not just Config.init.
+This is key for chaining: after running one program, we can run the next
+straight-line segment from whatever state we're in. -/
+theorem straightLine_halts_from_state {p : Program} (hsl : p.isStraightLine = true) (s : State) :
+    ∃ c, Steps p ⟨0, s⟩ c ∧ c.isHalted p ∧ c.pc = p.length := by
+  -- Induction on remaining instructions
+  suffices h : ∀ (c : Config), c.pc ≤ p.length →
+      ∃ c', Steps p c c' ∧ c'.pc = p.length by
+    obtain ⟨c', hsteps, hpc'⟩ := h ⟨0, s⟩ (Nat.zero_le _)
+    exact ⟨c', hsteps, Nat.le_of_eq hpc'.symm, hpc'⟩
+  intro c hpc_le
+  generalize hrem : p.length - c.pc = remaining
+  induction remaining using Nat.strong_induction_on generalizing c with
+  | _ remaining ih =>
+    by_cases hhalted : c.pc ≥ p.length
+    · exact ⟨c, Relation.ReflTransGen.refl, by omega⟩
+    · push_neg at hhalted
+      have hpc_lt : c.pc < p.length := hhalted
+      have hinstr : ∃ instr, p.getInstr c.pc = some instr := by
+        simp only [Program.getInstr]
+        exact ⟨p[c.pc], List.getElem?_eq_getElem hpc_lt⟩
+      obtain ⟨instr, hinstr⟩ := hinstr
+      have hnonjump : instr.isNonJumping = true := by
+        simp only [Program.isStraightLine, List.all_eq_true] at hsl
+        have hmem : instr ∈ p := by
+          simp only [Program.getInstr] at hinstr
+          exact List.getElem?_eq_some_iff.mp hinstr |>.2 ▸ List.getElem_mem hpc_lt
+        exact hsl instr hmem
+      have hstep : ∃ c', Step p c c' ∧ c'.pc = c.pc + 1 := by
+        cases instr with
+        | Z n => exact ⟨⟨c.pc + 1, c.state.write n 0⟩, Step.zero hinstr, rfl⟩
+        | S n => exact ⟨⟨c.pc + 1, c.state.write n (c.state.read n + 1)⟩, Step.succ hinstr, rfl⟩
+        | T m n => exact ⟨⟨c.pc + 1, c.state.write n (c.state.read m)⟩, Step.trans hinstr, rfl⟩
+        | J m n q => simp [Instr.isNonJumping] at hnonjump
+      obtain ⟨c', hstep', hpc'⟩ := hstep
+      have hremaining : p.length - c'.pc < remaining := by omega
+      have hpc'_le : c'.pc ≤ p.length := by omega
+      obtain ⟨c'', hsteps'', hpc''⟩ := ih (p.length - c'.pc) hremaining c' hpc'_le rfl
+      exact ⟨c'', Relation.ReflTransGen.head hstep' hsteps'', hpc''⟩
+
 /-- Execute a straight-line program from a given state, returning the final state.
 For straight-line programs, the final state is deterministic. -/
 def executeStraightLine (p : Program) (start : State) : State :=
@@ -796,6 +837,102 @@ theorem Halts.concat_continuation {inputs : List ℕ}
 
 end Continuation
 
+/-! ## Shift-Based Composition Infrastructure
+
+The key insight for composition is that each subprogram gᵢ can run on a disjoint
+register range using shifted execution. This avoids the need for clearing registers
+between subprogram executions.
+
+Given n-ary functions g₀, ..., g_{m-1}, we run each gᵢ shifted by offset_i where
+the offsets are chosen so register ranges don't overlap. Then gᵢ's result lands
+at register offset_i.
+-/
+
+section ShiftedComposition
+
+/-- Offset for running the i-th subprogram in shifted composition.
+We leave n registers at the start for the original inputs, then space each
+subprogram by (maxG + 1) registers to ensure disjoint ranges.
+
+offset_i = n + i * (maxG + 1), where maxG = maxRegisterOfList gs
+-/
+def shiftOffset (n : ℕ) (maxG : ℕ) (i : ℕ) : ℕ := n + i * (maxG + 1)
+
+/-- Offsets for different subprograms are distinct. -/
+theorem shiftOffset_injective (n maxG : ℕ) {i j : ℕ}
+    (hij : i ≠ j) : shiftOffset n maxG i ≠ shiftOffset n maxG j := by
+  simp only [shiftOffset]
+  intro h
+  have : i = j := by
+    have h' : i * (maxG + 1) = j * (maxG + 1) := by omega
+    exact Nat.eq_of_mul_eq_mul_right (Nat.zero_lt_succ maxG) h'
+  contradiction
+
+/-- Register ranges for shifted subprograms are disjoint.
+Program at offset_i uses [offset_i, offset_i + maxG], and these don't overlap. -/
+theorem shiftOffset_ranges_disjoint (n maxG : ℕ) {i j : ℕ}
+    (hij : i < j) :
+    shiftOffset n maxG i + maxG < shiftOffset n maxG j := by
+  simp only [shiftOffset]
+  have h1 : n + i * (maxG + 1) + maxG < n + i * (maxG + 1) + (maxG + 1) := by omega
+  have h2 : n + i * (maxG + 1) + (maxG + 1) = n + (i + 1) * (maxG + 1) := by
+    have : (i + 1) * (maxG + 1) = i * (maxG + 1) + (maxG + 1) := Nat.succ_mul i (maxG + 1)
+    omega
+  have h3 : (i + 1) * (maxG + 1) ≤ j * (maxG + 1) := Nat.mul_le_mul_right _ hij
+  omega
+
+/-- The i-th subprogram's result (at offset_i) is below j-th's working registers. -/
+theorem shiftOffset_result_below_work (n maxG : ℕ) {i j : ℕ}
+    (hij : i < j) :
+    shiftOffset n maxG i < shiftOffset n maxG j := by
+  simp only [shiftOffset]
+  have h : i * (maxG + 1) < j * (maxG + 1) := Nat.mul_lt_mul_of_pos_right hij (Nat.zero_lt_succ maxG)
+  omega
+
+/-- Running a shifted subprogram preserves lower registers.
+Since shifted program uses registers ≥ offset, registers < offset are unchanged. -/
+theorem Steps.shiftRegisters_preserves_below {p : Program} {c c' : Config} {offset : ℕ}
+    (hsteps : Steps (p.shiftRegisters offset) c c') (r : ℕ) (hr : r < offset) :
+    c'.state.read r = c.state.read r := by
+  -- Registers below offset are not modified by a shifted program
+  induction hsteps using Relation.ReflTransGen.head_induction_on with
+  | refl => rfl
+  | head hstep _ ih =>
+    rw [ih]
+    -- hstep : Step (p.shiftRegisters offset) _ _
+    -- All registers modified by p.shiftRegisters offset are ≥ offset
+    match hstep with
+    | .zero (n := reg) hinstr =>
+      have ⟨hlo, _⟩ := Program.shiftRegisters_uses_range hinstr reg (Or.inr rfl)
+      simp only [State.read, State.write, Function.update_of_ne (by omega : r ≠ reg)]
+    | .succ (n := reg) hinstr =>
+      have ⟨hlo, _⟩ := Program.shiftRegisters_uses_range hinstr reg
+        (Or.inl (List.mem_singleton.mpr rfl))
+      simp only [State.read, State.write, Function.update_of_ne (by omega : r ≠ reg)]
+    | .trans (n := dst) hinstr =>
+      have ⟨hlo, _⟩ := Program.shiftRegisters_uses_range hinstr dst (Or.inr rfl)
+      simp only [State.read, State.write, Function.update_of_ne (by omega : r ≠ dst)]
+    | .jump_eq _ _ => rfl
+    | .jump_ne _ _ => rfl
+
+/-- Running a shifted subprogram also preserves registers above its range.
+Since program uses at most registers in [offset, offset + maxRegister], higher registers
+are unchanged.
+
+Note: This uses Steps.preserves_high_register applied to the shifted program. -/
+theorem Steps.shiftRegisters_preserves_above {p : Program} {c c' : Config} {offset : ℕ}
+    (hsteps : Steps (p.shiftRegisters offset) c c') (r : ℕ)
+    (hp : p ≠ [])
+    (hr : offset + p.maxRegister < r) :
+    c'.state.read r = c.state.read r := by
+  -- The shifted program's maxRegister = p.maxRegister + offset (for nonempty p)
+  have hmax : (p.shiftRegisters offset).maxRegister = p.maxRegister + offset :=
+    Program.maxRegister_shiftRegisters offset p hp
+  have hr' : (p.shiftRegisters offset).maxRegister < r := by omega
+  exact Steps.preserves_high_register hsteps r hr'
+
+end ShiftedComposition
+
 /-! ## Main Composition Theorem -/
 
 /-- Helper: Type abbreviation for the specification of a program computing a function. -/
@@ -869,6 +1006,53 @@ theorem comp_result_eq {n m : ℕ}
     (hDom : ((Part.sequence (fun i => g i inputs)).bind f).Dom) :
     Result (Program.compose n m Pf (List.ofFn Pg)) (List.ofFn inputs) hHalts =
     ((Part.sequence (fun i => g i inputs)).bind f).get hDom := by
+  -- Extract intermediate hypotheses from hDom
+  have hSeqDom : (Part.sequence (fun i => g i inputs)).Dom := Part.bind_dom.mp hDom |>.1
+  have hGiDom : ∀ i, (g i inputs).Dom := Part.sequence_dom.mp hSeqDom
+  have hGiHalts : ∀ i, Halts (Pg i) (List.ofFn inputs) := fun i => (hPg i inputs).1.mpr (hGiDom i)
+  have hFDom : (f (fun i => (g i inputs).get (hGiDom i))).Dom := by
+    have h := Part.bind_dom.mp hDom |>.2
+    convert h using 2; ext i; exact (Part.sequence_get hSeqDom i).symm
+  have hFHalts : Halts Pf (List.ofFn (fun i => (g i inputs).get (hGiDom i))) :=
+    (hPf _).1.mpr hFDom
+  -- Use ProgramSpec to get result equalities
+  have hGiResult : ∀ i, Result (Pg i) (List.ofFn inputs) (hGiHalts i) = (g i inputs).get (hGiDom i) :=
+    fun i => (hPg i inputs).2 (hGiHalts i) (hGiDom i)
+  have hFResult : Result Pf (List.ofFn (fun i => (g i inputs).get (hGiDom i))) hFHalts =
+                  (f (fun i => (g i inputs).get (hGiDom i))).get hFDom :=
+    (hPf _).2 hFHalts hFDom
+  -- Rewrite RHS using Part.Dom.bind: when o.Dom, o.bind f = f (o.get h)
+  -- Use Part.Dom.bind to simplify the bind
+  have hSimp : (Part.sequence (fun i => g i inputs)).bind f =
+               f ((Part.sequence (fun i => g i inputs)).get hSeqDom) :=
+    Part.Dom.bind hSeqDom f
+  -- Show the argument to f equals what we expect
+  have hArgEq : (Part.sequence (fun i => g i inputs)).get hSeqDom =
+                (fun i => (g i inputs).get (hGiDom i)) := by
+    ext i
+    exact Part.sequence_get hSeqDom i
+  -- Combine to get the RHS equality using cast
+  have hRHS : ((Part.sequence (fun i => g i inputs)).bind f).get hDom =
+              (f (fun i => (g i inputs).get (hGiDom i))).get hFDom := by
+    -- The bind simplifies and we can use the argument equality
+    have h1 : (f ((Part.sequence (fun i => g i inputs)).get hSeqDom)) =
+              (f (fun i => (g i inputs).get (hGiDom i))) := by rw [hArgEq]
+    simp only [hSimp, h1]
+  rw [hRHS, ← hFResult]
+  -- Goal: Result (Program.compose ...) _ _ = Result Pf (List.ofFn (fun i => (g i inputs).get _)) _
+  --
+  -- This requires a key semantic lemma about foldConcat execution:
+  -- After phases [saveInputs, computeGs, prepareF], registers 0..m-1 contain the g_i values.
+  -- Then runF (= Pf) runs on this state, and its Result is the composed program's Result.
+  --
+  -- Missing infrastructure needed:
+  -- 1. foldConcat_result_eq_last: Result of foldConcat equals Result of last phase
+  --    when run from the post-intermediate-phases state
+  -- 2. prepareF_regs_match: After prepareF, registers 0..m-1 contain exactly
+  --    the values List.ofFn (fun i => (g i inputs).get _)
+  -- 3. computeGs_halts_with_values: computeGs correctly computes each g_i
+  --
+  -- These lemmas require tracing execution through each phase of Program.compose.
   sorry
 
 /-- Closure under composition (Cutland's Theorem 3.1).
