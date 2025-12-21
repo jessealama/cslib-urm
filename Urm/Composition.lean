@@ -562,6 +562,160 @@ theorem straightLine_halts_at_length {p : Program} (hsl : p.isStraightLine = tru
       simp only [Program.isStraightLine, List.all_eq_true] at hsl
       exact absurd (hsl _ hmem) (by simp [Instr.isNonJumping])
 
+/-! ## Standard Form
+
+A program is in "standard form" if it always halts exactly at its length (by falling through
+the end, not by jumping beyond). This property is essential for sequential composition:
+when we concatenate programs, the first program must terminate exactly at its length so
+the second program starts at the correct position.
+
+We assume all programs are in standard form. Later, we will prove that every program
+has a computationally equivalent standard form program. -/
+
+/-- A program is in standard form if, whenever it halts, the program counter equals
+the program length. -/
+def Program.IsStandardForm (p : Program) : Prop :=
+  ∀ (inputs : List ℕ) (c : Config),
+    Steps p (Config.init inputs) c →
+    c.isHalted p →
+    c.pc = p.length
+
+/-- A partial function is URM-computable by a standard form program. -/
+def URMComputableSF (n : ℕ) (f : (Fin n → ℕ) → Part ℕ) : Prop :=
+  ∃ p : Program, p.IsStandardForm ∧
+    ∀ inputs : Fin n → ℕ,
+      let inputList := List.ofFn inputs
+      (Halts p inputList ↔ (f inputs).Dom) ∧
+      ∀ (hHalts : Halts p inputList) (hDom : (f inputs).Dom),
+        Result p inputList hHalts = (f inputs).get hDom
+
+/-- Straight-line programs are in standard form.
+
+Since straight-line programs have no jumps, they can only increment the program counter
+by 1 at each step, so they must halt exactly at the program length. -/
+theorem straightLine_isStandardForm {p : Program} (hsl : p.isStraightLine = true) :
+    p.IsStandardForm := by
+  intro inputs c hsteps hhalted
+  have hHalts : Halts p inputs := ⟨c, hsteps, hhalted⟩
+  have hHalts' := straightLine_halts hsl inputs
+  obtain ⟨hsteps', hhalted'⟩ := Classical.choose_spec hHalts'
+  have heq := Steps.halts_unique hsteps hhalted hsteps' hhalted'
+  rw [heq]
+  exact straightLine_halts_at_length hsl inputs
+
+/-- Concatenation of straight-line programs is straight-line. -/
+theorem Program.isStraightLine_concat {p1 p2 : Program}
+    (h1 : p1.isStraightLine = true) (h2 : p2.isStraightLine = true) :
+    (p1.concat p2).isStraightLine = true := by
+  simp only [Program.concat, Program.isStraightLine, List.all_append]
+  simp only [Program.isStraightLine] at h1 h2
+  rw [Bool.and_eq_true]
+  constructor
+  · exact h1
+  · simp only [Program.shiftJumps, List.all_map]
+    convert h2 using 2
+    funext instr
+    cases instr <;> simp [Instr.shiftJumps, Instr.isNonJumping]
+
+/-- Concatenation of straight-line programs is standard form. -/
+theorem straightLine_concat_isStandardForm {p1 p2 : Program}
+    (h1 : p1.isStraightLine = true) (h2 : p2.isStraightLine = true) :
+    (p1.concat p2).IsStandardForm := by
+  apply straightLine_isStandardForm
+  exact Program.isStraightLine_concat h1 h2
+
+/-- Concatenation of standard form programs is standard form.
+
+If p₁ and p₂ are both standard form, then p₁.concat p₂ is also standard form.
+The key insight is that p₁ halts at exactly p₁.length, which is where p₂ starts
+in the concatenated program. -/
+theorem Program.IsStandardForm.concat {p1 p2 : Program}
+    (h1 : p1.IsStandardForm) (h2 : p2.IsStandardForm) :
+    (p1.concat p2).IsStandardForm := by
+  intro inputs c hsteps hhalted
+  simp only [Config.isHalted, Program.concat_length] at hhalted
+  -- We need to show c.pc = p1.length + p2.length
+  -- The execution must pass through p1, halt at p1.length, then execute p2.
+  --
+  -- Key observations:
+  -- 1. While pc < p1.length, we execute p1's instructions
+  -- 2. By p1 standard form, when p1 halts it's at exactly p1.length
+  -- 3. At pc = p1.length, we start executing p2 (shifted by p1.length)
+  -- 4. By p2 standard form, p2 halts at exactly p2.length (relative)
+  -- 5. So the final pc is p1.length + p2.length
+  --
+  -- This requires decomposing the execution into phases.
+  sorry
+
+/-- If p1.concat p2 halts and p1 is standard form, then p1 halts.
+
+This is the "prefix halts" property: execution of the concatenation must pass through
+a state where p1 has halted (at pc = p1.length) before continuing into p2.
+
+The key insight is that for standard form programs:
+1. Execution starts at pc = 0
+2. While pc < p1.length, we execute p1's instructions
+3. Standard form means when we "exit" p1, it's at pc = p1.length (halted in p1)
+4. This config witnesses that p1 halts -/
+theorem Halts.prefix_of_concat_sf {p1 p2 : Program} {inputs : List ℕ}
+    (hH : Halts (p1.concat p2) inputs)
+    (h1 : p1.IsStandardForm) :
+    Halts p1 inputs := by
+  -- Extract the execution path from Config.init to a halted config in H
+  -- Find the first config where pc = p1.length
+  -- The prefix of the path up to that point is an execution of p1
+  -- At pc = p1.length, p1 is halted
+  sorry
+
+/-- If p1.concat p2 halts and p1 is standard form, we can recover the intermediate state
+after p1 halts (at pc = p1.length). -/
+theorem Halts.concat_sf_intermediate_state {p1 p2 : Program} {inputs : List ℕ}
+    (hH : Halts (p1.concat p2) inputs)
+    (h1 : p1.IsStandardForm) :
+    ∃ s : State, Steps p1 (Config.init inputs) ⟨p1.length, s⟩ ∧
+                 (⟨p1.length, s⟩ : Config).isHalted p1 := by
+  have hP1 := Halts.prefix_of_concat_sf hH h1
+  have hspec := Classical.choose_spec hP1
+  have hpc := h1 inputs (Classical.choose hP1) hspec.1 hspec.2
+  use (Classical.choose hP1).state
+  constructor
+  · -- Need to show Steps p1 (Config.init inputs) ⟨p1.length, c.state⟩
+    -- We have hspec.1 : Steps p1 (Config.init inputs) c and hpc : c.pc = p1.length
+    have heq : Classical.choose hP1 = ⟨p1.length, (Classical.choose hP1).state⟩ := by
+      ext
+      · exact hpc
+      · rfl
+    rw [heq] at hspec
+    exact hspec.1
+  · simp only [Config.isHalted]
+    exact Nat.le_refl _
+
+/-- If p1.concat p2 halts and p1 is standard form, then p2 halts from the intermediate state.
+
+After p1 halts at pc = p1.length, the remaining execution is exactly p2 starting
+from the state left by p1. -/
+theorem Halts.suffix_of_concat_sf {p1 p2 : Program} {inputs : List ℕ}
+    (hH : Halts (p1.concat p2) inputs)
+    (h1 : p1.IsStandardForm) :
+    ∃ s : State, Halts p1 inputs ∧
+                 (∀ hP1 : Halts p1 inputs, s = (Classical.choose hP1).state) ∧
+                 (∃ c, Steps p2 ⟨0, s⟩ c ∧ c.isHalted p2) := by
+  -- Get the intermediate state from p1's halting
+  have hP1 := Halts.prefix_of_concat_sf hH h1
+  have hc1_spec := Classical.choose_spec hP1
+  have hc1_pc := h1 inputs (Classical.choose hP1) hc1_spec.1 hc1_spec.2
+  use (Classical.choose hP1).state
+  refine ⟨hP1, ?_, ?_⟩
+  · intro hP1'
+    -- By determinism, both choose the same config
+    have huniq := Steps.halts_unique hc1_spec.1 hc1_spec.2
+                    (Classical.choose_spec hP1').1 (Classical.choose_spec hP1').2
+    rw [huniq]
+  · -- The execution of H from Config.init to final config passes through c1
+    -- The suffix from c1 to final is the execution of p2 from c1.state
+    -- This requires extracting the suffix of the execution path
+    sorry
+
 /-- copyRegisterRange produces a straight-line program. -/
 theorem copyRegisterRange_isStraightLine (src dst n : ℕ) :
     (Program.copyRegisterRange src dst n).isStraightLine = true := by
