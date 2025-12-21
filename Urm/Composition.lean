@@ -632,90 +632,102 @@ theorem straightLine_halts_from_state {p : Program} (hsl : p.isStraightLine = tr
       obtain ⟨c'', hsteps'', hpc''⟩ := ih (p.length - c'.pc) hremaining c' hpc'_le rfl
       exact ⟨c'', Relation.ReflTransGen.head hstep' hsteps'', hpc''⟩
 
-/-- Execute a straight-line program from a given state, returning the final state.
-For straight-line programs, the final state is deterministic. -/
-def executeStraightLine (p : Program) (start : State) : State :=
-  p.foldl (fun σ instr =>
-    match instr with
-    | .Z n => σ.write n 0
-    | .S n => σ.write n (σ.read n + 1)
-    | .T m n => σ.write n (σ.read m)
-    | .J _ _ _ => σ  -- Shouldn't happen in straight-line programs
-  ) start
+/-- The final state after running a straight-line program from a given starting state.
+This is the relational-semantics version that replaces the functional `executeStraightLine`. -/
+noncomputable def straightLineFinalState {p : Program} (hsl : p.isStraightLine = true) (s : State) : State :=
+  (Classical.choose (straightLine_halts_from_state hsl s)).state
 
-/-- Helper: executing a single T instruction. -/
-theorem executeStraightLine_transfer (src dst : ℕ) (σ : State) :
-    executeStraightLine [Instr.T src dst] σ = σ.write dst (σ.read src) := by
-  simp only [executeStraightLine, List.foldl]
+/-- The final config from straightLineFinalState satisfies the expected properties. -/
+theorem straightLineFinalState_spec {p : Program} (hsl : p.isStraightLine = true) (s : State) :
+    let c := Classical.choose (straightLine_halts_from_state hsl s)
+    Steps p ⟨0, s⟩ c ∧ c.isHalted p ∧ c.pc = p.length :=
+  Classical.choose_spec (straightLine_halts_from_state hsl s)
 
-/-- Helper: executing concatenated programs. -/
-theorem executeStraightLine_append (p1 p2 : Program) (σ : State) :
-    executeStraightLine (p1 ++ p2) σ = executeStraightLine p2 (executeStraightLine p1 σ) := by
-  simp only [executeStraightLine, List.foldl_append]
+/-- A single step in a straight-line program modifies at most one register. -/
+theorem Step.straightLine_preserves {p : Program} {c c' : Config} {r : ℕ}
+    (hsl : p.isStraightLine = true) (hstep : Step p c c')
+    (hr : ∀ instr, p.getInstr c.pc = some instr → instr.writesTo ≠ some r) :
+    c'.state.read r = c.state.read r := by
+  cases hstep with
+  | zero hinstr =>
+    have := hr _ hinstr
+    simp only [Instr.writesTo, ne_eq, Option.some.injEq] at this
+    simp only [State.read, State.write]
+    exact Function.update_of_ne (Ne.symm this) _ _
+  | succ hinstr =>
+    have := hr _ hinstr
+    simp only [Instr.writesTo, ne_eq, Option.some.injEq] at this
+    simp only [State.read, State.write]
+    exact Function.update_of_ne (Ne.symm this) _ _
+  | trans hinstr =>
+    have := hr _ hinstr
+    simp only [Instr.writesTo, ne_eq, Option.some.injEq] at this
+    simp only [State.read, State.write]
+    exact Function.update_of_ne (Ne.symm this) _ _
+  | jump_eq hinstr _ =>
+    -- Jump in a straight-line program is a contradiction
+    simp only [Program.getInstr] at hinstr
+    have ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.mp hinstr
+    have hmem : (Instr.J _ _ _) ∈ p := heq ▸ List.getElem_mem hlt
+    simp only [Program.isStraightLine, List.all_eq_true] at hsl
+    exact absurd (hsl _ hmem) (by simp [Instr.isNonJumping])
+  | jump_ne hinstr _ =>
+    simp only [Program.getInstr] at hinstr
+    have ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.mp hinstr
+    have hmem : (Instr.J _ _ _) ∈ p := heq ▸ List.getElem_mem hlt
+    simp only [Program.isStraightLine, List.all_eq_true] at hsl
+    exact absurd (hsl _ hmem) (by simp [Instr.isNonJumping])
 
-/-- copyRegisterRange preserves registers outside the destination range. -/
+/-- Multi-step execution preserves registers not written by any instruction. -/
+theorem Steps.straightLine_preserves {p : Program} {c c' : Config} {r : ℕ}
+    (hsl : p.isStraightLine = true) (hsteps : Steps p c c')
+    (hr : ∀ instr, instr ∈ p → instr.writesTo ≠ some r) :
+    c'.state.read r = c.state.read r := by
+  induction hsteps using Relation.ReflTransGen.head_induction_on with
+  | refl => rfl
+  | head hstep _ ih =>
+    rw [ih]
+    apply Step.straightLine_preserves hsl hstep
+    intro instr hinstr
+    apply hr
+    simp only [Program.getInstr] at hinstr
+    exact List.mem_of_getElem? hinstr
+
+/-- copyRegisterRange preserves registers outside the destination range.
+Uses the relational semantics directly. -/
 theorem copyRegisterRange_preserves_outside (src dst n : ℕ) (σ : State) (r : ℕ)
     (hOutside : r < dst ∨ dst + n ≤ r) :
-    (executeStraightLine (Program.copyRegisterRange src dst n) σ).read r = σ.read r := by
-  induction n with
-  | zero => simp [Program.copyRegisterRange, executeStraightLine]
-  | succ k ih =>
-    simp only [Program.copyRegisterRange, List.range_succ, List.map_append, List.map_cons,
-               List.map_nil]
-    rw [executeStraightLine_append]
-    simp only [executeStraightLine, List.foldl]
-    simp only [State.read, State.write, Function.update]
-    split_ifs with heq
-    · -- dst + k = r, but r is outside [dst, dst+n), contradiction
-      cases hOutside with
-      | inl h => omega
-      | inr h => omega
-    · -- dst + k ≠ r
-      apply ih
-      cases hOutside with
-      | inl h => left; exact h
-      | inr h => right; omega
+    (straightLineFinalState (copyRegisterRange_isStraightLine src dst n) σ).read r = σ.read r := by
+  -- The program only writes to registers dst, dst+1, ..., dst+n-1
+  -- Since r is outside this range, it is preserved
+  have hsl := copyRegisterRange_isStraightLine src dst n
+  have ⟨hsteps, _, _⟩ := straightLineFinalState_spec hsl σ
+  apply Steps.straightLine_preserves hsl hsteps
+  intro instr hmem
+  -- Each instruction in copyRegisterRange is T (src+i) (dst+i) for some i
+  simp only [Program.copyRegisterRange, List.mem_map] at hmem
+  obtain ⟨i, hi_range, hinstr_eq⟩ := hmem
+  simp only [List.mem_range] at hi_range
+  subst hinstr_eq
+  simp only [Instr.writesTo, ne_eq, Option.some.injEq]
+  cases hOutside with
+  | inl h => omega
+  | inr h => omega
 
 /-- copyRegisterRange correctly copies values when ranges don't overlap.
 
 When dst + n ≤ src (destination range entirely before source range),
-the destination registers receive exact copies of the source values. -/
+the destination registers receive exact copies of the source values.
+Uses the relational semantics directly.
+
+TODO: This requires more infrastructure to prove with relational semantics.
+The proof needs to track that after k steps, registers dst..dst+k-1 have been
+copied and the source registers are still unchanged. -/
 theorem copyRegisterRange_correct_nonoverlap (src dst n : ℕ) (σ : State)
     (hNoOverlap : dst + n ≤ src) :
-    ∀ i : Fin n, (executeStraightLine (Program.copyRegisterRange src dst n) σ).read (dst + i) =
+    ∀ i : Fin n, (straightLineFinalState (copyRegisterRange_isStraightLine src dst n) σ).read (dst + i) =
                  σ.read (src + i) := by
-  induction n with
-  | zero => intro i; exact i.elim0
-  | succ k ih =>
-    intro ⟨i, hi_bound⟩
-    -- ih applies to the first k transfers
-    have hNoOverlap' : dst + k ≤ src := by omega
-    -- Case split on whether i < k or i = k
-    by_cases hi : i < k
-    · -- i < k: use IH
-      have ih' := ih hNoOverlap' ⟨i, hi⟩
-      simp only at ih' ⊢
-      -- After the last transfer, register dst + i (where i < k) is unchanged
-      simp only [Program.copyRegisterRange, List.range_succ, List.map_append, List.map_cons,
-                 List.map_nil, executeStraightLine_append, executeStraightLine_transfer,
-                 State.read, State.write, Function.update] at ih' ⊢
-      split_ifs with heq
-      · -- dst + k = dst + i, contradiction since i < k
-        omega
-      · -- dst + k ≠ dst + i, use IH
-        exact ih'
-    · -- i ≥ k, so i = k (since i < k + 1)
-      have hi_eq : i = k := by omega
-      -- Prepare the "source untouched" lemma before subst
-      have hSrcUntouched := copyRegisterRange_preserves_outside src dst k σ (src + k)
-        (Or.inr (by omega : dst + k ≤ src + k))
-      simp only [State.read, Program.copyRegisterRange] at hSrcUntouched
-      -- Now substitute i = k
-      subst hi_eq
-      simp only [Program.copyRegisterRange, List.range_succ, List.map_append, List.map_cons,
-                 List.map_nil, executeStraightLine_append, executeStraightLine_transfer,
-                 State.read, State.write, Function.update]
-      exact hSrcUntouched
+  sorry
 
 /-! ## State Invariants for Composition -/
 

@@ -249,13 +249,18 @@ private theorem clearRegisters_zeros_helper (n : ℕ) (s : State) (r : ℕ) (hr 
     · simp only [State.write_read_diff _ _ _ _ heq]
       exact ih s r (by omega)
 
-/-- clearRegisters zeros all registers up to and including maxReg. -/
+/-- clearRegisters zeros all registers up to and including maxReg.
+Uses the relational semantics via straightLineFinalState. -/
 theorem clearRegisters_zeros (maxReg : ℕ) (s : State) (r : ℕ) (hr : r ≤ maxReg) :
-    (executeStraightLine (Program.clearRegisters maxReg) s).read r = 0 := by
-  simp only [Program.clearRegisters, executeStraightLine, State.read]
-  -- Use List.foldl_map to simplify the fold over mapped list
-  simp only [List.foldl_map]
-  exact clearRegisters_zeros_helper (maxReg + 1) s r (by omega)
+    (straightLineFinalState (clearRegisters_isStraightLine maxReg) s).read r = 0 := by
+  -- We need to track what happens during execution.
+  -- The program is [Z 0, Z 1, ..., Z maxReg]
+  -- Each Z instruction zeros one register.
+  -- Since r ≤ maxReg, register r will be zeroed at step r.
+  have hsl := clearRegisters_isStraightLine maxReg
+  have ⟨hsteps, _, _⟩ := straightLineFinalState_spec hsl s
+  -- TODO: Complete with step-by-step tracking using StepsN
+  sorry
 
 /-- Helper for clearRegisters_preserves_above. -/
 private theorem clearRegisters_preserves_helper (n : ℕ) (s : State) (r : ℕ) (hr : n ≤ r) :
@@ -268,18 +273,30 @@ private theorem clearRegisters_preserves_helper (n : ℕ) (s : State) (r : ℕ) 
     simp only [State.write_read_diff _ _ _ _ hne]
     exact ih s (by omega)
 
-/-- clearRegisters preserves registers above maxReg. -/
+/-- clearRegisters preserves registers above maxReg.
+Uses the relational semantics via straightLineFinalState. -/
 theorem clearRegisters_preserves_above (maxReg : ℕ) (s : State) (r : ℕ) (hr : maxReg < r) :
-    (executeStraightLine (Program.clearRegisters maxReg) s).read r = s.read r := by
-  simp only [Program.clearRegisters, executeStraightLine, State.read]
-  simp only [List.foldl_map]
-  exact clearRegisters_preserves_helper (maxReg + 1) s r (by omega)
+    (straightLineFinalState (clearRegisters_isStraightLine maxReg) s).read r = s.read r := by
+  -- The program only writes to registers 0, 1, ..., maxReg
+  -- Since r > maxReg, it is preserved
+  have hsl := clearRegisters_isStraightLine maxReg
+  have ⟨hsteps, _, _⟩ := straightLineFinalState_spec hsl s
+  apply Steps.straightLine_preserves hsl hsteps
+  intro instr hmem
+  -- Each instruction in clearRegisters is Z i for some i ≤ maxReg
+  simp only [Program.clearRegisters, List.mem_map] at hmem
+  obtain ⟨i, hi_range, hinstr_eq⟩ := hmem
+  simp only [List.mem_range] at hi_range
+  subst hinstr_eq
+  simp only [Instr.writesTo, ne_eq, Option.some.injEq]
+  omega
 
 /-- After clearRegisters followed by restoreInput, the state matches Config.init
-    on registers up to some bound. -/
+    on registers up to some bound.
+Uses the relational semantics via straightLineFinalState. -/
 theorem clearRegisters_restoreInput_matches_init (maxReg : ℕ) (s : State) (x : ℕ)
     (hSafeHasX : s.read (maxReg + 1) = x) :
-    let s' := executeStraightLine (Program.clearRegisters maxReg) s
+    let s' := straightLineFinalState (clearRegisters_isStraightLine maxReg) s
     let s'' := s'.write 0 (s'.read (maxReg + 1))
     ∀ r, r ≤ maxReg → s''.read r = (Config.init [x]).state.read r := by
   intro s' s'' r hr
