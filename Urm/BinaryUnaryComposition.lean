@@ -33,93 +33,6 @@ The proof follows the user's sketch based on Cutland's approach:
 
 namespace Urm
 
-/-! ## Register Independence -/
-
-/-- If two states agree on registers ≤ p.maxRegister, then a step from one
-corresponds to a step from the other with the same pc transition. -/
-theorem Step.register_independent {p : Program} {c c' : Config} {s2 : State}
-    (hstep : Step p c c')
-    (hagree : ∀ r, r ≤ p.maxRegister → s2.read r = c.state.read r) :
-    ∃ s2', Step p ⟨c.pc, s2⟩ ⟨c'.pc, s2'⟩ ∧
-           (∀ r, r ≤ p.maxRegister → s2'.read r = c'.state.read r) := by
-  cases hstep with
-  | zero hinstr =>
-    rename_i n
-    have hn_le : n ≤ p.maxRegister := by
-      have := Program.instr_maxRegister_le hinstr
-      simp [Instr.maxRegister] at this
-      exact this
-    refine ⟨s2.write n 0, Step.zero hinstr, ?_⟩
-    intro r hr
-    simp only [State.read, State.write, Function.update]
-    split_ifs with heq
-    · rfl
-    · exact hagree r hr
-  | succ hinstr =>
-    rename_i n
-    have hn_le : n ≤ p.maxRegister := by
-      have := Program.instr_maxRegister_le hinstr
-      simp [Instr.maxRegister] at this
-      exact this
-    refine ⟨s2.write n (s2.read n + 1), Step.succ hinstr, ?_⟩
-    intro r hr
-    simp only [State.read, State.write, Function.update]
-    split_ifs with heq
-    · subst heq; simp only [State.read] at hagree ⊢; rw [hagree r hr]
-    · exact hagree r hr
-  | trans hinstr =>
-    rename_i m n
-    have hmn_le : m ≤ p.maxRegister ∧ n ≤ p.maxRegister := by
-      have := Program.instr_maxRegister_le hinstr
-      simp only [Instr.maxRegister] at this
-      exact ⟨Nat.le_trans (Nat.le_max_left m n) this, Nat.le_trans (Nat.le_max_right m n) this⟩
-    refine ⟨s2.write n (s2.read m), Step.trans hinstr, ?_⟩
-    intro r hr
-    simp only [State.read, State.write, Function.update]
-    split_ifs with heq
-    · subst heq; simp only [State.read] at hagree ⊢; exact hagree m hmn_le.1
-    · exact hagree r hr
-  | jump_eq hinstr heq =>
-    rename_i m n q
-    have hmn_le : m ≤ p.maxRegister ∧ n ≤ p.maxRegister := by
-      have := Program.instr_maxRegister_le hinstr
-      simp only [Instr.maxRegister] at this; omega
-    refine ⟨s2, Step.jump_eq hinstr ?_, ?_⟩
-    · rw [hagree m hmn_le.1, hagree n hmn_le.2]; exact heq
-    · exact hagree
-  | jump_ne hinstr hne =>
-    rename_i m n q
-    have hmn_le : m ≤ p.maxRegister ∧ n ≤ p.maxRegister := by
-      have := Program.instr_maxRegister_le hinstr
-      simp only [Instr.maxRegister] at this; omega
-    refine ⟨s2, Step.jump_ne hinstr ?_, ?_⟩
-    · intro heq'; apply hne; rw [← hagree m hmn_le.1, ← hagree n hmn_le.2]; exact heq'
-    · exact hagree
-
-/-- If two states agree on registers ≤ p.maxRegister, then multi-step execution
-from one corresponds to multi-step execution from the other. -/
-theorem Steps.register_independent {p : Program} {c c' : Config} {s2 : State}
-    (hsteps : Steps p c c')
-    (hagree : ∀ r, r ≤ p.maxRegister → s2.read r = c.state.read r) :
-    ∃ s2', Steps p ⟨c.pc, s2⟩ ⟨c'.pc, s2'⟩ ∧
-           (∀ r, r ≤ p.maxRegister → s2'.read r = c'.state.read r) := by
-  induction hsteps using Relation.ReflTransGen.head_induction_on generalizing s2 with
-  | refl => exact ⟨s2, Relation.ReflTransGen.refl, hagree⟩
-  | head hstep _ ih =>
-    obtain ⟨s2', hstep', hagree'⟩ := Step.register_independent hstep hagree
-    obtain ⟨s2'', hsteps', hagree''⟩ := ih hagree'
-    exact ⟨s2'', Relation.ReflTransGen.head hstep' hsteps', hagree''⟩
-
-/-- Key lemma: If p halts on some input, and we modify only registers above p.maxRegister,
-p still halts with the same pc trajectory. -/
-theorem Halts.register_independent {p : Program} {inputs : List ℕ} {s : State}
-    (hhalts : Halts p inputs)
-    (hagree : ∀ r, r ≤ p.maxRegister → s.read r = (Config.init inputs).state.read r) :
-    ∃ c', Steps p ⟨0, s⟩ c' ∧ c'.isHalted p := by
-  obtain ⟨hsteps, hhalted⟩ := Classical.choose_spec hhalts
-  obtain ⟨s', hsteps', _⟩ := Steps.register_independent hsteps hagree
-  exact ⟨⟨(Classical.choose hhalts).pc, s'⟩, hsteps', hhalted⟩
-
 /-! ## Single Transfer Instruction Execution -/
 
 /-- A single Transfer instruction takes exactly one step and halts. -/
@@ -139,18 +52,6 @@ theorem single_transfer_halts (src dst : ℕ) (s : State) :
   · simp [Config.isHalted]
 
 /-! ## clearRegisters Effect on State -/
-
-/-- Helper for clearRegisters_zeros: induction on the range. -/
-private theorem clearRegisters_zeros_helper (n : ℕ) (s : State) (r : ℕ) (hr : r < n) :
-    (List.foldl (fun σ i => σ.write i 0) s (List.range n)).read r = 0 := by
-  induction n generalizing s r with
-  | zero => omega
-  | succ k ih =>
-    simp only [List.range_succ, List.foldl_append, List.foldl_cons, List.foldl_nil]
-    by_cases heq : r = k
-    · subst heq; simp only [State.write_read_same]
-    · simp only [State.write_read_diff _ _ _ _ heq]
-      exact ih s r (by omega)
 
 /-- clearRegisters is the same as clearRegistersFrom 0 (maxReg + 1). -/
 theorem clearRegisters_eq_clearRegistersFrom (maxReg : ℕ) :
@@ -196,17 +97,6 @@ theorem clearRegisters_zeros (maxReg : ℕ) (s : State) (r : ℕ) (hr : r ≤ ma
   have hr_range : 0 ≤ r ∧ r < 0 + (maxReg + 1) := ⟨Nat.zero_le r, by omega⟩
   exact clearRegistersFrom_zeros 0 (maxReg + 1) s r hr_range
 
-/-- Helper for clearRegisters_preserves_above. -/
-private theorem clearRegisters_preserves_helper (n : ℕ) (s : State) (r : ℕ) (hr : n ≤ r) :
-    (List.foldl (fun σ i => σ.write i 0) s (List.range n)).read r = s.read r := by
-  induction n generalizing s with
-  | zero => simp only [List.range_zero, List.foldl_nil]
-  | succ k ih =>
-    simp only [List.range_succ, List.foldl_append, List.foldl_cons, List.foldl_nil]
-    have hne : r ≠ k := by omega
-    simp only [State.write_read_diff _ _ _ _ hne]
-    exact ih s (by omega)
-
 /-- clearRegisters preserves registers above maxReg.
 Uses the relational semantics via straightLineFinalState. -/
 theorem clearRegisters_preserves_above (maxReg : ℕ) (s : State) (r : ℕ) (hr : maxReg < r) :
@@ -224,31 +114,6 @@ theorem clearRegisters_preserves_above (maxReg : ℕ) (s : State) (r : ℕ) (hr 
   subst hinstr_eq
   simp only [Instr.writesTo, ne_eq, Option.some.injEq]
   omega
-
-/-- After clearRegisters followed by restoreInput, the state matches Config.init
-    on registers up to some bound.
-Uses the relational semantics via straightLineFinalState. -/
-theorem clearRegisters_restoreInput_matches_init (maxReg : ℕ) (s : State) (x : ℕ)
-    (hSafeHasX : s.read (maxReg + 1) = x) :
-    let s' := straightLineFinalState (clearRegisters_isStraightLine maxReg) s
-    let s'' := s'.write 0 (s'.read (maxReg + 1))
-    ∀ r, r ≤ maxReg → s''.read r = (Config.init [x]).state.read r := by
-  intro s' s'' r hr
-  by_cases heq : r = 0
-  · -- r = 0: s'' has x at position 0, same as Config.init [x]
-    subst heq
-    have h1 : s'.read (maxReg + 1) = s.read (maxReg + 1) :=
-      clearRegisters_preserves_above maxReg s (maxReg + 1) (by omega)
-    simp only [s'', State.write_read_same, h1, hSafeHasX]
-    simp only [Config.init, State.fromInputs, State.read, List.getD, List.getElem?_cons_zero]
-    rfl
-  · -- r ≠ 0 and r ≤ maxReg: s'' has 0, same as Config.init [x]
-    have h1 : s'.read r = 0 := clearRegisters_zeros maxReg s r hr
-    simp only [s'', State.write_read_diff _ _ _ _ heq, h1]
-    simp only [Config.init, State.fromInputs, State.read, List.getD]
-    cases r with
-    | zero => contradiction
-    | succ n => simp only [List.getElem?_cons_succ, List.getElem?_nil]; rfl
 
 /-! ## Binary-Unary Composition Construction -/
 
@@ -319,11 +184,6 @@ theorem compositionBaseBU_ge_G2 (pF pG1 pG2 : Program) :
     pG2.maxRegister ≤ compositionBaseBU pF pG1 pG2 := by
   simp only [compositionBaseBU]
   exact Nat.le_trans (Nat.le_max_right _ _) (Nat.le_max_right _ _)
-
-/-- Safe storage registers are above all program registers. -/
-theorem safe_registers_above_max (pF pG1 pG2 : Program) (i : Fin 3) :
-    compositionBaseBU pF pG1 pG2 < compositionBaseBU pF pG1 pG2 + 1 + i := by
-  omega
 
 /-! ## Main Composition Theorem -/
 
@@ -649,10 +509,432 @@ theorem URMComputableSF.comp_binary_unary
       -- - pF runs from that state and produces the same output as if from Config.init [v1, v2]
 
       have hResult_eq : cH.state.output = cF.state.output := by
-        -- The proof requires building the full execution trace through all three phases
-        -- and showing that the final state matches what pF produces.
-        -- This is analogous to the backward direction construction.
-        sorry
+        -- Redefine the phase structure (not in scope from backward direction)
+        set m := compositionBaseBU pF pG1 pG2 with hm_def
+        let T01 : Program := [Instr.T 0 (m + 1)]
+        let T02 : Program := [Instr.T 0 (m + 2)]
+        let clearProg := Program.clearRegisters m
+        let T10 : Program := [Instr.T (m + 1) 0]
+        let T03 : Program := [Instr.T 0 (m + 3)]
+        let Tsetup : Program := [Instr.T (m + 2) 0, Instr.T (m + 3) 1]
+
+        let phase1 := T01.concat (pG1.concat T02)
+        let phase2 := clearProg.concat (T10.concat (pG2.concat T03))
+        let phase3 := clearProg.concat (Tsetup.concat pF)
+
+        -- Standard form and straight-line properties
+        have hT01_sl := single_transfer_isStraightLine 0 (m + 1)
+        have hT02_sl := single_transfer_isStraightLine 0 (m + 2)
+        have hT10_sl := single_transfer_isStraightLine (m + 1) 0
+        have hT03_sl := single_transfer_isStraightLine 0 (m + 3)
+        have hTsetup_sl := double_transfer_isStraightLine (m + 2) 0 (m + 3) 1
+        have hClear_sl := clearRegisters_isStraightLine m
+
+        have hPhase1_sf : phase1.IsStandardForm :=
+          (straightLine_isStandardForm hT01_sl).concat
+            (hG1_sf.concat (straightLine_isStandardForm hT02_sl))
+        have hPhase2_sf : phase2.IsStandardForm :=
+          (straightLine_isStandardForm hClear_sl).concat
+            ((straightLine_isStandardForm hT10_sl).concat
+              (hG2_sf.concat (straightLine_isStandardForm hT03_sl)))
+        have hPhase3_sf : phase3.IsStandardForm :=
+          (straightLine_isStandardForm hClear_sl).concat
+            ((straightLine_isStandardForm hTsetup_sl).concat hF_sf)
+
+        -- H = phase1.concat (phase2.concat phase3)
+        have hH_eq : H = phase1.concat (phase2.concat phase3) := rfl
+
+        -- We'll build the execution trace to show cH.state = some state with R[0] = cF.state.output
+        -- The strategy: use Halts.from_agreeing_state to get pF's final config from the setup state
+
+        -- Key register bounds
+        have hm_ge_F : pF.maxRegister ≤ m := compositionBaseBU_ge_F pF pG1 pG2
+        have hm_ge_G1 : pG1.maxRegister ≤ m := compositionBaseBU_ge_G1 pF pG1 pG2
+        have hm_ge_G2 : pG2.maxRegister ≤ m := compositionBaseBU_ge_G2 pF pG1 pG2
+
+        -- === APPROACH ===
+        -- 1. Build the state sSetup that pF sees after phase1 + phase2 + clear + Tsetup
+        -- 2. Show sSetup agrees with Config.init [v1, v2] on pF-relevant registers
+        -- 3. Use Halts.from_agreeing_state to get pF execution and output from sSetup
+        -- 4. Build cH_built using that pF execution
+        -- 5. Build full execution trace to cH_built
+        -- 6. Apply Steps.halts_unique to show cH = cH_built
+
+        -- === SETUP STATE CONSTRUCTION ===
+        -- After clear + Tsetup in phase3:
+        -- - R[0] = v1 (transferred from R[m+2])
+        -- - R[1] = v2 (transferred from R[m+3])
+        -- - R[2..m] = 0 (cleared)
+        -- - R[m+1] = x, R[m+2] = v1, R[m+3] = v2 (preserved above m)
+
+        -- We need to show this agrees with Config.init [v1, v2] on registers ≤ pF.maxRegister
+
+        -- Config.init [v1, v2] has:
+        -- - R[0] = v1
+        -- - R[1] = v2
+        -- - R[r] = 0 for r ≥ 2
+        -- Since pF.maxRegister ≤ m, and our setup has R[0]=v1, R[1]=v2, R[2..m]=0,
+        -- the states agree on registers ≤ pF.maxRegister.
+
+        -- Build state agreement lemma
+        have hagree_pF : ∀ sSetup : State,
+            (sSetup.read 0 = v1) →
+            (sSetup.read 1 = v2) →
+            (∀ r, 2 ≤ r → r ≤ m → sSetup.read r = 0) →
+            (∀ r, r ≤ pF.maxRegister →
+              sSetup.read r = (State.fromInputs [v1, v2]).read r) := by
+          intro sSetup hr0 hr1 hzeros r hr
+          by_cases h0 : r = 0
+          · subst h0
+            simp only [State.fromInputs, State.read, List.getD_cons_zero]
+            exact hr0
+          · by_cases h1 : r = 1
+            · subst h1
+              simp only [State.fromInputs, State.read, List.getD]
+              simp only [List.getElem?_cons_succ, List.getElem?_cons_zero]
+              exact hr1
+            · -- r ≥ 2 and r ≤ pF.maxRegister ≤ m
+              have hr_ge_2 : 2 ≤ r := by omega
+              have hr_le_m : r ≤ m := Nat.le_trans hr hm_ge_F
+              have hsSetup_zero := hzeros r hr_ge_2 hr_le_m
+              -- Config.init [v1, v2] also has 0 at position r ≥ 2
+              have hinit_zero : (State.fromInputs [v1, v2]).read r = 0 := by
+                apply State.fromInputs_out_of_range
+                simp only [List.length_cons, List.length_nil]
+                omega
+              rw [hsSetup_zero, hinit_zero]
+
+        -- Use Halts.from_agreeing_state to get pF execution
+        -- Given a state sSetup satisfying the conditions, pF produces the correct output
+        have hPf_from_setup : ∀ sSetup : State,
+            (sSetup.read 0 = v1) →
+            (sSetup.read 1 = v2) →
+            (∀ r, 2 ≤ r → r ≤ m → sSetup.read r = 0) →
+            ∃ cPf', Steps pF ⟨0, sSetup⟩ cPf' ∧
+                    cPf'.isHalted pF ∧
+                    cPf'.state.output = cF.state.output := by
+          intro sSetup hr0 hr1 hzeros
+          have hagree := hagree_pF sSetup hr0 hr1 hzeros
+          have hfInput_eq : List.ofFn fInput = [v1, v2] := by
+            simp only [List.ofFn_succ, List.ofFn_zero, fInput]
+            rfl
+          have hF_halts' : Halts pF [v1, v2] := by
+            rw [← hfInput_eq]; exact hF_halts
+          obtain ⟨cPf', hsteps', hhalted', houtput'⟩ := Halts.from_agreeing_state hF_halts' hagree
+          refine ⟨cPf', hsteps', hhalted', ?_⟩
+          -- The output equality follows from uniqueness of halted configs
+          sorry
+
+        -- === BUILD EXECUTION TRACE ===
+        -- We need to trace through all phases and build the expected final config
+
+        -- Get input value (x)
+        let x := inputs ⟨0, by omega⟩
+
+        -- === PHASE 1 TRACE ===
+        -- Phase 1: T01 ++ G1 ++ T02
+        -- T01: R[m+1] := R[0] (save input)
+        -- G1: compute, R[0] = v1
+        -- T02: R[m+2] := R[0] (save v1)
+
+        -- G1 halts from Config.init
+        let cG1 := Classical.choose hG1_halts
+        have hG1_spec' := Classical.choose_spec hG1_halts
+        have hG1_steps : Steps pG1 (Config.init (List.ofFn inputs)) cG1 := hG1_spec'.1
+        have hG1_halted : cG1.isHalted pG1 := hG1_spec'.2
+        have hG1_pc : cG1.pc = pG1.length := hG1_sf (List.ofFn inputs) cG1 hG1_steps hG1_halted
+
+        -- G1's output is v1
+        have hG1_output : cG1.state.output = v1 := by
+          sorry
+
+        -- === PHASE 2 TRACE ===
+        -- G2 halts from Config.init
+        let cG2 := Classical.choose hG2_halts
+        have hG2_spec' := Classical.choose_spec hG2_halts
+        have hG2_steps : Steps pG2 (Config.init (List.ofFn inputs)) cG2 := hG2_spec'.1
+        have hG2_halted : cG2.isHalted pG2 := hG2_spec'.2
+        have hG2_pc : cG2.pc = pG2.length := hG2_sf (List.ofFn inputs) cG2 hG2_steps hG2_halted
+
+        -- G2's output is v2
+        have hG2_output : cG2.state.output = v2 := by
+          sorry
+
+        -- === FINAL STATE CONSTRUCTION ===
+        -- The key insight: we need to show what state pF runs from in H.
+        -- After phase1 + phase2 + (clear + Tsetup) of phase3:
+        -- - R[0] = v1 (from R[m+2] via T(m+2, 0))
+        -- - R[1] = v2 (from R[m+3] via T(m+3, 1))
+        -- - R[2..m] = 0 (from clearRegisters)
+        --
+        -- This state satisfies the conditions for hPf_from_setup.
+
+        -- Define the setup state explicitly
+        -- sSetup = state after clear + Tsetup where:
+        -- - registers 0..m are cleared, then
+        -- - R[0] is set to v1 (from some source register holding v1)
+        -- - R[1] is set to v2 (from some source register holding v2)
+
+        -- For now, we define sSetup abstractly via the execution
+        -- The key is that clearRegisters zeros R[0..m], then transfers set R[0]=v1, R[1]=v2
+
+        -- === SIMPLIFIED APPROACH ===
+        -- Rather than building the full trace explicitly, we use the structure:
+        -- 1. H halts (given)
+        -- 2. H's final phase is phase3 = clear ++ Tsetup ++ pF
+        -- 3. After clear ++ Tsetup, pF runs from a state matching Config.init [v1, v2]
+        -- 4. By hPf_from_setup, pF's output matches cF's output
+
+        -- The full explicit trace would require building:
+        -- - State after T01: s1 with R[m+1] = x
+        -- - State after G1 from s1: s2 with R[0] = v1 (via register_independent)
+        -- - State after T02: s3 with R[m+2] = v1
+        -- - State after clear in phase2: s4 with R[0..m] = 0, R[m+1] = x, R[m+2] = v1
+        -- - State after T10: s5 with R[0] = x
+        -- - State after G2 from s5: s6 with R[0] = v2 (via register_independent)
+        -- - State after T03: s7 with R[m+3] = v2
+        -- - State after clear in phase3: s8 with R[0..m] = 0, R[m+2] = v1, R[m+3] = v2
+        -- - State after Tsetup: sSetup with R[0] = v1, R[1] = v2, R[2..m] = 0
+
+        -- This requires using:
+        -- - single_transfer_halts for T instructions
+        -- - straightLine_halts_from_state for clear
+        -- - Halts.from_agreeing_state / register_independent for G1, G2
+        -- - Tracking register values through each step
+
+        -- For the current proof, we admit this trace construction and use the result
+        -- The full implementation would follow the pattern above
+
+        -- State conditions that must hold after phase1 + phase2 + (clear + Tsetup):
+        have hsSetup_conditions : ∃ sSetup : State,
+            sSetup.read 0 = v1 ∧
+            sSetup.read 1 = v2 ∧
+            (∀ r, 2 ≤ r → r ≤ m → sSetup.read r = 0) ∧
+            -- And there's a trace from H's init through phase1+phase2+(clear+Tsetup) to ⟨setup_pc, sSetup⟩
+            ∃ setup_pc : ℕ,
+              setup_pc = phase1.length + phase2.length + clearProg.length + Tsetup.length ∧
+              ∃ hsteps_to_setup : Steps H (Config.init (List.ofFn inputs)) ⟨setup_pc, sSetup⟩, True := by
+          -- This is the key construction that traces execution through all phases
+
+          -- The setup state after clear + Tsetup in phase3:
+          -- We construct it explicitly by tracking register values
+
+          -- Key observation: After phase3's clear, all R[0..m] = 0
+          -- Then Tsetup sets R[0] = R[m+2] = v1 and R[1] = R[m+3] = v2
+
+          -- The state before phase3's clear has:
+          -- - R[m+2] = v1 (preserved from phase1's T02)
+          -- - R[m+3] = v2 (preserved from phase2's T03)
+
+          -- After phase3's clear + Tsetup:
+          -- - R[0] = v1
+          -- - R[1] = v2
+          -- - R[2..m] = 0 (from clear)
+
+          -- We construct sSetup explicitly:
+          let sSetup : State := fun r =>
+            if r = 0 then v1
+            else if r = 1 then v2
+            else if r ≤ m then 0
+            else if r = m + 1 then x
+            else if r = m + 2 then v1
+            else if r = m + 3 then v2
+            else 0
+
+          have hr0 : sSetup.read 0 = v1 := by simp [sSetup, State.read]
+          have hr1 : sSetup.read 1 = v2 := by simp [sSetup, State.read]
+          have hzeros : ∀ r, 2 ≤ r → r ≤ m → sSetup.read r = 0 := by
+            sorry
+
+          refine ⟨sSetup, hr0, hr1, hzeros, ?_⟩
+
+          -- Now we need to build the trace to sSetup
+          -- We'll build it step by step through each phase
+
+          -- === T INSTRUCTION EXECUTIONS ===
+
+          -- Initial state
+          let s0 := (Config.init (List.ofFn inputs)).state
+
+          -- T01: copies R[0] to R[m+1]
+          have hT01_exec := single_transfer_halts 0 (m + 1) s0
+          obtain ⟨cT01, hT01_steps, hT01_halted, hT01_pc, hT01_state⟩ := hT01_exec
+          -- After T01: state is s0.write (m+1) (s0.read 0) = s0.write (m+1) x
+          have hT01_state_r0 : cT01.state.read 0 = s0.read 0 := by
+            sorry
+          have hT01_state_saved : cT01.state.read (m + 1) = s0.read 0 := by
+            rw [hT01_state]; exact State.write_read_same s0 (m + 1) (s0.read 0)
+
+          -- After G1 runs (we'll need G1's halting for this - skip for now and focus on T instructions)
+
+          -- T02: copies R[0] to R[m+2] (after G1, R[0] = v1)
+          -- We'll parameterize by the state after G1
+          have hT02_exec : ∀ s : State,
+              ∃ c, Steps T02 ⟨0, s⟩ c ∧ c.isHalted T02 ∧ c.pc = 1 ∧
+                   c.state = s.write (m + 2) (s.read 0) := by
+            intro s
+            exact single_transfer_halts 0 (m + 2) s
+
+          -- T10: copies R[m+1] to R[0] (restores input)
+          have hT10_exec : ∀ s : State,
+              ∃ c, Steps T10 ⟨0, s⟩ c ∧ c.isHalted T10 ∧ c.pc = 1 ∧
+                   c.state = s.write 0 (s.read (m + 1)) := by
+            intro s
+            exact single_transfer_halts (m + 1) 0 s
+
+          -- T03: copies R[0] to R[m+3] (after G2, R[0] = v2)
+          have hT03_exec : ∀ s : State,
+              ∃ c, Steps T03 ⟨0, s⟩ c ∧ c.isHalted T03 ∧ c.pc = 1 ∧
+                   c.state = s.write (m + 3) (s.read 0) := by
+            intro s
+            exact single_transfer_halts 0 (m + 3) s
+
+          -- Tsetup: two transfers [T (m+2) 0, T (m+3) 1]
+          -- First transfer: R[0] := R[m+2]
+          -- Second transfer: R[1] := R[m+3]
+          have hTsetup_exec : ∀ s : State,
+              ∃ c, Steps Tsetup ⟨0, s⟩ c ∧ c.isHalted Tsetup ∧ c.pc = 2 ∧
+                   c.state = (s.write 0 (s.read (m + 2))).write 1 (s.read (m + 3)) := by
+            intro s
+            -- First transfer
+            have h1 := single_transfer_step (m + 2) 0 s
+            let s1 := s.write 0 (s.read (m + 2))
+            -- Second transfer
+            have h2 := single_transfer_step (m + 3) 1 s1
+            -- The second step needs adjustment for Tsetup context
+            have h2' : Step Tsetup ⟨1, s1⟩ ⟨2, s1.write 1 (s1.read (m + 3))⟩ := by
+              apply Step.trans
+              simp [Program.getInstr, Tsetup]
+            -- Combine steps
+            have hsteps : Steps Tsetup ⟨0, s⟩ ⟨2, s1.write 1 (s1.read (m + 3))⟩ := by
+              have h1' : Step Tsetup ⟨0, s⟩ ⟨1, s1⟩ := by
+                apply Step.trans
+                simp [Program.getInstr, Tsetup]
+              exact Relation.ReflTransGen.head h1' (Relation.ReflTransGen.single h2')
+            have hhalted : (⟨2, s1.write 1 (s1.read (m + 3))⟩ : Config).isHalted Tsetup := by
+              simp [Config.isHalted, Tsetup]
+            -- Simplify s1.read (m + 3) = s.read (m + 3) since we only wrote to position 0
+            have hs1_read : s1.read (m + 3) = s.read (m + 3) := by
+              simp only [s1, State.write_read_diff _ _ _ _ (by omega : m + 3 ≠ 0)]
+            refine ⟨⟨2, s1.write 1 (s1.read (m + 3))⟩, hsteps, hhalted, rfl, ?_⟩
+            rw [hs1_read]
+
+          -- === CLEAR PROGRAM EXECUTIONS ===
+          -- clearProg halts from any state
+          have hClear_exec : ∀ s : State,
+              ∃ c, Steps clearProg ⟨0, s⟩ c ∧ c.isHalted clearProg ∧
+                   c.pc = clearProg.length ∧
+                   (∀ r, r ≤ m → c.state.read r = 0) ∧
+                   (∀ r, m < r → c.state.read r = s.read r) := by
+            intro s
+            have hClear_halts := straightLine_halts_from_state hClear_sl s
+            obtain ⟨c, hsteps, hhalted, hpc⟩ := hClear_halts
+            refine ⟨c, hsteps, hhalted, hpc, ?_, ?_⟩
+            · intro r hr
+              have hstate_eq : c.state = straightLineFinalState hClear_sl s := by
+                have hspec := straightLineFinalState_spec hClear_sl s
+                exact (Steps.halts_unique hsteps hhalted hspec.1 hspec.2.1).symm ▸ rfl
+              rw [hstate_eq]
+              exact clearRegisters_zeros m s r hr
+            · intro r hr
+              have hstate_eq : c.state = straightLineFinalState hClear_sl s := by
+                have hspec := straightLineFinalState_spec hClear_sl s
+                exact (Steps.halts_unique hsteps hhalted hspec.1 hspec.2.1).symm ▸ rfl
+              rw [hstate_eq]
+              exact clearRegisters_preserves_above m s r hr
+
+          -- === REMAINING TRACE CONSTRUCTION ===
+          -- Now we need to:
+          -- 1. Chain T01 with G1 execution (using register_independent)
+          -- 2. Chain with T02
+          -- 3. Chain with clear + T10
+          -- 4. Chain with G2 execution (using register_independent)
+          -- 5. Chain with T03
+          -- 6. Chain with clear + Tsetup
+
+          -- This requires careful state tracking to show we reach sSetup
+          sorry
+
+        obtain ⟨sSetup, hr0, hr1, hzeros, setup_pc, hpc_eq, hsteps_to_setup, _⟩ := hsSetup_conditions
+
+        -- Apply hPf_from_setup to get pF's execution and output
+        obtain ⟨cPf', hPf_steps, hPf_halted, hPf_output⟩ := hPf_from_setup sSetup hr0 hr1 hzeros
+
+        -- Build the expected final config
+        let cH_built : Config := ⟨cPf'.pc + setup_pc, cPf'.state⟩
+
+        -- Show cH_built is halted in H
+        have hH_built_halted : cH_built.isHalted H := by
+          simp only [Config.isHalted, cH_built, hH_eq]
+          simp only [Program.concat_length]
+          simp only [Config.isHalted] at hPf_halted
+          simp only [hpc_eq, phase3]
+          simp only [Program.concat_length] at hPf_halted ⊢
+          omega
+
+        -- Build steps from setup to cH_built
+        have hPf_steps_in_H : Steps H ⟨setup_pc, sSetup⟩ cH_built := by
+          -- pF execution lifted to H at offset setup_pc
+          -- setup_pc = phase1.length + phase2.length + clearProg.length + Tsetup.length
+          -- pF starts at setup_pc in H (after all the setup)
+
+          -- Step 1: Lift pF to Tsetup.concat pF
+          have h1 := Steps.concat_right (p1 := Tsetup) hPf_steps hPf_halted
+          simp only [Nat.zero_add] at h1
+          -- h1 : Steps (Tsetup.concat pF) ⟨Tsetup.length, sSetup⟩ ⟨cPf'.pc + Tsetup.length, cPf'.state⟩
+
+          -- Need halted in Tsetup.concat pF for next lift
+          have hhalted1 : (⟨cPf'.pc + Tsetup.length, cPf'.state⟩ : Config).isHalted (Tsetup.concat pF) := by
+            simp only [Config.isHalted, Program.concat_length]
+            simp only [Config.isHalted] at hPf_halted
+            omega
+
+          -- Step 2: Lift to clearProg.concat (Tsetup.concat pF)
+          have h2 := Steps.concat_right (p1 := clearProg) h1 hhalted1
+          -- h2 : Steps (clearProg.concat (Tsetup.concat pF))
+          --        ⟨Tsetup.length + clearProg.length, sSetup⟩
+          --        ⟨cPf'.pc + Tsetup.length + clearProg.length, cPf'.state⟩
+
+          -- Need halted in phase3 = clearProg.concat (Tsetup.concat pF)
+          have hhalted2 : (⟨cPf'.pc + Tsetup.length + clearProg.length, cPf'.state⟩ : Config).isHalted phase3 := by
+            simp only [Config.isHalted, phase3, Program.concat_length]
+            simp only [Config.isHalted] at hPf_halted
+            omega
+
+          -- Step 3: Lift to phase2.concat phase3
+          have h3 := Steps.concat_right (p1 := phase2) h2 hhalted2
+          -- Adjust the starting pc
+
+          -- Need halted in phase2.concat phase3
+          have hhalted3 : (⟨cPf'.pc + Tsetup.length + clearProg.length + phase2.length, cPf'.state⟩ : Config).isHalted (phase2.concat phase3) := by
+            sorry
+
+          -- Step 4: Lift to H = phase1.concat (phase2.concat phase3)
+          have h4 := Steps.concat_right (p1 := phase1) h3 hhalted3
+
+          -- Now simplify and convert to match the goal
+          simp only [cH_built]
+          simp only [hpc_eq] at h4 ⊢
+
+          -- The setup_pc should match the offset in h4
+          -- setup_pc = phase1.length + phase2.length + clearProg.length + Tsetup.length
+          -- h4 starts at Tsetup.length + clearProg.length + phase2.length + phase1.length
+          -- These should be equal (up to commutativity of addition)
+
+          convert h4 using 2 <;> omega
+
+        -- Combine: steps from init to setup, then to final
+        have hH_steps_built : Steps H (Config.init (List.ofFn inputs)) cH_built :=
+          Relation.ReflTransGen.trans hsteps_to_setup hPf_steps_in_H
+
+        -- Apply determinism
+        have hcH_eq : cH = cH_built := Steps.halts_unique hH_steps hH_halted hH_steps_built hH_built_halted
+
+        -- Conclude
+        calc cH.state.output
+            = cH_built.state.output := by rw [hcH_eq]
+          _ = cPf'.state.output := rfl
+          _ = cF.state.output := hPf_output
 
       calc Result H (List.ofFn inputs) hHalts
           = cH.state.output := rfl
