@@ -4,7 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jesse Alama
 -/
 
-import Urm.Composition
+import Urm.UnaryComposition
 
 /-! # Binary-Unary Composition
 
@@ -152,18 +152,49 @@ private theorem clearRegisters_zeros_helper (n : ℕ) (s : State) (r : ℕ) (hr 
     · simp only [State.write_read_diff _ _ _ _ heq]
       exact ih s r (by omega)
 
+/-- clearRegisters is the same as clearRegistersFrom 0 (maxReg + 1). -/
+theorem clearRegisters_eq_clearRegistersFrom (maxReg : ℕ) :
+    Program.clearRegisters maxReg = Program.clearRegistersFrom 0 (maxReg + 1) := by
+  simp only [Program.clearRegisters, Program.clearRegistersFrom]
+  congr 1
+  funext i
+  simp only [Nat.zero_add]
+
 /-- clearRegisters zeros all registers up to and including maxReg.
 Uses the relational semantics via straightLineFinalState. -/
 theorem clearRegisters_zeros (maxReg : ℕ) (s : State) (r : ℕ) (hr : r ≤ maxReg) :
     (straightLineFinalState (clearRegisters_isStraightLine maxReg) s).read r = 0 := by
-  -- We need to track what happens during execution.
-  -- The program is [Z 0, Z 1, ..., Z maxReg]
-  -- Each Z instruction zeros one register.
-  -- Since r ≤ maxReg, register r will be zeroed at step r.
+  -- clearRegisters maxReg = clearRegistersFrom 0 (maxReg + 1)
+  have heq := clearRegisters_eq_clearRegistersFrom maxReg
+  -- The straight-line property is preserved
   have hsl := clearRegisters_isStraightLine maxReg
-  have ⟨hsteps, _, _⟩ := straightLineFinalState_spec hsl s
-  -- TODO: Complete with step-by-step tracking using StepsN
-  sorry
+  -- The final states are the same
+  have hstate_eq : straightLineFinalState hsl s =
+      straightLineFinalState (Program.clearRegistersFrom_isStraightLine 0 (maxReg + 1)) s := by
+    -- Both halted configs must be equal by uniqueness
+    have ⟨hsteps1, hhalted1, hpc1⟩ := straightLineFinalState_spec hsl s
+    have ⟨hsteps2, hhalted2, hpc2⟩ :=
+      straightLineFinalState_spec (Program.clearRegistersFrom_isStraightLine 0 (maxReg + 1)) s
+    -- Rewrite hsteps1 to use clearRegistersFrom
+    have hsteps1' : Steps (Program.clearRegistersFrom 0 (maxReg + 1)) ⟨0, s⟩
+        (Classical.choose (straightLine_halts_from_state hsl s)) := by
+      simp only [← heq]; exact hsteps1
+    have hlen_eq : (Program.clearRegisters maxReg).length =
+        (Program.clearRegistersFrom 0 (maxReg + 1)).length := by
+      simp only [heq]
+    have hhalted1' : (Classical.choose (straightLine_halts_from_state hsl s)).isHalted
+        (Program.clearRegistersFrom 0 (maxReg + 1)) := by
+      simp only [Config.isHalted] at hhalted1 ⊢
+      rw [← hlen_eq]
+      exact hhalted1
+    -- By uniqueness of halted configs
+    have huniq := Steps.halts_unique hsteps1' hhalted1' hsteps2 hhalted2
+    simp only [straightLineFinalState]
+    rw [huniq]
+  rw [hstate_eq]
+  -- Now use clearRegistersFrom_zeros
+  have hr_range : 0 ≤ r ∧ r < 0 + (maxReg + 1) := ⟨Nat.zero_le r, by omega⟩
+  exact clearRegistersFrom_zeros 0 (maxReg + 1) s r hr_range
 
 /-- Helper for clearRegisters_preserves_above. -/
 private theorem clearRegisters_preserves_helper (n : ℕ) (s : State) (r : ℕ) (hr : n ≤ r) :
@@ -235,45 +266,42 @@ Given:
 
 Returns a program that computes h(x) = f(g₁(x), g₂(x)).
 
-The program structure is:
-1.  T 0 (m+1)        -- save input x to safe storage
-2.  G₁               -- run G₁ to compute g₁(x)
-3.  T 0 (m+2)        -- save g₁(x) result
-4.  clearRegisters m -- reset workspace (Z 0, Z 1, ..., Z m)
-5.  T (m+1) 0        -- restore input x
-6.  G₂               -- run G₂ to compute g₂(x)
-7.  T 0 (m+3)        -- save g₂(x) result
-8.  clearRegisters m -- reset workspace (Z 0, Z 1, ..., Z m)
-9.  T (m+2) 0        -- set up R[0] = g₁(x)
-10. T (m+3) 1        -- set up R[1] = g₂(x)
-11. F                -- run F to compute f(g₁(x), g₂(x))
+The program is organized into three phases:
+
+**Phase 1**: Compute g₁(x) and save result
+- T 0 (m+1)   -- save input x to safe storage
+- G₁          -- run G₁ to compute g₁(x)
+- T 0 (m+2)   -- save g₁(x) result
+
+**Phase 2**: Compute g₂(x) and save result
+- clear[0..m] -- reset workspace
+- T (m+1) 0   -- restore input x
+- G₂          -- run G₂ to compute g₂(x)
+- T 0 (m+3)   -- save g₂(x) result
+
+**Phase 3**: Set up arguments and run F
+- clear[0..m] -- reset workspace
+- T (m+2) 0   -- set up R[0] = g₁(x)
+- T (m+3) 1   -- set up R[1] = g₂(x)
+- F           -- run F to compute f(g₁(x), g₂(x))
 
 The clearRegisters steps ensure that G₂ and F see the expected initial state
 (all workspace registers zeroed), matching the semantics of `Config.init`.
 -/
 def Program.composeBU (pF pG1 pG2 : Program) : Program :=
   let m := compositionBaseBU pF pG1 pG2
-  let saveInput : Program := [Instr.T 0 (m + 1)]
-  let saveG1Result : Program := [Instr.T 0 (m + 2)]
-  let clearWorkspace : Program := Program.clearRegisters m
-  let restoreInput : Program := [Instr.T (m + 1) 0]
-  let saveG2Result : Program := [Instr.T 0 (m + 3)]
-  let setupArg0 : Program := [Instr.T (m + 2) 0]
-  let setupArg1 : Program := [Instr.T (m + 3) 1]
-
-  Program.foldConcat [
-    saveInput,
-    pG1,
-    saveG1Result,
-    clearWorkspace,
-    restoreInput,
-    pG2,
-    saveG2Result,
-    clearWorkspace,
-    setupArg0,
-    setupArg1,
-    pF
-  ]
+  -- Phase 1: Compute g₁(x) and save result
+  let phase1 := Program.concat [Instr.T 0 (m + 1)]
+                  (Program.concat pG1 [Instr.T 0 (m + 2)])
+  -- Phase 2: Compute g₂(x) and save result
+  let phase2 := Program.concat (Program.clearRegisters m)
+                  (Program.concat [Instr.T (m + 1) 0]
+                    (Program.concat pG2 [Instr.T 0 (m + 3)]))
+  -- Phase 3: Set up arguments and run F
+  let phase3 := Program.concat (Program.clearRegisters m)
+                  (Program.concat [Instr.T (m + 2) 0, Instr.T (m + 3) 1] pF)
+  -- Combine all phases
+  Program.concat phase1 (Program.concat phase2 phase3)
 
 /-! ## Register Isolation -/
 
@@ -299,17 +327,42 @@ theorem safe_registers_above_max (pF pG1 pG2 : Program) (i : Fin 3) :
 
 /-! ## Main Composition Theorem -/
 
+/-- A single transfer instruction is straight-line. -/
+private theorem single_transfer_isStraightLine (src dst : ℕ) :
+    Program.isStraightLine [Instr.T src dst] = true := rfl
+
+/-- A two-instruction transfer sequence is straight-line. -/
+private theorem double_transfer_isStraightLine (s1 d1 s2 d2 : ℕ) :
+    Program.isStraightLine [Instr.T s1 d1, Instr.T s2 d2] = true := rfl
+
 /-- Helper: the composed program is in standard form if all components are. -/
 theorem composeBU_isStandardForm {pF pG1 pG2 : Program}
     (hF : pF.IsStandardForm)
     (hG1 : pG1.IsStandardForm)
     (hG2 : pG2.IsStandardForm) :
     (Program.composeBU pF pG1 pG2).IsStandardForm := by
-  simp only [Program.composeBU, Program.foldConcat]
-  -- The composed program is a sequence of concatenations
-  -- Each single-instruction transfer is straight-line, hence standard form
-  -- By IsStandardForm.concat, the full concatenation is standard form
-  sorry
+  simp only [Program.composeBU]
+  set m := compositionBaseBU pF pG1 pG2 with hm
+  -- All single-instruction programs (T instructions) are straight-line, hence standard form
+  -- clearRegisters is also straight-line, hence standard form
+  have hT1 : Program.IsStandardForm [Instr.T 0 (m + 1)] :=
+    straightLine_isStandardForm (single_transfer_isStraightLine 0 (m + 1))
+  have hT2 : Program.IsStandardForm [Instr.T 0 (m + 2)] :=
+    straightLine_isStandardForm (single_transfer_isStraightLine 0 (m + 2))
+  have hClear : Program.IsStandardForm (Program.clearRegisters m) :=
+    straightLine_isStandardForm (clearRegisters_isStraightLine m)
+  have hT3 : Program.IsStandardForm [Instr.T (m + 1) 0] :=
+    straightLine_isStandardForm (single_transfer_isStraightLine (m + 1) 0)
+  have hT4 : Program.IsStandardForm [Instr.T 0 (m + 3)] :=
+    straightLine_isStandardForm (single_transfer_isStraightLine 0 (m + 3))
+  have hSetup : Program.IsStandardForm [Instr.T (m + 2) 0, Instr.T (m + 3) 1] :=
+    straightLine_isStandardForm (double_transfer_isStraightLine (m + 2) 0 (m + 3) 1)
+  -- Build up phase standard forms using IsStandardForm.concat
+  have hPhase1 := hT1.concat (hG1.concat hT2)
+  have hPhase2 := hClear.concat (hT3.concat (hG2.concat hT4))
+  have hPhase3 := hClear.concat (hSetup.concat hF)
+  -- Combine all phases
+  exact hPhase1.concat (hPhase2.concat hPhase3)
 
 /-- Helper: create a Fin 2 → Part ℕ from two partial values. -/
 def mkPair (a b : Part ℕ) : Fin 2 → Part ℕ
@@ -408,88 +461,202 @@ theorem URMComputableSF.comp_binary_unary
         sorry
       · -- Backward: composed function is defined → H halts
         -- Strategy: Chain the programs together using Halts.concat_continuation
-        -- 1. From comp_function_dom, extract that g1, g2, f are all defined
-        -- 2. By hG1_spec, G1 halts on [x]
-        -- 3. By hG2_spec, G2 halts on [x]
-        -- 4. By hF_spec, F halts on [g1(x), g2(x)]
-        -- 5. All transfer instructions are straight-line, hence halt
-        -- 6. Chain them: saveInput ++ G1 halts, then ++ saveG1Result, etc.
-        -- Key lemmas needed:
-        --   - Halts.concat_continuation (exists in Composition.lean)
-        --   - Register state tracking through each phase
         intro hDom
         rw [comp_function_dom] at hDom
         obtain ⟨hg1_dom, hg2_dom, hf_dom⟩ := hDom
-        -- G1 halts because g1 is defined
-        have hG1_halts : Halts pG1 (List.ofFn inputs) :=
-          (hG1_spec inputs).1.mpr hg1_dom
-        -- G2 halts because g2 is defined
-        have hG2_halts : Halts pG2 (List.ofFn inputs) :=
-          (hG2_spec inputs).1.mpr hg2_dom
-        -- Get the results of G1 and G2
+
+        -- G1, G2, F all halt because their respective functions are defined
+        have hG1_halts : Halts pG1 (List.ofFn inputs) := (hG1_spec inputs).1.mpr hg1_dom
+        have hG2_halts : Halts pG2 (List.ofFn inputs) := (hG2_spec inputs).1.mpr hg2_dom
         let v1 := Result pG1 (List.ofFn inputs) hG1_halts
         let v2 := Result pG2 (List.ofFn inputs) hG2_halts
-        -- These equal the function values (by hG1_spec, hG2_spec)
-        have hv1_eq : v1 = (g1 inputs).get hg1_dom :=
-          (hG1_spec inputs).2 hG1_halts hg1_dom
-        have hv2_eq : v2 = (g2 inputs).get hg2_dom :=
-          (hG2_spec inputs).2 hG2_halts hg2_dom
-        -- Construct the input for F as a function Fin 2 → ℕ
+        have hv1_eq : v1 = (g1 inputs).get hg1_dom := (hG1_spec inputs).2 hG1_halts hg1_dom
+        have hv2_eq : v2 = (g2 inputs).get hg2_dom := (hG2_spec inputs).2 hG2_halts hg2_dom
+
         let fInput : Fin 2 → ℕ := fun i => match i with
           | ⟨0, _⟩ => v1
           | ⟨1, _⟩ => v2
-        -- f is defined on fInput
         have hf_dom' : (f fInput).Dom := by
           have h := hf_dom hg1_dom hg2_dom
-          simp only at h
-          convert h using 1
-          congr 1
+          convert h using 2
           funext i
           match i with
-          | ⟨0, _⟩ => simp only [fInput, hv1_eq]
-          | ⟨1, _⟩ => simp only [fInput, hv2_eq]
-        -- F halts because f is defined on fInput
-        have hF_halts : Halts pF (List.ofFn fInput) :=
-          (hF_spec fInput).1.mpr hf_dom'
-        -- Now chain all the programs together using Halts.concat_continuation
-        -- The composed program H (with clearRegisters) is:
-        -- foldConcat [saveInput, G1, saveG1Result, clearWorkspace, restoreInput, G2,
-        --             saveG2Result, clearWorkspace, setupArg0, setupArg1, F]
-        --
-        -- With clearRegisters added, the state after clearWorkspace + restoreInput matches
-        -- Config.init [x] on registers <= m, so G2 sees the expected initial state.
-        -- Similarly, after the second clearWorkspace + setupArg0 + setupArg1, the state
-        -- matches Config.init [g1(x), g2(x)] on registers <= m, so F sees the expected state.
-        --
-        -- Key lemmas for the proof:
-        -- 1. straightLine_halts_at_length: straight-line programs halt at exactly length
-        -- 2. Standard form programs halt at exactly length (by definition)
-        -- 3. Halts.concat_continuation: chains two halting programs
-        -- 4. Halts.register_independent: p halts on modified state if it agrees on <= maxReg
-        -- 5. clearRegisters_restoreInput_matches_init: state after clear+restore matches init
-        --
-        -- The proof requires chaining 11 program segments. Each step uses:
-        -- - Halts.concat_continuation to extend the halting chain
-        -- - Standard form / straight-line to get h1_pc condition
-        -- - Register independence to show the next program halts
-        sorry
+          | ⟨0, _⟩ => exact hv1_eq
+          | ⟨1, _⟩ => exact hv2_eq
+        have hF_halts : Halts pF (List.ofFn fInput) := (hF_spec fInput).1.mpr hf_dom'
+
+        -- Set up the base register m and program pieces
+        set m := compositionBaseBU pF pG1 pG2 with hm_def
+        let T01 : Program := [Instr.T 0 (m + 1)]
+        let T02 : Program := [Instr.T 0 (m + 2)]
+        let clearProg := Program.clearRegisters m
+        let T10 : Program := [Instr.T (m + 1) 0]
+        let T03 : Program := [Instr.T 0 (m + 3)]
+        let Tsetup : Program := [Instr.T (m + 2) 0, Instr.T (m + 3) 1]
+
+        -- Standard form properties
+        have hT01_sf := straightLine_isStandardForm (single_transfer_isStraightLine 0 (m + 1))
+        have hT02_sf := straightLine_isStandardForm (single_transfer_isStraightLine 0 (m + 2))
+        have hT10_sf := straightLine_isStandardForm (single_transfer_isStraightLine (m + 1) 0)
+        have hT03_sf := straightLine_isStandardForm (single_transfer_isStraightLine 0 (m + 3))
+        have hTsetup_sf := straightLine_isStandardForm (double_transfer_isStraightLine (m + 2) 0 (m + 3) 1)
+        have hClear_sf := straightLine_isStandardForm (clearRegisters_isStraightLine m)
+
+        -- Define the three phases
+        let phase1 := T01.concat (pG1.concat T02)
+        let phase2 := clearProg.concat (T10.concat (pG2.concat T03))
+        let phase3 := clearProg.concat (Tsetup.concat pF)
+
+        have hPhase1_sf : phase1.IsStandardForm := hT01_sf.concat (hG1_sf.concat hT02_sf)
+        have hPhase2_sf : phase2.IsStandardForm := hClear_sf.concat (hT10_sf.concat (hG2_sf.concat hT03_sf))
+        have hPhase3_sf : phase3.IsStandardForm := hClear_sf.concat (hTsetup_sf.concat hF_sf)
+
+        -- The key structural lemma: each phase halts when started from appropriate state
+        -- Phase 1 halts from Config.init
+        have hPhase1_halts : Halts phase1 (List.ofFn inputs) := by
+          -- T01 ++ G1 ++ T02 all halt; chain them via concat_continuation
+          sorry
+
+        -- Phase 2 halts from cPhase1.state (registers set up appropriately)
+        have hPhase2_halts_from : ∀ s : State,
+            (∃ c, Steps phase2 ⟨0, s⟩ c ∧ c.isHalted phase2) := by
+          intro s
+          -- clearProg halts, then T10 halts, then G2 halts (from agreeing state), then T03 halts
+          sorry
+
+        -- Phase 3 halts from cPhase2.state (registers set up appropriately)
+        have hPhase3_halts_from : ∀ s : State,
+            (∃ c, Steps phase3 ⟨0, s⟩ c ∧ c.isHalted phase3) := by
+          intro s
+          -- clearProg halts, then Tsetup halts, then F halts (from agreeing state)
+          sorry
+
+        -- Chain all phases
+        let cPhase1 := Classical.choose hPhase1_halts
+        have hPhase1_spec := Classical.choose_spec hPhase1_halts
+        have hPhase1_steps : Steps phase1 (Config.init (List.ofFn inputs)) cPhase1 := hPhase1_spec.1
+        have hPhase1_halted : cPhase1.isHalted phase1 := hPhase1_spec.2
+        have hPhase1_pc : cPhase1.pc = phase1.length :=
+          hPhase1_sf (List.ofFn inputs) cPhase1 hPhase1_steps hPhase1_halted
+
+        have hPhase12_halts : Halts (phase1.concat phase2) (List.ofFn inputs) :=
+          Halts.concat_continuation hPhase1_halts hPhase1_pc (hPhase2_halts_from cPhase1.state)
+
+        let cPhase12 := Classical.choose hPhase12_halts
+        have hPhase12_spec := Classical.choose_spec hPhase12_halts
+        have hPhase12_steps : Steps (phase1.concat phase2) (Config.init (List.ofFn inputs)) cPhase12 :=
+          hPhase12_spec.1
+        have hPhase12_halted : cPhase12.isHalted (phase1.concat phase2) := hPhase12_spec.2
+        have hPhase12_pc : cPhase12.pc = (phase1.concat phase2).length :=
+          (hPhase1_sf.concat hPhase2_sf) (List.ofFn inputs) cPhase12 hPhase12_steps hPhase12_halted
+
+        have hH_halts : Halts (phase1.concat (phase2.concat phase3)) (List.ofFn inputs) := by
+          have hassoc : phase1.concat (phase2.concat phase3) = (phase1.concat phase2).concat phase3 := by
+            simp only [Program.concat, Program.shiftJumps, List.append_assoc, List.length_append,
+              List.map_append, List.map_map]
+            simp only [List.length_map]
+            congr 2
+            apply List.map_congr_left
+            intro instr _
+            cases instr <;> simp [Instr.shiftJumps]; omega
+          rw [hassoc]
+          exact Halts.concat_continuation hPhase12_halts hPhase12_pc (hPhase3_halts_from cPhase12.state)
+
+        -- H = phase1.concat (phase2.concat phase3) by definition
+        convert hH_halts
     · -- Results match
-      -- Strategy: Track the value in R[0] through all phases:
-      -- After Phase 2: R[0] = g1(x)
-      -- After Phase 3: R[m+2] = g1(x)
-      -- After Phase 5: R[0] = g2(x)
-      -- After Phase 6: R[m+3] = g2(x)
-      -- After Phase 7: R[0] = g1(x)
-      -- After Phase 8: R[1] = g2(x)
-      -- After Phase 9: R[0] = f(g1(x), g2(x))
-      --
-      -- The proof requires:
-      -- 1. Register state tracking through each phase (using Steps.preserves_high_register)
-      -- 2. Standard form ensures we fall through at each boundary
-      -- 3. Result extraction at the final phase matches the composed function value
       intro hHalts hDom
-      -- The Result is the value in R[0] after H halts
-      -- This equals f(g1(x), g2(x)) by construction of H
-      sorry
+
+      -- Step 1: Extract domain conditions from hDom
+      rw [comp_function_dom] at hDom
+      obtain ⟨hg1_dom, hg2_dom, hf_dom_raw⟩ := hDom
+
+      -- Step 2: Get intermediate values
+      have hG1_halts : Halts pG1 (List.ofFn inputs) := (hG1_spec inputs).1.mpr hg1_dom
+      have hG2_halts : Halts pG2 (List.ofFn inputs) := (hG2_spec inputs).1.mpr hg2_dom
+      let v1 := (g1 inputs).get hg1_dom
+      let v2 := (g2 inputs).get hg2_dom
+
+      -- Step 3: F halts on (v1, v2)
+      let fInput : Fin 2 → ℕ := fun i => match i with
+        | ⟨0, _⟩ => v1
+        | ⟨1, _⟩ => v2
+      have hf_dom : (f fInput).Dom := by
+        convert hf_dom_raw hg1_dom hg2_dom using 2
+      have hF_halts : Halts pF (List.ofFn fInput) := (hF_spec fInput).1.mpr hf_dom
+
+      -- Step 4: Get result values from each program
+      have hG1_result : Result pG1 (List.ofFn inputs) hG1_halts = v1 :=
+        (hG1_spec inputs).2 hG1_halts hg1_dom
+      have hG2_result : Result pG2 (List.ofFn inputs) hG2_halts = v2 :=
+        (hG2_spec inputs).2 hG2_halts hg2_dom
+      have hF_result : Result pF (List.ofFn fInput) hF_halts = (f fInput).get hf_dom :=
+        (hF_spec fInput).2 hF_halts hf_dom
+
+      -- Step 5: Simplify the bind expression using Part.Dom.bind
+      have hSeqDom : (Part.sequence (mkPair (g1 inputs) (g2 inputs))).Dom := by
+        rw [mkPair_dom]
+        exact ⟨hg1_dom, hg2_dom⟩
+
+      -- The sequence get equals fInput
+      have hSeq_get_eq : (Part.sequence (mkPair (g1 inputs) (g2 inputs))).get hSeqDom = fInput := by
+        funext i
+        simp only [Part.sequence_get, mkPair]
+        match i with
+        | ⟨0, _⟩ => rfl
+        | ⟨1, _⟩ => rfl
+
+      -- Use Part.Dom.bind to simplify the bind
+      have hbind_simp : (Part.sequence (mkPair (g1 inputs) (g2 inputs))).bind f = f fInput := by
+        rw [Part.Dom.bind hSeqDom, hSeq_get_eq]
+
+      -- Now we need to show Result H = (f fInput).get hf_dom
+      -- Convert the goal to use hbind_simp
+      have hgoal_conv : ((Part.sequence (mkPair (g1 inputs) (g2 inputs))).bind f).get
+          (comp_function_dom.mpr ⟨hg1_dom, hg2_dom, hf_dom_raw⟩) = (f fInput).get hf_dom := by
+        simp only [hbind_simp]
+
+      rw [hgoal_conv]
+
+      -- Step 6: Now we need Result H inputs hHalts = (f fInput).get hf_dom
+      -- This is ← hF_result, composed with showing H's final R[0] = F's final R[0]
+      rw [← hF_result]
+
+      -- Step 7: Build the execution trace for H to show Result H = Result pF
+      -- The key insight is that H's final state has the same R[0] as pF's final state
+
+      -- Get H's final config
+      let cH := Classical.choose hHalts
+      have hH_spec := Classical.choose_spec hHalts
+      have hH_steps : Steps H (Config.init (List.ofFn inputs)) cH := hH_spec.1
+      have hH_halted : cH.isHalted H := hH_spec.2
+
+      -- Get pF's final config and its output
+      let cF := Classical.choose hF_halts
+      have hF_spec := Classical.choose_spec hF_halts
+      have hF_steps : Steps pF (Config.init (List.ofFn fInput)) cF := hF_spec.1
+      have hF_halted : cF.isHalted pF := hF_spec.2
+      have hF_pc : cF.pc = pF.length := hF_sf (List.ofFn fInput) cF hF_steps hF_halted
+
+      -- The key fact: H's final state.output equals pF's final state.output
+      -- This requires showing that the execution of H through all three phases
+      -- ends with pF running from a state that agrees with Config.init [v1, v2],
+      -- and then by Halts.from_agreeing_state, the output is preserved.
+      --
+      -- This is the structural core that ties the backward direction to the result:
+      -- - H's final phase is essentially clear + Tsetup + pF
+      -- - After clear + Tsetup, R[0] = v1, R[1] = v2
+      -- - pF runs from that state and produces the same output as if from Config.init [v1, v2]
+
+      have hResult_eq : cH.state.output = cF.state.output := by
+        -- The proof requires building the full execution trace through all three phases
+        -- and showing that the final state matches what pF produces.
+        -- This is analogous to the backward direction construction.
+        sorry
+
+      calc Result H (List.ofFn inputs) hHalts
+          = cH.state.output := rfl
+        _ = cF.state.output := hResult_eq
+        _ = Result pF (List.ofFn fInput) hF_halts := rfl
 
 end Urm

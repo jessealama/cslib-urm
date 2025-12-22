@@ -51,6 +51,18 @@ theorem shiftJumps_zero (p : Program) : p.shiftJumps 0 = p := by
     simp only [List.map_cons]
     cases hd <;> simp [Instr.shiftJumps, ih]
 
+/-- Shifting jumps is additive: shifting by a then b equals shifting by (a + b). -/
+theorem shiftJumps_add (p : Program) (a b : ℕ) :
+    (p.shiftJumps a).shiftJumps b = p.shiftJumps (a + b) := by
+  simp only [shiftJumps, List.map_map]
+  congr 1
+  funext instr
+  cases instr with
+  | Z n => simp [Instr.shiftJumps]
+  | S n => simp [Instr.shiftJumps]
+  | T m n => simp [Instr.shiftJumps]
+  | J m n q => simp [Instr.shiftJumps]; omega
+
 /-- Concatenate two programs, adjusting the second program's jump targets.
 
 When concatenating `p1 ++ p2`, jumps within `p2` must be shifted by `p1.length`
@@ -67,6 +79,22 @@ theorem concat_nil_left (p : Program) : concat [] p = p := by
 
 theorem concat_nil_right (p : Program) : concat p [] = p := by
   simp [concat, shiftJumps]
+
+/-- Concatenation is associative. -/
+theorem concat_assoc (p1 p2 p3 : Program) :
+    (p1.concat p2).concat p3 = p1.concat (p2.concat p3) := by
+  simp only [concat, List.append_assoc, List.length_append, shiftJumps_length]
+  congr 1
+  simp only [shiftJumps, List.map_append]
+  congr 1
+  simp only [List.map_map, Nat.add_comm]
+  congr 1
+  funext instr
+  cases instr with
+  | Z n => simp [Instr.shiftJumps]
+  | S n => simp [Instr.shiftJumps]
+  | T m n => simp [Instr.shiftJumps]
+  | J m n q => simp [Instr.shiftJumps]; omega
 
 /-- Generate Transfer instructions to copy a contiguous range of registers.
 
