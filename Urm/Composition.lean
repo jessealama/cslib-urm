@@ -87,7 +87,7 @@ theorem concat_assoc (p1 p2 p3 : Program) :
   congr 1
   simp only [shiftJumps, List.map_append]
   congr 1
-  simp only [List.map_map, Nat.add_comm]
+  simp only [List.map_map]
   congr 1
   funext instr
   cases instr with
@@ -1164,6 +1164,26 @@ theorem Halts.concat_continuation {inputs : List ℕ}
   simp only [Config.isHalted, Program.concat, List.length_append, Program.shiftJumps,
              List.length_map, Config.isHalted] at hhalted2 ⊢
   omega
+
+/-- If p1 halts (as a standard form program) and p2 is straight-line, then p1.concat p2 halts.
+
+This is a convenient corollary of `concat_continuation` for the common case where
+the second program is straight-line (transfers, clears, etc.). Standard form ensures
+p1 halts by falling through (pc = p1.length). -/
+theorem Halts.concat_straightLine {p1 p2 : Program} {inputs : List ℕ}
+    (h1 : Halts p1 inputs)
+    (h1_sf : p1.IsStandardForm)
+    (h2_sl : p2.isStraightLine = true) :
+    Halts (p1.concat p2) inputs := by
+  -- Standard form ensures p1 halted by falling through
+  have h1_pc : (Classical.choose h1).pc = p1.length := by
+    have hspec := Classical.choose_spec h1
+    exact h1_sf inputs (Classical.choose h1) hspec.1 hspec.2
+  -- Straight-line p2 halts from any state
+  have h2 : ∃ c, Steps p2 ⟨0, (Classical.choose h1).state⟩ c ∧ c.isHalted p2 := by
+    obtain ⟨c, hsteps, hhalted, _⟩ := straightLine_halts_from_state h2_sl (Classical.choose h1).state
+    exact ⟨c, hsteps, hhalted⟩
+  exact Halts.concat_continuation h1 h1_pc h2
 
 end Continuation
 
