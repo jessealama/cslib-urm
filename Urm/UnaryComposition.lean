@@ -79,26 +79,116 @@ end Program
 
 These theorems use the unified relational semantics via `straightLineFinalState`. -/
 
-/-- For a straight-line program, if some instruction writes 0 to register r,
-and no later instruction writes to r, then r is 0 in the final state.
+/-- In a straight-line program, we can characterize the state at any intermediate pc.
+This gives us the configuration after executing instructions 0..pc-1. -/
+theorem straightLine_state_at_pc {p : Program} (hsl : p.isStraightLine = true)
+    (s : State) (targetPc : ℕ) (htarget : targetPc ≤ p.length) :
+    ∃ c, Steps p ⟨0, s⟩ c ∧ c.pc = targetPc := by
+  induction targetPc with
+  | zero => exact ⟨⟨0, s⟩, Relation.ReflTransGen.refl, rfl⟩
+  | succ n ih =>
+    have hn_le : n ≤ p.length := Nat.le_of_succ_le htarget
+    obtain ⟨c_n, hsteps_n, hpc_n⟩ := ih hn_le
+    have hn_lt : n < p.length := Nat.lt_of_succ_le htarget
+    have hinstr : ∃ instr, p.getInstr n = some instr := by
+      simp only [Program.getInstr]
+      exact ⟨p[n], List.getElem?_eq_getElem hn_lt⟩
+    obtain ⟨instr, hinstr⟩ := hinstr
+    have hnonjump : instr.isNonJumping = true := by
+      simp only [Program.isStraightLine, List.all_eq_true] at hsl
+      have hmem : instr ∈ p := by
+        simp only [Program.getInstr] at hinstr
+        exact List.getElem?_eq_some_iff.mp hinstr |>.2 ▸ List.getElem_mem hn_lt
+      exact hsl instr hmem
+    -- Convert hinstr to use c_n.pc
+    have hinstr' : p.getInstr c_n.pc = some instr := by rw [hpc_n]; exact hinstr
+    have hstep : ∃ c', Step p c_n c' ∧ c'.pc = n + 1 := by
+      cases instr with
+      | Z m =>
+        refine ⟨⟨c_n.pc + 1, c_n.state.write m 0⟩, Step.zero hinstr', ?_⟩
+        rw [hpc_n]
+      | S m =>
+        refine ⟨⟨c_n.pc + 1, c_n.state.write m (c_n.state.read m + 1)⟩, Step.succ hinstr', ?_⟩
+        rw [hpc_n]
+      | T m1 m2 =>
+        refine ⟨⟨c_n.pc + 1, c_n.state.write m2 (c_n.state.read m1)⟩, Step.trans hinstr', ?_⟩
+        rw [hpc_n]
+      | J _ _ _ => simp [Instr.isNonJumping] at hnonjump
+    obtain ⟨c', hstep', hpc'⟩ := hstep
+    exact ⟨c', Relation.ReflTransGen.tail hsteps_n hstep', hpc'⟩
 
-The proof tracks state through execution:
-1. After instruction k (Z r) executes, register r is 0
-2. Instructions k+1 through n-1 don't write to r (by hnowrite)
-3. So r remains 0 in the final state -/
+/-- After executing instruction k (which is Z r) in a straight-line program,
+register r becomes 0. -/
+theorem straightLine_zero_after_exec {p : Program} (hsl : p.isStraightLine = true)
+    (s : State) (k : ℕ) (r : ℕ) (hk : k < p.length) (hwrite : p[k] = Instr.Z r) :
+    ∃ c, Steps p ⟨0, s⟩ c ∧ c.pc = k + 1 ∧ c.state.read r = 0 := by
+  obtain ⟨c_k, hsteps_k, hpc_k⟩ := straightLine_state_at_pc hsl s k (Nat.le_of_lt hk)
+  have hinstr : p.getInstr k = some (Instr.Z r) := by
+    simp only [Program.getInstr, List.getElem?_eq_getElem hk, hwrite]
+  have hinstr' : p.getInstr c_k.pc = some (Instr.Z r) := by rw [hpc_k]; exact hinstr
+  have hstep : Step p c_k ⟨c_k.pc + 1, c_k.state.write r 0⟩ := Step.zero hinstr'
+  have hpc_eq : c_k.pc + 1 = k + 1 := by rw [hpc_k]
+  refine ⟨⟨c_k.pc + 1, c_k.state.write r 0⟩, Relation.ReflTransGen.tail hsteps_k hstep, hpc_eq, ?_⟩
+  simp only [State.read, State.write, Function.update_self]
+
+/-- For a straight-line program, if some instruction writes 0 to register r,
+and no later instruction writes to r, then r is 0 in the final state. -/
 theorem straightLine_zeros_register {p : Program} (hsl : p.isStraightLine = true)
     (s : State) (r : ℕ) (k : ℕ) (hk : k < p.length)
     (hwrite : p[k] = Instr.Z r)
     (hnowrite : ∀ j (hj : j < p.length), k < j → (p[j]'hj).writesTo ≠ some r) :
     (straightLineFinalState hsl s).read r = 0 := by
-  have ⟨hsteps, hhalted, hpc⟩ := straightLineFinalState_spec hsl s
-  -- Strategy: Show that once instruction k executes, r becomes 0 and stays 0.
-  -- The suffix of p from k+1 onward doesn't write to r, so we can use
-  -- Steps.straightLine_preserves on that suffix.
-  --
-  -- We need to decompose execution: steps [0,k] set r to 0, steps [k+1,n) preserve r.
-  -- This requires infrastructure for splitting Steps at a specific pc value.
-  sorry
+  have ⟨hsteps_final, hhalted, hpc_final⟩ := straightLineFinalState_spec hsl s
+  obtain ⟨c_after_k, hsteps_to_k, hpc_after_k, hr_zero⟩ :=
+    straightLine_zero_after_exec hsl s k r hk hwrite
+  let final := Classical.choose (straightLine_halts_from_state hsl s)
+  have hsteps_suffix : Steps p c_after_k final :=
+    Steps.deterministic_continuation hsteps_to_k hsteps_final hhalted
+  -- straightLineFinalState is definitionally the same as Classical.choose
+  show (Classical.choose (straightLine_halts_from_state hsl s)).state.read r = 0
+  -- Show that the suffix execution preserves r
+  -- We need to track that all intermediate pcs are > k
+  suffices h : ∀ (a b : Config), a.pc > k → Steps p a b → b.isHalted p →
+      b.state.read r = a.state.read r by
+    have hpc_gt : c_after_k.pc > k := by omega
+    rw [h c_after_k final hpc_gt hsteps_suffix hhalted, hr_zero]
+  intro a b hpc_gt hsteps hhalted_b
+  induction hsteps using Relation.ReflTransGen.head_induction_on with
+  | refl => rfl
+  | @head a' c' hstep hrest ih =>
+    -- We have a' → c' → ... → b
+    -- Need: b.state.read r = a'.state.read r
+    have hc'_pc_gt : c'.pc > k := by
+      cases hstep with
+      | zero h => simp only []; omega
+      | succ h => simp only []; omega
+      | trans h => simp only []; omega
+      | jump_eq h heq =>
+        -- This can't happen in a straight-line program
+        exfalso
+        simp only [Program.isStraightLine, List.all_eq_true] at hsl
+        have ha'_pc_lt : a'.pc < p.length := by
+          by_contra hc
+          simp only [not_lt] at hc
+          exact Step.halted_no_step hc (Step.jump_eq h heq)
+        simp only [Program.getInstr] at h
+        have hmem := List.getElem?_eq_some_iff.mp h
+        have hinstr_sl := hsl _ (hmem.2 ▸ List.getElem_mem ha'_pc_lt)
+        simp only [Instr.isNonJumping] at hinstr_sl
+        exact Bool.false_ne_true hinstr_sl
+      | jump_ne h hne => simp only []; omega
+    rw [ih hc'_pc_gt]
+    -- Show that the step a' → c' preserves register r
+    apply Step.straightLine_preserves hsl hstep
+    intro instr hinstr
+    have ha'_pc_lt : a'.pc < p.length := by
+      by_contra hc
+      simp only [not_lt] at hc
+      exact Step.halted_no_step hc hstep
+    simp only [Program.getInstr] at hinstr
+    have heq : p[a'.pc] = instr := (List.getElem?_eq_some_iff.mp hinstr).2
+    rw [← heq]
+    exact hnowrite a'.pc ha'_pc_lt hpc_gt
 
 /-- clearRegistersFrom zeros the specified range. -/
 theorem clearRegistersFrom_zeros (start count : ℕ) (s : State) (r : ℕ)
@@ -196,6 +286,27 @@ theorem Halts.from_agreeing_state {p : Program} {inputs : List ℕ} {s : State}
     simp only [State.read] at hread_eq
     exact hread_eq.symm
 
+/-- Reverse of from_agreeing_state: if p halts from a state s that agrees with
+Config.init inputs on relevant registers, then Halts p inputs.
+
+This is the key lemma for extracting halting from execution traces. -/
+theorem Halts.of_agreeing_state {p : Program} {inputs : List ℕ} {s : State} {c : Config}
+    (hsteps : Steps p ⟨0, s⟩ c) (hhalted : c.isHalted p)
+    (hagree : ∀ r, r ≤ p.maxRegister → s.read r = (State.fromInputs inputs).read r) :
+    Halts p inputs := by
+  -- Convert hagree to State.agreeOn form
+  have hagree' : s.agreeOn (State.fromInputs inputs) 0 p.maxRegister := by
+    intro r _ hhi
+    exact hagree r hhi
+  -- Use Steps.agreeOn to get parallel execution from Config.init
+  have hpc_eq : (⟨0, s⟩ : Config).pc = (Config.init inputs).pc := rfl
+  obtain ⟨c', hsteps', hpc', _⟩ := Steps.agreeOn hsteps hpc_eq hagree'
+  -- c' has the same pc as c, so it's halted too
+  have hhalted' : c'.isHalted p := by
+    simp only [Config.isHalted] at hhalted ⊢
+    omega
+  exact ⟨c', hsteps', hhalted'⟩
+
 /-! ## Main theorem: Unary-unary composition -/
 
 /-- Composition of unary URM-computable functions is URM-computable (standard form version).
@@ -278,9 +389,85 @@ theorem URMComputableSF.comp_unary
         --    is the same as if started from Config.init [g(inputs)]
         -- 5. Therefore Halts Pf [g(inputs)], so f(g(inputs)) is defined
         have hf_dom : (f (fun _ => (g inputs).get hg_dom)).Dom := by
-          -- This requires "halts from state" decomposition infrastructure
-          -- which is postulated (standard form behavior)
-          sorry
+          -- The state after clearProg is straightLineFinalState hClear_sl sPg
+          let sClear := straightLineFinalState hClear_sl sPg
+
+          -- This state agrees with Config.init [g(inputs)] on registers 0..maxF
+          have hagree_clear : ∀ r, r ≤ Pf.maxRegister →
+              sClear.read r = (State.fromInputs [(g inputs).get hg_dom]).read r := by
+            intro r hr
+            by_cases hr0 : r = 0
+            · -- R[0] = g(inputs) (preserved by clearProg)
+              subst hr0
+              simp only [sClear]
+              rw [clearRegistersFrom_preserves_zero 1 maxF sPg (by omega : 0 < 1)]
+              simp only [State.fromInputs, State.read, List.getD_cons_zero]
+              exact hsPg_r0
+            · -- R[r] = 0 for r > 0 (cleared by clearProg, and Config.init has 0)
+              have hr_pos : 0 < r := Nat.pos_of_ne_zero hr0
+              have hr_range : 1 ≤ r ∧ r < 1 + maxF := ⟨hr_pos, by omega⟩
+              simp only [sClear]
+              rw [clearRegistersFrom_zeros 1 maxF sPg r hr_range]
+              symm
+              apply State.fromInputs_out_of_range
+              simp only [List.length_singleton]
+              omega
+
+          -- clearProg halts from sPg at pc = clearProg.length
+          have hClear_halts := straightLine_halts_from_state hClear_sl sPg
+          obtain ⟨cClear, hClear_steps, hClear_halted, hClear_pc⟩ := hClear_halts
+
+          -- The state at cClear equals sClear (by determinism)
+          have hClear_state_eq : cClear.state = sClear := by
+            have hspec := straightLineFinalState_spec hClear_sl sPg
+            have huniq := Steps.halts_unique hClear_steps hClear_halted hspec.1 hspec.2.1
+            simp only [straightLineFinalState, huniq, sClear]
+
+          -- Lift clearProg steps to clearProg.concat Pf
+          have hClear_steps_in_concat : Steps (clearProg.concat Pf) ⟨0, sPg⟩ cClear :=
+            Steps.concat_left_prefix hClear_steps hClear_halted
+
+          -- By deterministic continuation, the path to cClearPf goes through cClear
+          have hCont : Steps (clearProg.concat Pf) cClear cClearPf :=
+            Steps.deterministic_continuation hClear_steps_in_concat hClearPf_steps hClearPf_halted
+
+          -- The suffix from cClear to cClearPf is Pf execution
+          -- cClear.pc = clearProg.length, so we're at the start of Pf in the concat
+          -- The remaining steps execute Pf (with pc offset)
+
+          -- Extract that Pf halts from sClear
+          -- This is the key decomposition: the suffix execution corresponds to Pf
+          have hPf_halts_from_sClear : ∃ c, Steps Pf ⟨0, sClear⟩ c ∧ c.isHalted Pf := by
+            -- Rewrite hCont to start from ⟨clearProg.length, sClear⟩
+            -- cClear = ⟨clearProg.length, sClear⟩ by hClear_pc and hClear_state_eq
+            have hcClear_eq : cClear = ⟨clearProg.length, sClear⟩ :=
+              Config.ext hClear_pc hClear_state_eq
+            have hCont' : Steps (clearProg.concat Pf) ⟨clearProg.length, sClear⟩ cClearPf := by
+              rw [← hcClear_eq]; exact hCont
+            -- cClearPf.pc ≥ clearProg.length (it's halted, so pc ≥ total length)
+            have hpc' : cClearPf.pc ≥ clearProg.length := by
+              simp only [Config.isHalted, Program.concat, List.length_append,
+                         Program.shiftJumps, List.length_map] at hClearPf_halted
+              omega
+            -- Apply the extraction lemma
+            obtain ⟨c, hsteps, hhalted, _⟩ := Steps.of_concat_right hCont' hClearPf_halted hpc'
+            exact ⟨c, hsteps, hhalted⟩
+
+          obtain ⟨cPf, hPf_steps, hPf_halted⟩ := hPf_halts_from_sClear
+
+          -- Use Halts.of_agreeing_state to conclude Halts Pf [g(inputs)]
+          have hPf_halts : Halts Pf [(g inputs).get hg_dom] := by
+            have hagree' : ∀ r, r ≤ Pf.maxRegister →
+                sClear.read r = (State.fromInputs [(g inputs).get hg_dom]).read r :=
+              hagree_clear
+            exact Halts.of_agreeing_state hPf_steps hPf_halted hagree'
+
+          -- By URMComputableSF, Halts Pf [g(inputs)] ↔ f is defined
+          have hf_halts_iff := (hPf (fun _ => (g inputs).get hg_dom)).1
+          have : List.ofFn (fun (_ : Fin 1) => (g inputs).get hg_dom) = [(g inputs).get hg_dom] := by
+            simp only [List.ofFn_succ, List.ofFn_zero]
+          rw [this] at hf_halts_iff
+          exact hf_halts_iff.mp hPf_halts
 
         -- Combine: bind is defined when both g and f are defined
         apply Part.bind_dom.mpr
@@ -411,20 +598,145 @@ theorem URMComputableSF.comp_unary
         Part.Dom.bind hg_dom (fun y => f (fun _ => y))
       simp only [hbind_eq]
 
-      -- Result equality: Result H = f(g(inputs))
-      --
-      -- The proof tracks R[0] through all three phases:
-      -- 1. After Pg: R[0] = g(inputs) = (g inputs).get hg_dom
-      -- 2. After clearProg: R[0] = g(inputs) (preserved, since clear starts at R[1])
-      -- 3. After Pf: R[0] = f(g(inputs)) = (f (fun _ => g(inputs))).get hf_dom
-      --
-      -- The key steps:
-      -- a) By standard form, H's final config is reached by running all three phases
-      -- b) The state entering Pf agrees with Config.init [g(inputs)] on registers 0..maxF
-      -- c) By determinism and Halts.from_agreeing_state, Pf produces the same result
-      --    as if started from Config.init [g(inputs)]
-      -- d) By hPf, Result Pf [g(inputs)] = f(g(inputs))
-      -- e) Therefore Result H = f(g(inputs))
-      sorry
+      -- Step 1: Get Pg's final config with Result = g(inputs)
+      have hPg_halts : Halts Pg (List.ofFn inputs) := (hPg inputs).1.mpr hg_dom
+
+      let cPg := Classical.choose hPg_halts
+      have hPg_spec := Classical.choose_spec hPg_halts
+      have hPg_steps : Steps Pg (Config.init (List.ofFn inputs)) cPg := hPg_spec.1
+      have hPg_halted : cPg.isHalted Pg := hPg_spec.2
+      have hPg_pc : cPg.pc = Pg.length := hPg_sf (List.ofFn inputs) cPg hPg_steps hPg_halted
+
+      have hPg_result : cPg.state.output = (g inputs).get hg_dom := by
+        have h := (hPg inputs).2 hPg_halts hg_dom
+        simp only [Result] at h
+        exact h
+
+      -- Step 2: clearProg halts from cPg.state
+      have hClear_halts := straightLine_halts_from_state hClear_sl cPg.state
+      obtain ⟨cClear, hClear_steps, hClear_halted, hClear_pc⟩ := hClear_halts
+
+      have hClear_state_eq : cClear.state = straightLineFinalState hClear_sl cPg.state := by
+        have hspec := straightLineFinalState_spec hClear_sl cPg.state
+        have huniq := Steps.halts_unique hClear_steps hClear_halted hspec.1 hspec.2.1
+        simp only [straightLineFinalState, huniq]
+
+      -- After clearing: R[0] still has g(inputs)
+      have hClear_state_r0 : cClear.state.read 0 = (g inputs).get hg_dom := by
+        rw [hClear_state_eq]
+        rw [clearRegistersFrom_preserves_zero 1 maxF cPg.state (by omega : 0 < 1)]
+        exact hPg_result
+
+      -- Step 3: Pf halts from cClear.state with correct result
+      have hPf_halts_input : Halts Pf [((g inputs).get hg_dom)] := by
+        have hf_halts_iff := (hPf (fun _ => (g inputs).get hg_dom)).1
+        have : List.ofFn (fun (_ : Fin 1) => (g inputs).get hg_dom) = [(g inputs).get hg_dom] := by
+          simp only [List.ofFn_succ, List.ofFn_zero]
+        rw [this] at hf_halts_iff
+        exact hf_halts_iff.mpr hf_dom
+
+      -- Build state agreement
+      have hagree : ∀ r, r ≤ Pf.maxRegister →
+          cClear.state.read r = (State.fromInputs [((g inputs).get hg_dom)]).read r := by
+        intro r hr
+        rw [hClear_state_eq]
+        by_cases hr0 : r = 0
+        · subst hr0
+          rw [clearRegistersFrom_preserves_zero 1 maxF cPg.state (by omega : 0 < 1)]
+          have h1 : (State.fromInputs [((g inputs).get hg_dom)]).read 0 = (g inputs).get hg_dom := by
+            simp only [State.fromInputs, State.read, List.getD_cons_zero]
+          rw [h1]
+          exact hPg_result
+        · have hr_pos : 0 < r := Nat.pos_of_ne_zero hr0
+          have hr_range : 1 ≤ r ∧ r < 1 + maxF := ⟨hr_pos, by omega⟩
+          rw [clearRegistersFrom_zeros 1 maxF cPg.state r hr_range]
+          have h2 : (State.fromInputs [((g inputs).get hg_dom)]).read r = 0 := by
+            apply State.fromInputs_out_of_range
+            simp only [List.length_singleton]
+            omega
+          rw [h2]
+
+      -- Use from_agreeing_state and KEEP the output equality
+      have ⟨cPf, hPf_steps, hPf_halted, hPf_output⟩ := Halts.from_agreeing_state hPf_halts_input hagree
+
+      -- Step 4: Get Pf's result via hPf.2
+      have hPf_result : Result Pf [(g inputs).get hg_dom] hPf_halts_input =
+          (f (fun _ => (g inputs).get hg_dom)).get hf_dom := by
+        have h := (hPf (fun _ => (g inputs).get hg_dom)).2 hPf_halts_input hf_dom
+        have heq : List.ofFn (fun (_ : Fin 1) => (g inputs).get hg_dom) = [(g inputs).get hg_dom] := by
+          simp only [List.ofFn_succ, List.ofFn_zero]
+        simp only [heq] at h
+        exact h
+
+      -- Step 5: Connect H's result to cPf's output
+      -- Build the full execution trace for H
+      have hClear_steps_lifted : Steps (clearProg.concat Pf) ⟨0, cPg.state⟩ cClear :=
+        Steps.concat_left_prefix (p2 := Pf) hClear_steps hClear_halted
+
+      have hPf_steps_lifted : Steps (clearProg.concat Pf)
+          ⟨cClear.pc, cClear.state⟩ ⟨cPf.pc + clearProg.length, cPf.state⟩ := by
+        have h := Steps.concat_right (p1 := clearProg) hPf_steps hPf_halted
+        simp only [Nat.zero_add] at h
+        rw [hClear_pc]
+        exact h
+
+      have hClearPf_steps : Steps (clearProg.concat Pf) ⟨0, cPg.state⟩
+          ⟨cPf.pc + clearProg.length, cPf.state⟩ := by
+        have heq : cClear = ⟨cClear.pc, cClear.state⟩ := rfl
+        rw [heq] at hClear_steps_lifted
+        exact Relation.ReflTransGen.trans hClear_steps_lifted hPf_steps_lifted
+
+      have hClearPf_halted : (⟨cPf.pc + clearProg.length, cPf.state⟩ : Config).isHalted
+          (clearProg.concat Pf) := by
+        simp only [Config.isHalted, Program.concat_length] at hPf_halted ⊢
+        omega
+
+      have hClearPf_halts : ∃ c, Steps (clearProg.concat Pf) ⟨0, cPg.state⟩ c ∧
+          c.isHalted (clearProg.concat Pf) :=
+        ⟨⟨cPf.pc + clearProg.length, cPf.state⟩, hClearPf_steps, hClearPf_halted⟩
+
+      -- Lift to full H execution
+      have hH_halts_built : Halts H (List.ofFn inputs) :=
+        Halts.concat_continuation hPg_halts hPg_pc hClearPf_halts
+
+      -- H's final config
+      let cH := Classical.choose hHalts
+      have hH_spec := Classical.choose_spec hHalts
+      have hH_steps : Steps H (Config.init (List.ofFn inputs)) cH := hH_spec.1
+      have hH_halted : cH.isHalted H := hH_spec.2
+
+      -- The final config we built
+      let cH_built : Config := ⟨cPf.pc + clearProg.length + Pg.length, cPf.state⟩
+
+      -- Show cH_built is halted
+      have hH_built_halted : cH_built.isHalted H := by
+        simp only [Config.isHalted, H, Program.concat_length, cH_built]
+        simp only [Config.isHalted] at hPf_halted
+        omega
+
+      -- Build steps to cH_built
+      have hPg_steps_lifted : Steps H (Config.init (List.ofFn inputs)) ⟨Pg.length, cPg.state⟩ := by
+        have hPg_pc_eq : cPg = ⟨Pg.length, cPg.state⟩ := Config.ext hPg_pc rfl
+        rw [← hPg_pc_eq]
+        exact Steps.concat_left_prefix (p2 := clearProg.concat Pf) hPg_steps hPg_halted
+
+      have hClearPf_steps_lifted : Steps H ⟨Pg.length, cPg.state⟩ cH_built := by
+        have h := Steps.concat_right (p1 := Pg) hClearPf_steps hClearPf_halted
+        simp only [Nat.zero_add, cH_built] at h ⊢
+        convert h using 2
+
+      have hH_steps_built : Steps H (Config.init (List.ofFn inputs)) cH_built :=
+        Relation.ReflTransGen.trans hPg_steps_lifted hClearPf_steps_lifted
+
+      -- By determinism, cH = cH_built
+      have hcH_eq : cH = cH_built := Steps.halts_unique hH_steps hH_halted hH_steps_built hH_built_halted
+
+      -- Final chain
+      calc Result H (List.ofFn inputs) hHalts
+          = cH.state.output := rfl
+        _ = cH_built.state.output := by rw [hcH_eq]
+        _ = cPf.state.output := rfl
+        _ = Result Pf [(g inputs).get hg_dom] hPf_halts_input := hPf_output
+        _ = (f (fun _ => (g inputs).get hg_dom)).get hf_dom := hPf_result
 
 end Urm

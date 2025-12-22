@@ -963,6 +963,142 @@ theorem Steps.concat_right {c c' : Config}
     have hstep' := Step.concat_right (p1 := p1) hpc hstep
     exact Relation.ReflTransGen.head hstep' ih
 
+/-- Reverse: stepping in concatenated program with pc in second part gives step in p2.
+The config is "de-offset" by p1.length to get the corresponding p2 step. -/
+theorem Step.of_concat_right {c c' : Config}
+    (hpc_lo : p1.length ≤ c.pc)
+    (hpc_hi : c.pc < p1.length + p2.length)
+    (hstep : Step (p1.concat p2) c c') :
+    Step p2 ⟨c.pc - p1.length, c.state⟩ ⟨c'.pc - p1.length, c'.state⟩ := by
+  -- Get the instruction in p2 at the de-offset pc
+  have hp2_pc : c.pc - p1.length < p2.length := by omega
+  have hinstr : ∃ instr, p2.getInstr (c.pc - p1.length) = some instr := by
+    simp only [Program.getInstr]
+    exact ⟨p2[c.pc - p1.length], List.getElem?_eq_getElem hp2_pc⟩
+  obtain ⟨instr, hinstr⟩ := hinstr
+  -- The concat instruction is the shifted version
+  have hconcat_instr : (p1.concat p2).getInstr c.pc = some (instr.shiftJumps p1.length) := by
+    rw [Program.getInstr_concat_right c.pc hpc_lo hpc_hi, Program.getInstr_shiftJumps, hinstr]
+    rfl
+  -- Match on the instruction type
+  -- Note: we're constructing Step p2 ⟨c.pc - p1.length, c.state⟩ ⟨c'.pc - p1.length, c'.state⟩
+  -- and hinstr : p2.getInstr (c.pc - p1.length) = some instr
+  set pc2 := c.pc - p1.length with hpc2_def
+  cases instr with
+  | Z n =>
+    have hc' : c' = ⟨c.pc + 1, c.state.write n 0⟩ := by
+      cases hstep <;> simp_all [Instr.shiftJumps]
+    subst hc'
+    have hpc'2 : c.pc + 1 - p1.length = pc2 + 1 := by omega
+    rw [hpc'2]
+    exact Step.zero hinstr
+  | S n =>
+    have hc' : c' = ⟨c.pc + 1, c.state.write n (c.state.read n + 1)⟩ := by
+      cases hstep <;> simp_all [Instr.shiftJumps]
+    subst hc'
+    have hpc'2 : c.pc + 1 - p1.length = pc2 + 1 := by omega
+    rw [hpc'2]
+    exact Step.succ hinstr
+  | T m n =>
+    have hc' : c' = ⟨c.pc + 1, c.state.write n (c.state.read m)⟩ := by
+      cases hstep <;> simp_all [Instr.shiftJumps]
+    subst hc'
+    have hpc'2 : c.pc + 1 - p1.length = pc2 + 1 := by omega
+    rw [hpc'2]
+    exact Step.trans hinstr
+  | J m n q =>
+    -- Either we jump (registers equal) or continue (registers different)
+    cases hstep with
+    | jump_eq h heq =>
+      simp only [Instr.shiftJumps] at hconcat_instr
+      simp only [hconcat_instr, Option.some.injEq, Instr.J.injEq] at h
+      obtain ⟨rfl, rfl, hq⟩ := h
+      -- hq : q + p1.length = q✝ (the shifted jump target)
+      -- The goal has q✝ - p1.length in the target pc
+      simp only [← hq, Nat.add_sub_cancel]
+      exact Step.jump_eq hinstr heq
+    | jump_ne h hne =>
+      simp only [Instr.shiftJumps] at hconcat_instr
+      simp only [hconcat_instr, Option.some.injEq, Instr.J.injEq] at h
+      obtain ⟨rfl, rfl, _⟩ := h
+      have hpc'2 : c.pc + 1 - p1.length = pc2 + 1 := by omega
+      rw [hpc'2]
+      exact Step.jump_ne hinstr hne
+    | _ => simp_all [Instr.shiftJumps]
+
+/-- Extract multi-step p2 execution from concat execution starting at pc = p1.length.
+This is the reverse of `Steps.concat_right`: given execution in p1.concat(p2) that
+starts at pc = p1.length and halts, we extract the corresponding p2 execution. -/
+theorem Steps.of_concat_right {s : State} {c' : Config}
+    (hsteps : Steps (p1.concat p2) ⟨p1.length, s⟩ c')
+    (hhalted : c'.isHalted (p1.concat p2))
+    (_hpc' : c'.pc ≥ p1.length) :
+    ∃ c, Steps p2 ⟨0, s⟩ c ∧ c.isHalted p2 ∧ c.state = c'.state := by
+  -- Key insight: all steps stay in the p2 range (pc ≥ p1.length)
+  -- Generalize to handle arbitrary starting pc in the p2 range
+  suffices h : ∀ (start : Config) (c' : Config),
+      start.pc ≥ p1.length →
+      Steps (p1.concat p2) start c' →
+      c'.isHalted (p1.concat p2) →
+      ∃ c, Steps p2 ⟨start.pc - p1.length, start.state⟩ c ∧ c.isHalted p2 ∧ c.state = c'.state by
+    have := h ⟨p1.length, s⟩ c' (Nat.le_refl _) hsteps hhalted
+    simp only [Nat.sub_self] at this
+    exact this
+  intro start c'' hstart hsteps' hhalted'
+  induction hsteps' using Relation.ReflTransGen.head_induction_on with
+  | refl =>
+    -- In the refl case, start = c'' (both become c'')
+    use ⟨c''.pc - p1.length, c''.state⟩, Relation.ReflTransGen.refl
+    constructor
+    · simp only [Config.isHalted] at hhalted' ⊢
+      simp only [Program.concat, List.length_append, Program.shiftJumps, List.length_map] at hhalted'
+      omega
+    · rfl
+  | @head a b hstep hrest ih =>
+    have ha_in_range : a.pc < p1.length + p2.length := by
+      by_contra hc
+      simp only [not_lt] at hc
+      have hhalted_a : a.isHalted (p1.concat p2) := by
+        simp only [Config.isHalted, Program.concat, List.length_append,
+                   Program.shiftJumps, List.length_map]
+        omega
+      exact Step.halted_no_step hhalted_a hstep
+    have hstep_p2 := Step.of_concat_right hstart ha_in_range hstep
+    have hb_pc_ge : b.pc ≥ p1.length := by
+      have ha_ge := hstart  -- a.pc ≥ p1.length
+      cases hstep with
+      | zero h => simp only []; omega
+      | succ h => simp only []; omega
+      | trans h => simp only []; omega
+      | jump_eq h heq =>
+        -- The instruction is in p2's range, so its jump target is shifted by p1.length
+        -- h : (p1.concat p2).getInstr a.pc = some (J m n q)
+        -- Since a.pc ≥ p1.length, this instruction comes from p2.shiftJumps p1.length
+        -- So the target q is of the form original_target + p1.length
+        have hconcat := Program.getInstr_concat_right a.pc hstart ha_in_range
+        rw [hconcat, Program.getInstr_shiftJumps] at h
+        -- h : Option.map (Instr.shiftJumps p1.length) (p2.getInstr (a.pc - p1.length)) = some (J m n q)
+        -- The original instruction in p2 has target q' and the shifted one has q = q' + p1.length
+        cases hp2 : p2.getInstr (a.pc - p1.length) with
+        | none => simp only [hp2, Option.map_none] at h; nomatch h
+        | some instr =>
+          simp only [hp2, Option.map_some] at h
+          cases instr with
+          | J m' n' q' =>
+            simp only [Instr.shiftJumps, Option.some.injEq, Instr.J.injEq] at h
+            -- h gives us that the jump target is q' + p1.length = q✝
+            -- Goal is: b.pc ≥ p1.length, where b.pc = q✝ (the jump target)
+            obtain ⟨_, _, hq_eq⟩ := h
+            simp only [← hq_eq]
+            omega
+          | Z _ => simp only [Instr.shiftJumps, Option.some.injEq] at h; nomatch h
+          | S _ => simp only [Instr.shiftJumps, Option.some.injEq] at h; nomatch h
+          | T _ _ => simp only [Instr.shiftJumps, Option.some.injEq] at h; nomatch h
+      | jump_ne h hne => simp only []; omega
+    -- ih takes hb_pc_ge and gives us ∃ c, Steps p2 ⟨b.pc - p1.length, b.state⟩ c ∧ ...
+    obtain ⟨c, hrest_p2, hhalted_c, hstate_eq⟩ := ih hb_pc_ge
+    exact ⟨c, Relation.ReflTransGen.head hstep_p2 hrest_p2, hhalted_c, hstate_eq⟩
+
 /-- If p1 halts (by falling through) and p2 halts when started from p1's final state,
 then p1.concat p2 halts.
 
