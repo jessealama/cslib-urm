@@ -8,19 +8,18 @@ import Urm.UnaryComposition
 
 /-! # Composition Helper Lemmas
 
-This file provides reusable infrastructure for proving composition theorems.
-It extracts common patterns from BinaryUnaryComposition to enable cleaner proofs.
+Infrastructure for proving composition theorems, extracting common patterns
+from composition proofs.
 
 ## Main definitions
 
-- `HaltingExecution`: Bundle of halting execution with all properties
-- `Steps.chain_concat`: Chain two program executions in a concatenation
+- `AgreeingExecution`: Bundle for execution from a state that agrees with inputs
+- `Halts.executeFromAgreeingState`: Run a program from an agreeing state
 
 ## Main results
 
-- `Halts.toExecution`: Extract HaltingExecution from Halts witness
-- `Steps.chain_concat`: If p1 halts at c1, then p2 runs from c1.state in p1.concat p2
-- State agreement lemmas for clear+transfer patterns
+- `Steps.chain_concat`: Chain two program executions in a concatenation
+- `agrees_single_input_after_clear_transfer`: State agreement after clear+transfer
 -/
 
 namespace Urm

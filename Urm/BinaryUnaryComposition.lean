@@ -300,20 +300,7 @@ theorem URMComputableSF.comp_binary_unary
     · -- Halting ↔ Definedness
       constructor
       · -- Forward: H halts → composed function is defined
-        -- Strategy: Decompose H's execution into phases:
-        -- Phase 1: saveInput (T 0 (m+1)) - straight-line, always succeeds
-        -- Phase 2: G1 - must have halted, so g1 is defined (by hG1_spec)
-        -- Phase 3: saveG1Result (T 0 (m+2)) - straight-line
-        -- Phase 4: restoreInput (T (m+1) 0) - straight-line
-        -- Phase 5: G2 - must have halted, so g2 is defined (by hG2_spec)
-        -- Phase 6: saveG2Result (T 0 (m+3)) - straight-line
-        -- Phase 7-8: setupArg0, setupArg1 - straight-line
-        -- Phase 9: F - must have halted on (g1(x), g2(x)), so f is defined (by hF_spec)
-        --
-        -- Key lemma needed: extract halting of subprograms from halting of concatenation
-        -- This requires showing that if p1.concat p2 halts from initial state,
-        -- then p1 must have halted (otherwise we'd never reach p2).
-        -- Also need register state tracking to show what state p2 sees.
+        -- Decompose H into phases, extract subprogram halting, derive definedness
         intro hHalts
         rw [comp_function_dom]
         -- Set up program structure
@@ -2415,16 +2402,7 @@ theorem URMComputableSF.comp_binary_unary
       have hF_halted : cF.isHalted pF := hF_spec.2
       have hF_pc : cF.pc = pF.length := hF_sf.halts_at_length (List.ofFn fInput) cF hF_steps hF_halted
 
-      -- The key fact: H's final state.output equals pF's final state.output
-      -- This requires showing that the execution of H through all three phases
-      -- ends with pF running from a state that agrees with Config.init [v1, v2],
-      -- and then by Halts.from_agreeing_state, the output is preserved.
-      --
-      -- This is the structural core that ties the backward direction to the result:
-      -- - H's final phase is essentially clear + Tsetup + pF
-      -- - After clear + Tsetup, R[0] = v1, R[1] = v2
-      -- - pF runs from that state and produces the same output as if from Config.init [v1, v2]
-
+      -- H's final output equals pF's output: phase3 runs pF from state agreeing with [v1, v2]
       have hResult_eq : cH.state.output = cF.state.output := by
         -- Redefine the phase structure (not in scope from backward direction)
         set m := compositionBaseBU pF pG1 pG2 with hm_def
@@ -2650,22 +2628,7 @@ theorem URMComputableSF.comp_binary_unary
             ∃ setup_pc : ℕ,
               setup_pc = phase1.length + phase2.length + clearProg.length + Tsetup.length ∧
               ∃ hsteps_to_setup : Steps H (Config.init (List.ofFn inputs)) ⟨setup_pc, sSetup⟩, True := by
-          -- This is the key construction that traces execution through all phases
-
-          -- The setup state after clear + Tsetup in phase3:
-          -- We construct it explicitly by tracking register values
-
-          -- Key observation: After phase3's clear, all R[0..m] = 0
-          -- Then Tsetup sets R[0] = R[m+2] = v1 and R[1] = R[m+3] = v2
-
-          -- The state before phase3's clear has:
-          -- - R[m+2] = v1 (preserved from phase1's T02)
-          -- - R[m+3] = v2 (preserved from phase2's T03)
-
-          -- After phase3's clear + Tsetup:
-          -- - R[0] = v1
-          -- - R[1] = v2
-          -- - R[2..m] = 0 (from clear)
+          -- Construct sSetup by tracing through phases; after clear+Tsetup: R[0]=v1, R[1]=v2
 
           -- We construct sSetup explicitly:
           let sSetup : State := fun r =>
