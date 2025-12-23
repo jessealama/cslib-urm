@@ -341,25 +341,30 @@ theorem straightLine_concat_isStandardForm {p1 p2 : Program}
 /-- Concatenation of standard form programs is standard form.
 
 If p₁ and p₂ are both standard form, then p₁.concat p₂ is also standard form.
-The key insight is that p₁ halts at exactly p₁.length, which is where p₂ starts
-in the concatenated program. -/
+This is a syntactic property: jump targets in p₁ are already bounded by p₁.length ≤ p₁.length + p₂.length,
+and jump targets in p₂ are shifted by p₁.length, preserving their bounded property. -/
 theorem Program.IsStandardForm.concat {p1 p2 : Program}
     (h1 : p1.IsStandardForm) (h2 : p2.IsStandardForm) :
     (p1.concat p2).IsStandardForm := by
-  intro inputs c hsteps hhalted
-  simp only [Config.isHalted, Program.concat_length] at hhalted
-  -- We need to show c.pc = p1.length + p2.length
-  -- The execution must pass through p1, halt at p1.length, then execute p2.
-  --
-  -- Key observations:
-  -- 1. While pc < p1.length, we execute p1's instructions
-  -- 2. By p1 standard form, when p1 halts it's at exactly p1.length
-  -- 3. At pc = p1.length, we start executing p2 (shifted by p1.length)
-  -- 4. By p2 standard form, p2 halts at exactly p2.length (relative)
-  -- 5. So the final pc is p1.length + p2.length
-  --
-  -- This requires decomposing the execution into phases.
-  sorry
+  unfold Program.IsStandardForm Program.isStandardForm at *
+  rw [List.all_eq_true] at h1 h2 ⊢
+  intro instr hinstr
+  simp only [Program.concat, Program.shiftJumps] at hinstr
+  rw [List.mem_append] at hinstr
+  cases hinstr with
+  | inl hp1 =>
+    -- Instruction from p1: bounded by p1.length ≤ p1.length + p2.length
+    have hb := h1 instr hp1
+    simp only [Program.concat_length]
+    exact Instr.hasBoundedJump_mono hb (Nat.le_add_right _ _)
+  | inr hp2 =>
+    -- Instruction from p2.shiftJumps: use the shifted bound lemma
+    rw [List.mem_map] at hp2
+    obtain ⟨instr', hinstr', rfl⟩ := hp2
+    have hb := h2 instr' hinstr'
+    have hshift := Instr.hasBoundedJump_shiftJumps (len := p2.length) (offset := p1.length) hb
+    simp only [Program.concat_length]
+    exact hshift
 
 /-- If p1.concat p2 halts and p1 is standard form, then p1 halts.
 
@@ -390,7 +395,7 @@ theorem Halts.concat_sf_intermediate_state {p1 p2 : Program} {inputs : List ℕ}
                  (⟨p1.length, s⟩ : Config).isHalted p1 := by
   have hP1 := Halts.prefix_of_concat_sf hH h1
   have hspec := Classical.choose_spec hP1
-  have hpc := h1 inputs (Classical.choose hP1) hspec.1 hspec.2
+  have hpc := h1.halts_at_length inputs (Classical.choose hP1) hspec.1 hspec.2
   use (Classical.choose hP1).state
   constructor
   · -- Need to show Steps p1 (Config.init inputs) ⟨p1.length, c.state⟩
@@ -417,7 +422,7 @@ theorem Halts.suffix_of_concat_sf {p1 p2 : Program} {inputs : List ℕ}
   -- Get the intermediate state from p1's halting
   have hP1 := Halts.prefix_of_concat_sf hH h1
   have hc1_spec := Classical.choose_spec hP1
-  have hc1_pc := h1 inputs (Classical.choose hP1) hc1_spec.1 hc1_spec.2
+  have hc1_pc := h1.halts_at_length inputs (Classical.choose hP1) hc1_spec.1 hc1_spec.2
   use (Classical.choose hP1).state
   refine ⟨hP1, ?_, ?_⟩
   · intro hP1'
@@ -809,7 +814,7 @@ theorem Halts.concat_straightLine {p1 p2 : Program} {inputs : List ℕ}
   -- Standard form ensures p1 halted by falling through
   have h1_pc : (Classical.choose h1).pc = p1.length := by
     have hspec := Classical.choose_spec h1
-    exact h1_sf inputs (Classical.choose h1) hspec.1 hspec.2
+    exact h1_sf.halts_at_length inputs (Classical.choose h1) hspec.1 hspec.2
   -- Straight-line p2 halts from any state
   have h2 : ∃ c, Steps p2 ⟨0, (Classical.choose h1).state⟩ c ∧ c.isHalted p2 := by
     obtain ⟨c, hsteps, hhalted, _⟩ := straightLine_halts_from_state h2_sl (Classical.choose h1).state

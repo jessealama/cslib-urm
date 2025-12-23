@@ -490,7 +490,7 @@ theorem URMComputableSF.comp_unary
         have hPg_spec := Classical.choose_spec hPg_halts
         have hPg_steps : Steps Pg (Config.init (List.ofFn inputs)) cPg := hPg_spec.1
         have hPg_halted : cPg.isHalted Pg := hPg_spec.2
-        have hPg_pc : cPg.pc = Pg.length := hPg_sf (List.ofFn inputs) cPg hPg_steps hPg_halted
+        have hPg_pc : cPg.pc = Pg.length := hPg_sf.halts_at_length (List.ofFn inputs) cPg hPg_steps hPg_halted
 
         -- Pg's result is g(inputs)
         have hPg_result : cPg.state.output = (g inputs).get hg_dom := by
@@ -605,7 +605,7 @@ theorem URMComputableSF.comp_unary
       have hPg_spec := Classical.choose_spec hPg_halts
       have hPg_steps : Steps Pg (Config.init (List.ofFn inputs)) cPg := hPg_spec.1
       have hPg_halted : cPg.isHalted Pg := hPg_spec.2
-      have hPg_pc : cPg.pc = Pg.length := hPg_sf (List.ofFn inputs) cPg hPg_steps hPg_halted
+      have hPg_pc : cPg.pc = Pg.length := hPg_sf.halts_at_length (List.ofFn inputs) cPg hPg_steps hPg_halted
 
       have hPg_result : cPg.state.output = (g inputs).get hg_dom := by
         have h := (hPg inputs).2 hPg_halts hg_dom

@@ -397,7 +397,7 @@ theorem URMComputableSF.comp_binary_unary
         have hPhase1_steps : Steps phase1 (Config.init (List.ofFn inputs)) cPhase1 := hPhase1_spec.1
         have hPhase1_halted : cPhase1.isHalted phase1 := hPhase1_spec.2
         have hPhase1_pc : cPhase1.pc = phase1.length :=
-          hPhase1_sf (List.ofFn inputs) cPhase1 hPhase1_steps hPhase1_halted
+          hPhase1_sf.halts_at_length (List.ofFn inputs) cPhase1 hPhase1_steps hPhase1_halted
 
         have hPhase12_halts : Halts (phase1.concat phase2) (List.ofFn inputs) :=
           Halts.concat_continuation hPhase1_halts hPhase1_pc (hPhase2_halts_from cPhase1.state)
@@ -408,7 +408,7 @@ theorem URMComputableSF.comp_binary_unary
           hPhase12_spec.1
         have hPhase12_halted : cPhase12.isHalted (phase1.concat phase2) := hPhase12_spec.2
         have hPhase12_pc : cPhase12.pc = (phase1.concat phase2).length :=
-          (hPhase1_sf.concat hPhase2_sf) (List.ofFn inputs) cPhase12 hPhase12_steps hPhase12_halted
+          (hPhase1_sf.concat hPhase2_sf).halts_at_length (List.ofFn inputs) cPhase12 hPhase12_steps hPhase12_halted
 
         have hH_halts : Halts (phase1.concat (phase2.concat phase3)) (List.ofFn inputs) := by
           have hassoc : phase1.concat (phase2.concat phase3) = (phase1.concat phase2).concat phase3 := by
@@ -496,7 +496,7 @@ theorem URMComputableSF.comp_binary_unary
       have hF_spec := Classical.choose_spec hF_halts
       have hF_steps : Steps pF (Config.init (List.ofFn fInput)) cF := hF_spec.1
       have hF_halted : cF.isHalted pF := hF_spec.2
-      have hF_pc : cF.pc = pF.length := hF_sf (List.ofFn fInput) cF hF_steps hF_halted
+      have hF_pc : cF.pc = pF.length := hF_sf.halts_at_length (List.ofFn fInput) cF hF_steps hF_halted
 
       -- The key fact: H's final state.output equals pF's final state.output
       -- This requires showing that the execution of H through all three phases
@@ -642,7 +642,7 @@ theorem URMComputableSF.comp_binary_unary
         have hG1_spec' := Classical.choose_spec hG1_halts
         have hG1_steps : Steps pG1 (Config.init (List.ofFn inputs)) cG1 := hG1_spec'.1
         have hG1_halted : cG1.isHalted pG1 := hG1_spec'.2
-        have hG1_pc : cG1.pc = pG1.length := hG1_sf (List.ofFn inputs) cG1 hG1_steps hG1_halted
+        have hG1_pc : cG1.pc = pG1.length := hG1_sf.halts_at_length (List.ofFn inputs) cG1 hG1_steps hG1_halted
 
         -- G1's output is v1
         have hG1_output : cG1.state.output = v1 := by
@@ -654,7 +654,7 @@ theorem URMComputableSF.comp_binary_unary
         have hG2_spec' := Classical.choose_spec hG2_halts
         have hG2_steps : Steps pG2 (Config.init (List.ofFn inputs)) cG2 := hG2_spec'.1
         have hG2_halted : cG2.isHalted pG2 := hG2_spec'.2
-        have hG2_pc : cG2.pc = pG2.length := hG2_sf (List.ofFn inputs) cG2 hG2_steps hG2_halted
+        have hG2_pc : cG2.pc = pG2.length := hG2_sf.halts_at_length (List.ofFn inputs) cG2 hG2_steps hG2_halted
 
         -- G2's output is v2
         have hG2_output : cG2.state.output = v2 := by
