@@ -908,7 +908,9 @@ theorem URMComputableSF.comp_binary_unary
 
           -- Need halted in phase2.concat phase3
           have hhalted3 : (⟨cPf'.pc + Tsetup.length + clearProg.length + phase2.length, cPf'.state⟩ : Config).isHalted (phase2.concat phase3) := by
-            sorry
+            simp only [Config.isHalted, phase2, phase3, Program.concat_length]
+            simp only [Config.isHalted] at hPf_halted
+            omega
 
           -- Step 4: Lift to H = phase1.concat (phase2.concat phase3)
           have h4 := Steps.concat_right (p1 := phase1) h3 hhalted3
