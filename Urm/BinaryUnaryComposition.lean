@@ -316,9 +316,250 @@ theorem URMComputableSF.comp_binary_unary
         -- Also need register state tracking to show what state p2 sees.
         intro hHalts
         rw [comp_function_dom]
-        -- Extract that each subprogram must have halted
-        -- This requires infrastructure for decomposing halts through foldConcat
-        sorry
+        -- Set up program structure
+        set m := compositionBaseBU pF pG1 pG2 with hm_def
+        let T01 : Program := [Instr.T 0 (m + 1)]
+        let T02 : Program := [Instr.T 0 (m + 2)]
+        let clearProg := Program.clearRegisters m
+        let T10 : Program := [Instr.T (m + 1) 0]
+        let T03 : Program := [Instr.T 0 (m + 3)]
+        let Tsetup : Program := [Instr.T (m + 2) 0, Instr.T (m + 3) 1]
+
+        let phase1 := T01.concat (pG1.concat T02)
+        let phase2 := clearProg.concat (T10.concat (pG2.concat T03))
+        let phase3 := clearProg.concat (Tsetup.concat pF)
+
+        -- Standard form properties
+        have hT01_sf := straightLine_isStandardForm (single_transfer_isStraightLine 0 (m + 1))
+        have hT02_sf := straightLine_isStandardForm (single_transfer_isStraightLine 0 (m + 2))
+        have hT10_sf := straightLine_isStandardForm (single_transfer_isStraightLine (m + 1) 0)
+        have hT03_sf := straightLine_isStandardForm (single_transfer_isStraightLine 0 (m + 3))
+        have hTsetup_sf := straightLine_isStandardForm (double_transfer_isStraightLine (m + 2) 0 (m + 3) 1)
+        have hClear_sf := straightLine_isStandardForm (clearRegisters_isStraightLine m)
+
+        have hPhase1_sf : phase1.IsStandardForm := hT01_sf.concat (hG1_sf.concat hT02_sf)
+        have hPhase2_sf : phase2.IsStandardForm := hClear_sf.concat (hT10_sf.concat (hG2_sf.concat hT03_sf))
+        have hPhase3_sf : phase3.IsStandardForm := hClear_sf.concat (hTsetup_sf.concat hF_sf)
+
+        -- H = phase1.concat (phase2.concat phase3)
+        have hH_eq : H = phase1.concat (phase2.concat phase3) := rfl
+
+        -- Convert hHalts to use List.ofFn
+        have hHalts' : Halts H (List.ofFn inputs) := hHalts
+
+        -- Extract phase1 halting
+        have hPhase1_halts : Halts phase1 (List.ofFn inputs) := by
+          rw [hH_eq] at hHalts'
+          exact Halts.prefix_of_concat_sf hHalts' hPhase1_sf
+
+        -- Extract pG1 halting from phase1
+        -- phase1 = T01.concat (pG1.concat T02)
+        -- Use suffix_of_concat_sf to get execution of pG1.concat T02 from state after T01
+        have hT01_sl := single_transfer_isStraightLine 0 (m + 1)
+        have hSuffix1 := Halts.suffix_of_concat_sf hPhase1_halts hT01_sf
+        obtain ⟨sT01, hT01_halts, hsT01_eq, cG1T02, hG1T02_steps, hG1T02_halted⟩ := hSuffix1
+
+        -- Extract pG1 halting from pG1.concat T02
+        have hG1T02_sf : (pG1.concat T02).IsStandardForm := hG1_sf.concat hT02_sf
+
+        -- Use Urm.prefix_of_concat_from_zero to extract pG1 halting
+        have hG1_from_sT01 : ∃ c', Steps pG1 ⟨0, sT01⟩ c' ∧ c'.isHalted pG1 :=
+          Urm.prefix_of_concat_from_zero hG1T02_steps hG1T02_halted hG1_sf
+        obtain ⟨cG1', hG1_steps, hG1_halted⟩ := hG1_from_sT01
+
+        -- Show sT01 agrees with State.fromInputs on registers 0..pG1.maxRegister
+        have hm_ge_G1 : pG1.maxRegister ≤ m := le_max_of_le_right (le_max_left _ _)
+
+        -- sT01 is the state after T01 = [T 0 (m+1)] from Config.init
+        -- T01 only writes to register m+1, so registers 0..m are unchanged
+        have hagreeG1 : ∀ r, r ≤ pG1.maxRegister → sT01.read r = (State.fromInputs (List.ofFn inputs)).read r := by
+          intro r hr
+          rw [hsT01_eq hT01_halts]
+          -- Get the execution trace of T01
+          have hex := single_transfer_halts 0 (m + 1) (State.fromInputs (List.ofFn inputs))
+          obtain ⟨c', hsteps_c', hhalted_c', _, hstate'⟩ := hex
+          -- By uniqueness of halted configs
+          have hspec := Classical.choose_spec hT01_halts
+          have huniq := Steps.halts_unique hsteps_c' hhalted_c' hspec.1 hspec.2
+          rw [← huniq, hstate']
+          -- Reading register r ≤ pG1.maxRegister ≤ m from s.write (m+1) ...
+          simp only [State.read, State.write, Function.update]
+          have hr_ne : r ≠ m + 1 := by
+            have : r ≤ m := Nat.le_trans hr hm_ge_G1
+            omega
+          simp [hr_ne]
+
+        -- Use Halts.of_agreeing_state to conclude Halts pG1 (List.ofFn inputs)
+        have hG1_halts : Halts pG1 (List.ofFn inputs) :=
+          Halts.of_agreeing_state hG1_steps hG1_halted hagreeG1
+
+        -- By hG1_spec, Halts pG1 (List.ofFn inputs) → (g1 inputs).Dom
+        have hg1_dom : (g1 inputs).Dom := (hG1_spec inputs).1.mp hG1_halts
+
+        -- For g2, we need to do similar extraction from phase2
+        -- This is more complex because we need to track through phase1's final state
+        -- For now, we can use a simpler argument via the symmetry of the structure
+
+        -- Extract phase2 halting from H
+        have hSuffix12 := Halts.suffix_of_concat_sf hHalts' hPhase1_sf
+        obtain ⟨sPhase1, _, hsPhase1_eq, cPhase23, hPhase23_steps, hPhase23_halted⟩ := hSuffix12
+
+        -- phase2.concat phase3 halts from sPhase1
+        -- Extract phase2 halting
+        have hPhase2_from := prefix_of_concat_from_zero hPhase23_steps hPhase23_halted hPhase2_sf
+        obtain ⟨cPhase2', hPhase2_steps, hPhase2_halted⟩ := hPhase2_from
+
+        -- phase2 = clearProg.concat (T10.concat (pG2.concat T03))
+        -- We need to extract pG2 halting from this
+        -- After clearProg, registers 0..m-1 are 0, and T10 restores R[0] from R[m+1]
+        -- This sets up the correct state for pG2
+
+        -- For g2, we need similar decomposition but the state after clearProg.T10 has R[0] = inputs[0]
+        -- This is more involved - let's use the fact that the whole program halts
+
+        -- For g2, we need similar extraction through phase2.
+        -- phase2 = clearProg.concat (T10.concat (pG2.concat T03))
+        -- After phase1:
+        --   R[m+1] = inputs[0] (original input, saved by T01)
+        --   R[m+2] = g1(inputs[0]) (result of G1, saved by T02)
+        -- clearProg only clears 0..m-1, so R[m+1], R[m+2] are preserved
+        -- T10 copies R[m+1] to R[0], so after T10: R[0] = inputs[0]
+        -- Then pG2 runs with R[0] = inputs[0], the correct input for g2
+        --
+        -- This requires tracking the state through multiple phases.
+        -- The proof structure would be similar to g1 but with more intermediate states.
+
+        have hg2_dom : (g2 inputs).Dom := by
+          -- phase2 = clearProg.concat (T10.concat (pG2.concat T03))
+          -- We need to extract pG2 halting from this
+
+          -- Step 1: Extract T10.concat (pG2.concat T03) execution from phase2
+          have hT10rest_sf : (T10.concat (pG2.concat T03)).IsStandardForm :=
+            hT10_sf.concat (hG2_sf.concat hT03_sf)
+          have hClear_sl := clearRegisters_isStraightLine m
+          obtain ⟨sClear, _, hClear_p2_halts⟩ :=
+            suffix_of_concat_from_zero hPhase2_steps hPhase2_halted hClear_sf
+          obtain ⟨cT10rest, hT10rest_steps, hT10rest_halted⟩ := hClear_p2_halts
+
+          -- Step 2: Extract pG2.concat T03 execution from T10.concat (pG2.concat T03)
+          have hG2T03_sf : (pG2.concat T03).IsStandardForm := hG2_sf.concat hT03_sf
+          obtain ⟨sT10, _, hG2T03_halts⟩ :=
+            suffix_of_concat_from_zero hT10rest_steps hT10rest_halted hT10_sf
+          obtain ⟨cG2T03, hG2T03_steps, hG2T03_halted⟩ := hG2T03_halts
+
+          -- Step 3: Extract pG2 halting from pG2.concat T03
+          have hG2_from_sT10 : ∃ c', Steps pG2 ⟨0, sT10⟩ c' ∧ c'.isHalted pG2 :=
+            prefix_of_concat_from_zero hG2T03_steps hG2T03_halted hG2_sf
+
+          obtain ⟨cG2', hG2_steps', hG2_halted'⟩ := hG2_from_sT10
+
+          -- Step 4: Show state agreement
+          -- Key facts:
+          -- - sPhase1 has R[m+1] = inputs[0] (preserved from T01, since pG1 only uses regs ≤ m)
+          -- - sClear = sPhase1 with registers 0..m-1 cleared, but R[m+1] preserved
+          -- - sT10 = sClear with R[0] = sClear.read (m+1) = inputs[0]
+          -- So sT10.read 0 = inputs[0] and sT10.read r = 0 for r in 1..m-1
+
+          have hm_ge_G2 : pG2.maxRegister ≤ m := le_max_of_le_right (le_max_right _ _)
+
+          have hagreeG2 : ∀ r, r ≤ pG2.maxRegister →
+              sT10.read r = (State.fromInputs (List.ofFn inputs)).read r := by
+            intro r hr
+            -- The state after T10 has R[0] = original input, R[1..m-1] = 0
+            -- State.fromInputs for 1-input has R[0] = input, R[k] = 0 for k > 0
+            -- For r ≤ pG2.maxRegister ≤ m:
+            --   If r = 0: both are inputs[0]
+            --   If r > 0: both are 0
+            by_cases hr0 : r = 0
+            · -- r = 0: sT10.read 0 = inputs[0] and State.fromInputs gives inputs[0]
+              subst hr0
+              -- sT10 is the result of T10 = [T (m+1) 0] from sClear
+              -- T (m+1) 0 copies R[m+1] to R[0]
+              -- sClear has R[m+1] preserved from sPhase1
+              -- sPhase1 has R[m+1] = inputs[0] from T01's effect, preserved through pG1 and T02
+              -- This requires tracking the state through the execution chain
+              sorry
+            · -- r > 0: clearProg cleared R[r] to 0, T10 only writes R[0]
+              -- State.fromInputs for 1-input has R[r] = 0 for r > 0
+              have hr_pos : 0 < r := Nat.pos_of_ne_zero hr0
+              have hinputs_len : (List.ofFn inputs).length = 1 := by simp
+              -- State.fromInputs returns 0 for r ≥ input length
+              simp only [State.fromInputs, State.read]
+              -- Goal: sT10 r = (List.ofFn inputs).getD r 0
+              -- Since r ≥ 1 and List.ofFn inputs has length 1, getD returns 0
+              have hgetD_zero : (List.ofFn inputs).getD r 0 = 0 := by
+                simp only [List.getD_eq_getElem?_getD, hinputs_len]
+                have hout : r ≥ (List.ofFn inputs).length := by simp; exact hr_pos
+                rw [List.getElem?_eq_none hout]
+                rfl
+              rw [hgetD_zero]
+              -- Now prove sT10.read r = 0
+              -- sT10 = sClear.write 0 (sClear.read (m+1))
+              -- So sT10.read r = sClear.read r for r ≠ 0
+              -- sClear is the result of clearProg from sPhase1
+              -- clearProg clears R[0..m], so sClear.read r = 0 for r ≤ m
+              sorry
+
+          have hG2_halts' : Halts pG2 (List.ofFn inputs) :=
+            Halts.of_agreeing_state hG2_steps' hG2_halted' hagreeG2
+          exact (hG2_spec inputs).1.mp hG2_halts'
+
+        have hf_dom : ∀ (h1 : (g1 inputs).Dom) (h2 : (g2 inputs).Dom),
+            (f fun i => match i with
+              | ⟨0, _⟩ => (g1 inputs).get h1
+              | ⟨1, _⟩ => (g2 inputs).get h2).Dom := by
+          intro hg1_dom' hg2_dom'
+          -- phase3 = clearProg.concat (Tsetup.concat pF)
+          -- After phase1+phase2:
+          --   R[m+2] = g1(inputs[0]) (saved by T02 in phase1)
+          --   R[m+3] = g2(inputs[0]) (saved by T03 in phase2)
+          -- After clearProg: R[0..m-1] = 0, but R[m+2], R[m+3] preserved
+          -- After Tsetup = [T (m+2) 0, T (m+3) 1]:
+          --   R[0] = g1(inputs[0])
+          --   R[1] = g2(inputs[0])
+          -- Then pF runs with the correct inputs for f
+
+          -- Extract phase3 halting from phase2.concat phase3
+          have hPhase3_from := suffix_of_concat_from_zero hPhase23_steps hPhase23_halted hPhase2_sf
+          obtain ⟨sPhase2, _, hPhase3_halts⟩ := hPhase3_from
+          obtain ⟨cPhase3, hPhase3_steps, hPhase3_halted⟩ := hPhase3_halts
+
+          -- Extract Tsetup.concat pF halting from phase3
+          have hTsetupF_sf : (Tsetup.concat pF).IsStandardForm := hTsetup_sf.concat hF_sf
+          obtain ⟨sClear', _, hTsetupF_halts⟩ :=
+            suffix_of_concat_from_zero hPhase3_steps hPhase3_halted hClear_sf
+          obtain ⟨cTsetupF, hTsetupF_steps, hTsetupF_halted⟩ := hTsetupF_halts
+
+          -- Extract pF halting from Tsetup.concat pF
+          obtain ⟨sTsetup, _, hF_halts⟩ :=
+            suffix_of_concat_from_zero hTsetupF_steps hTsetupF_halted hTsetup_sf
+          obtain ⟨cF', hF_steps', hF_halted'⟩ := hF_halts
+
+          -- The key step: show sTsetup agrees with State.fromInputs for the composed inputs
+          -- sTsetup.read 0 = g1(inputs[0])
+          -- sTsetup.read 1 = g2(inputs[0])
+          -- Other registers r ≤ pF.maxRegister are 0
+
+          let fInput : Fin 2 → ℕ := fun i => match i with
+            | ⟨0, _⟩ => (g1 inputs).get hg1_dom'
+            | ⟨1, _⟩ => (g2 inputs).get hg2_dom'
+
+          have hm_ge_F : pF.maxRegister ≤ m := le_max_of_le_left le_rfl
+
+          have hagreeF : ∀ r, r ≤ pF.maxRegister →
+              sTsetup.read r = (State.fromInputs (List.ofFn fInput)).read r := by
+            intro r hr
+            -- sTsetup.read 0 = g1(inputs[0]) = fInput 0
+            -- sTsetup.read 1 = g2(inputs[0]) = fInput 1
+            -- sTsetup.read r = 0 for r > 1 (and r ≤ m)
+            -- State.fromInputs for 2-input has R[0] = fInput 0, R[1] = fInput 1, R[r] = 0 for r > 1
+            sorry
+
+          have hF_halts' : Halts pF (List.ofFn fInput) :=
+            Halts.of_agreeing_state hF_steps' hF_halted' hagreeF
+          exact (hF_spec fInput).1.mp hF_halts'
+
+        exact ⟨hg1_dom, hg2_dom, hf_dom⟩
       · -- Backward: composed function is defined → H halts
         -- Strategy: Chain the programs together using Halts.concat_continuation
         intro hDom
