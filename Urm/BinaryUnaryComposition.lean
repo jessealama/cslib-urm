@@ -623,7 +623,28 @@ theorem URMComputableSF.comp_binary_unary
           obtain ⟨cPf', hsteps', hhalted', houtput'⟩ := Halts.from_agreeing_state hF_halts' hagree
           refine ⟨cPf', hsteps', hhalted', ?_⟩
           -- The output equality follows from uniqueness of halted configs
-          sorry
+          -- Get the halted config for hF_halts' and show it equals cF
+          let cF' := Classical.choose hF_halts'
+          have hF'_spec := Classical.choose_spec hF_halts'
+          have hF'_steps : Steps pF (Config.init [v1, v2]) cF' := hF'_spec.1
+          have hF'_halted : cF'.isHalted pF := hF'_spec.2
+          -- Show init configs are equal
+          have hinit_eq : Config.init [v1, v2] = Config.init (List.ofFn fInput) := by
+            rw [hfInput_eq]
+          -- Transport hF_steps to start from [v1, v2]
+          have hF_steps' : Steps pF (Config.init [v1, v2]) cF := by
+            rw [hinit_eq]; exact hF_steps
+          -- By uniqueness, cF' = cF
+          have hcF_eq : cF' = cF := Steps.halts_unique hF'_steps hF'_halted hF_steps' hF_halted
+          -- houtput' says cPf'.state.output = Result pF [v1, v2] hF_halts'
+          -- Result pF [v1, v2] hF_halts' = cF'.state.output by definition
+          -- So cPf'.state.output = cF'.state.output = cF.state.output
+          rw [houtput']
+          simp only [Result]
+          -- Now goal is (Classical.choose hF_halts').state.output = cF.state.output
+          -- which is cF'.state.output = cF.state.output
+          show cF'.state.output = cF.state.output
+          rw [hcF_eq]
 
         -- === BUILD EXECUTION TRACE ===
         -- We need to trace through all phases and build the expected final config
