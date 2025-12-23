@@ -298,13 +298,8 @@ theorem URMComputableSF.comp_unary
   use H
   constructor
   · -- H is standard form: Pg.concat(clearProg.concat(Pf))
-    -- clearProg is straight-line, hence standard form
-    have hClear_sf : clearProg.IsStandardForm := straightLine_isStandardForm hClear_sl
-    -- clearProg.concat Pf is standard form
-    have hClearPf_sf : (clearProg.concat Pf).IsStandardForm :=
-      Program.IsStandardForm.concat hClear_sf hPf_sf
-    -- Pg.concat(clearProg.concat Pf) is standard form
-    exact Program.IsStandardForm.concat hPg_sf hClearPf_sf
+    exact Program.IsStandardForm.concat hPg_sf
+      (Program.IsStandardForm.concat (straightLine_isStandardForm hClear_sl) hPf_sf)
   · intro inputs
 
     constructor
@@ -544,12 +539,9 @@ theorem URMComputableSF.comp_unary
           simp only [Config.isHalted, Program.concat_length] at hPf_halted ⊢
           omega
 
-        have hClearPf_halts : ∃ c, Steps (clearProg.concat Pf) ⟨0, cPg.state⟩ c ∧
-            c.isHalted (clearProg.concat Pf) :=
-          ⟨⟨cPf.pc + clearProg.length, cPf.state⟩, hClearPf_steps, hClearPf_halted⟩
-
         -- Now use Halts.concat_continuation to chain Pg with (clearProg ++ Pf)
-        apply Halts.concat_continuation hPg_halts hPg_pc hClearPf_halts
+        exact Halts.concat_continuation hPg_halts hPg_pc
+          ⟨⟨cPf.pc + clearProg.length, cPf.state⟩, hClearPf_steps, hClearPf_halted⟩
 
     · -- Result equality
       intro hHalts hDom
@@ -655,13 +647,10 @@ theorem URMComputableSF.comp_unary
         simp only [Config.isHalted, Program.concat_length] at hPf_halted ⊢
         omega
 
-      have hClearPf_halts : ∃ c, Steps (clearProg.concat Pf) ⟨0, cPg.state⟩ c ∧
-          c.isHalted (clearProg.concat Pf) :=
-        ⟨⟨cPf.pc + clearProg.length, cPf.state⟩, hClearPf_steps, hClearPf_halted⟩
-
       -- Lift to full H execution
       have hH_halts_built : Halts H (List.ofFn inputs) :=
-        Halts.concat_continuation hPg_halts hPg_pc hClearPf_halts
+        Halts.concat_continuation hPg_halts hPg_pc
+          ⟨⟨cPf.pc + clearProg.length, cPf.state⟩, hClearPf_steps, hClearPf_halted⟩
 
       -- H's final config
       let cH := Classical.choose hHalts

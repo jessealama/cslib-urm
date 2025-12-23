@@ -2381,8 +2381,7 @@ theorem comp_binary_unary_dom_imp_halts
     rw [hPhase2_state_match', hT03'_m3]
 
   have hH_halts : Halts (phase1.concat (phase2.concat phase3)) (List.ofFn inputs) := by
-    have hassoc := (Program.concat_assoc phase1 phase2 phase3).symm
-    rw [hassoc]
+    rw [(Program.concat_assoc phase1 phase2 phase3).symm]
     exact Halts.concat_continuation hPhase12_halts hPhase12_pc (hPhase3_halts_from cPhase12.state hPhase12_v1 hPhase12_v2)
 
   -- H = phase1.concat (phase2.concat phase3) by definition
@@ -3115,8 +3114,8 @@ theorem comp_binary_unary_result
           simp only [Config.isHalted, Program.concat_length, Tsetup, List.length_cons, List.length_nil]
           omega
         -- Now lift to phase3 = (clearProg.concat Tsetup).concat pF (using associativity)
-        have hassoc : clearProg.concat (Tsetup.concat pF) = (clearProg.concat Tsetup).concat pF := by
-          exact (Program.concat_assoc clearProg Tsetup pF).symm
+        have hassoc : clearProg.concat (Tsetup.concat pF) = (clearProg.concat Tsetup).concat pF :=
+          (Program.concat_assoc clearProg Tsetup pF).symm
         rw [hassoc]
         have hCT_steps' : Steps (clearProg.concat Tsetup) ⟨0, cT03.state⟩
             ⟨clearProg.length + Tsetup.length, cTsetup.state⟩ := by
