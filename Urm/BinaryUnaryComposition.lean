@@ -645,8 +645,7 @@ theorem URMComputableSF.comp_binary_unary
         have hG1_pc : cG1.pc = pG1.length := hG1_sf.halts_at_length (List.ofFn inputs) cG1 hG1_steps hG1_halted
 
         -- G1's output is v1
-        have hG1_output : cG1.state.output = v1 := by
-          sorry
+        have hG1_output : cG1.state.output = v1 := hG1_result
 
         -- === PHASE 2 TRACE ===
         -- G2 halts from Config.init
@@ -657,8 +656,7 @@ theorem URMComputableSF.comp_binary_unary
         have hG2_pc : cG2.pc = pG2.length := hG2_sf.halts_at_length (List.ofFn inputs) cG2 hG2_steps hG2_halted
 
         -- G2's output is v2
-        have hG2_output : cG2.state.output = v2 := by
-          sorry
+        have hG2_output : cG2.state.output = v2 := hG2_result
 
         -- === FINAL STATE CONSTRUCTION ===
         -- The key insight: we need to show what state pF runs from in H.
