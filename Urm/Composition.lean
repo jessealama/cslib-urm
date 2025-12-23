@@ -6,6 +6,8 @@ Authors: Jesse Alama
 
 import Urm.Computable
 import Urm.Shift
+import Urm.Concat
+import Urm.StandardForm
 import Mathlib.Data.Finset.Basic
 import Mathlib.Data.Fin.Tuple.Basic
 
@@ -35,66 +37,6 @@ namespace Urm
 /-! ## Program Combinators -/
 
 namespace Program
-
-/-- Shifting jumps preserves program length. -/
-@[simp]
-theorem shiftJumps_length (offset : ℕ) (p : Program) :
-    (p.shiftJumps offset).length = p.length := by
-  simp [shiftJumps]
-
-/-- Shifting jumps by 0 is the identity. -/
-theorem shiftJumps_zero (p : Program) : p.shiftJumps 0 = p := by
-  simp only [shiftJumps]
-  induction p with
-  | nil => rfl
-  | cons hd tl ih =>
-    simp only [List.map_cons]
-    cases hd <;> simp [Instr.shiftJumps, ih]
-
-/-- Shifting jumps is additive: shifting by a then b equals shifting by (a + b). -/
-theorem shiftJumps_add (p : Program) (a b : ℕ) :
-    (p.shiftJumps a).shiftJumps b = p.shiftJumps (a + b) := by
-  simp only [shiftJumps, List.map_map]
-  congr 1
-  funext instr
-  cases instr with
-  | Z n => simp [Instr.shiftJumps]
-  | S n => simp [Instr.shiftJumps]
-  | T m n => simp [Instr.shiftJumps]
-  | J m n q => simp [Instr.shiftJumps]; omega
-
-/-- Concatenate two programs, adjusting the second program's jump targets.
-
-When concatenating `p1 ++ p2`, jumps within `p2` must be shifted by `p1.length`
-to maintain correct targets in the combined program. -/
-def concat (p1 p2 : Program) : Program :=
-  p1 ++ p2.shiftJumps p1.length
-
-@[simp]
-theorem concat_length (p1 p2 : Program) : (p1.concat p2).length = p1.length + p2.length := by
-  simp [concat]
-
-theorem concat_nil_left (p : Program) : concat [] p = p := by
-  simp [concat, shiftJumps_zero]
-
-theorem concat_nil_right (p : Program) : concat p [] = p := by
-  simp [concat, shiftJumps]
-
-/-- Concatenation is associative. -/
-theorem concat_assoc (p1 p2 p3 : Program) :
-    (p1.concat p2).concat p3 = p1.concat (p2.concat p3) := by
-  simp only [concat, List.append_assoc, List.length_append, shiftJumps_length]
-  congr 1
-  simp only [shiftJumps, List.map_append]
-  congr 1
-  simp only [List.map_map]
-  congr 1
-  funext instr
-  cases instr with
-  | Z n => simp [Instr.shiftJumps]
-  | S n => simp [Instr.shiftJumps]
-  | T m n => simp [Instr.shiftJumps]
-  | J m n q => simp [Instr.shiftJumps]; omega
 
 /-- Generate Transfer instructions to copy a contiguous range of registers.
 
@@ -128,54 +70,6 @@ theorem foldConcat_singleton (p : Program) : foldConcat [p] = p := by
   simp [foldConcat, concat_nil_left]
 
 end Program
-
-/-! ## Concatenation Lemmas -/
-
-section ConcatLemmas
-
-variable {p1 p2 : Program}
-
-/-- Get instruction from concatenated program in the first part. -/
-theorem Program.getInstr_concat_left (i : ℕ) (hi : i < p1.length) :
-    (p1.concat p2).getInstr i = p1.getInstr i := by
-  simp only [Program.concat, Program.getInstr]
-  rw [List.getElem?_append_left hi]
-
-/-- Get instruction from concatenated program in the second part (with shiftJumps). -/
-theorem Program.getInstr_concat_right (i : ℕ) (hi : p1.length ≤ i)
-    (_hi' : i < p1.length + p2.length) :
-    (p1.concat p2).getInstr i = (p2.shiftJumps p1.length).getInstr (i - p1.length) := by
-  simp only [Program.concat, Program.getInstr]
-  rw [List.getElem?_append_right (by omega)]
-
-/-- Stepping in the first part of a concatenated program. -/
-theorem Step.concat_left {c c' : Config} (hpc : c.pc < p1.length)
-    (hstep : Step p1 c c') : Step (p1.concat p2) c c' := by
-  cases hstep with
-  | zero h =>
-    exact Step.zero (by rw [Program.getInstr_concat_left _ hpc]; exact h)
-  | succ h =>
-    exact Step.succ (by rw [Program.getInstr_concat_left _ hpc]; exact h)
-  | trans h =>
-    exact Step.trans (by rw [Program.getInstr_concat_left _ hpc]; exact h)
-  | jump_eq h heq =>
-    exact Step.jump_eq (by rw [Program.getInstr_concat_left _ hpc]; exact h) heq
-  | jump_ne h hne =>
-    exact Step.jump_ne (by rw [Program.getInstr_concat_left _ hpc]; exact h) hne
-
-/-- Reverse direction: stepping in concatenated program with pc in first part gives step in p1. -/
-theorem Step.of_concat_left {c c' : Config} (hpc : c.pc < p1.length)
-    (hstep : Step (p1.concat p2) c c') : Step p1 c c' := by
-  have hinstr_eq : (p1.concat p2).getInstr c.pc = p1.getInstr c.pc :=
-    Program.getInstr_concat_left c.pc hpc
-  cases hstep with
-  | zero h => rw [hinstr_eq] at h; exact Step.zero h
-  | succ h => rw [hinstr_eq] at h; exact Step.succ h
-  | trans h => rw [hinstr_eq] at h; exact Step.trans h
-  | jump_eq h heq => rw [hinstr_eq] at h; exact Step.jump_eq h heq
-  | jump_ne h hne => rw [hinstr_eq] at h; exact Step.jump_ne h hne
-
-end ConcatLemmas
 
 /-! ## Register Isolation Lemmas -/
 
@@ -322,46 +216,6 @@ theorem Part.sequence_get {α : Type*} {n : ℕ} {f : Fin n → Part α}
       simp only [Part.sequence_succ, Part.bind, Part.map] at hdom ⊢
       exact ih _ ⟨j, Nat.lt_of_succ_lt_succ hlt⟩
 
-/-! ## Sequential Halting Lemmas -/
-
-section SequentialHalting
-
-variable {p1 p2 : Program}
-
-/-- Multi-step from within p1 stays in p1 until halting.
-If we execute Steps in p1 from c to a halted config c', then the same path exists in p1.concat p2. -/
-theorem Steps.concat_left_prefix {c c' : Config}
-    (hsteps : Steps p1 c c') (_hhalted : c'.isHalted p1) :
-    Steps (p1.concat p2) c c' := by
-  -- Use head induction: at each step, the current config can step (so pc < p1.length),
-  -- allowing us to lift the step to the concatenation
-  induction hsteps using Relation.ReflTransGen.head_induction_on with
-  | refl => exact Relation.ReflTransGen.refl
-  | @head a b hstep hrest ih =>
-    -- hstep : Step p1 a b, hrest : Steps p1 b c'
-    -- ih : Steps (p1.concat p2) b c' (already applied with _hhalted)
-    -- Since a can step in p1, a.pc < p1.length
-    have hpc : a.pc < p1.length := by
-      by_contra hc
-      simp only [not_lt] at hc
-      exact Step.halted_no_step hc hstep
-    -- Lift the step to the concatenation
-    have hstep' : Step (p1.concat p2) a b := Step.concat_left hpc hstep
-    -- Combine with IH
-    exact Relation.ReflTransGen.head hstep' ih
-
-/-- If p1 halts, we can lift the Steps from p1 to the concatenation. -/
-theorem Halts.concat_left_lift (h : Halts p1 inputs) :
-    ∃ c, Steps (p1.concat p2) (Config.init inputs) c ∧
-         c.isHalted p1 ∧
-         c.pc = (Classical.choose h).pc ∧
-         c.state = (Classical.choose h).state := by
-  obtain ⟨hsteps, hhalted⟩ := Classical.choose_spec h
-  refine ⟨Classical.choose h, ?_, hhalted, rfl, rfl⟩
-  exact Steps.concat_left_prefix hsteps hhalted
-
-end SequentialHalting
-
 /-! ## Full Composition Program Construction -/
 
 /-- Maximum register used by a list of programs. -/
@@ -461,175 +315,7 @@ theorem compositionBase_ge_gi (n m : ℕ) (f : Program) (gs : List Program)
     _ ≤ max m (max f.maxRegister (maxRegisterOfList gs)) := Nat.le_max_right _ _
     _ ≤ max n (max m (max f.maxRegister (maxRegisterOfList gs))) := Nat.le_max_right _ _
 
-/-! ## Execution Lemmas for Primitive Operations -/
-
-/-- An instruction is "non-jumping" if it's Z, S, or T (not J). -/
-def Instr.isNonJumping : Instr → Bool
-  | Instr.Z _ => true
-  | Instr.S _ => true
-  | Instr.T _ _ => true
-  | Instr.J _ _ _ => false
-
-/-- A program is "straight-line" if it contains no jump instructions. -/
-def Program.isStraightLine (p : Program) : Bool :=
-  p.all Instr.isNonJumping
-
-/-- Stepping through a non-jumping instruction increases pc by 1. -/
-theorem Step.nonJumping_pc_inc {p : Program} {c c' : Config} {instr : Instr}
-    (hstep : Step p c c')
-    (hinstr : p.getInstr c.pc = some instr)
-    (hnonjump : instr.isNonJumping = true) :
-    c'.pc = c.pc + 1 := by
-  cases hstep with
-  | zero h => simp_all [Program.getInstr]
-  | succ h => simp_all [Program.getInstr]
-  | trans h => simp_all [Program.getInstr]
-  | jump_eq h _ => simp_all [Instr.isNonJumping, Program.getInstr]
-  | jump_ne h _ => simp_all [Instr.isNonJumping, Program.getInstr]
-
-/-- A straight-line program halts on any input (pc always increases until it exceeds length). -/
-theorem straightLine_halts {p : Program} (hsl : p.isStraightLine = true) (inputs : List ℕ) :
-    Halts p inputs := by
-  -- We show that in at most p.length steps, pc reaches p.length
-  -- Use strong induction on remaining instructions
-  suffices h : ∀ (c : Config), c.pc ≤ p.length →
-      ∃ c', Steps p c c' ∧ c'.pc ≥ p.length by
-    obtain ⟨c', hsteps, hpc⟩ := h (Config.init inputs) (by simp [Config.init])
-    exact ⟨c', hsteps, hpc⟩
-  intro c hpc_le
-  -- Induction on p.length - c.pc (remaining steps)
-  generalize hrem : p.length - c.pc = remaining
-  induction remaining using Nat.strong_induction_on generalizing c with
-  | _ remaining ih =>
-    by_cases hhalted : c.pc ≥ p.length
-    · -- Already halted
-      exact ⟨c, Relation.ReflTransGen.refl, hhalted⟩
-    · -- Can take a step
-      push_neg at hhalted
-      have hpc_lt : c.pc < p.length := hhalted
-      -- Get the instruction at c.pc
-      have hinstr : ∃ instr, p.getInstr c.pc = some instr := by
-        simp only [Program.getInstr]
-        exact ⟨p[c.pc], List.getElem?_eq_getElem hpc_lt⟩
-      obtain ⟨instr, hinstr⟩ := hinstr
-      -- The instruction is non-jumping
-      have hnonjump : instr.isNonJumping = true := by
-        simp only [Program.isStraightLine, List.all_eq_true] at hsl
-        have hmem : instr ∈ p := by
-          simp only [Program.getInstr] at hinstr
-          exact List.getElem?_eq_some_iff.mp hinstr |>.2 ▸ List.getElem_mem hpc_lt
-        exact hsl instr hmem
-      -- Take one step
-      have hstep : ∃ c', Step p c c' ∧ c'.pc = c.pc + 1 := by
-        cases instr with
-        | Z n =>
-          exact ⟨⟨c.pc + 1, c.state.write n 0⟩, Step.zero hinstr, rfl⟩
-        | S n =>
-          exact ⟨⟨c.pc + 1, c.state.write n (c.state.read n + 1)⟩, Step.succ hinstr, rfl⟩
-        | T m n =>
-          exact ⟨⟨c.pc + 1, c.state.write n (c.state.read m)⟩, Step.trans hinstr, rfl⟩
-        | J m n q =>
-          simp [Instr.isNonJumping] at hnonjump
-      obtain ⟨c', hstep', hpc'⟩ := hstep
-      -- Apply IH with smaller remaining count
-      have hremaining : p.length - c'.pc < remaining := by omega
-      have hpc'_le : c'.pc ≤ p.length := by omega
-      obtain ⟨c'', hsteps'', hpc''⟩ := ih (p.length - c'.pc) hremaining c' hpc'_le rfl
-      exact ⟨c'', Relation.ReflTransGen.head hstep' hsteps'', hpc''⟩
-
-/-- For straight-line programs, the halted config has pc exactly equal to the program length.
-
-Since straight-line programs can only advance pc by 1, and halting means pc ≥ length,
-the pc must be exactly length when halted. -/
-theorem straightLine_halts_at_length {p : Program} (hsl : p.isStraightLine = true) (inputs : List ℕ) :
-    let h := straightLine_halts hsl inputs
-    (Classical.choose h).pc = p.length := by
-  have h := straightLine_halts hsl inputs
-  obtain ⟨hsteps, hhalted⟩ := Classical.choose_spec h
-  simp only [Config.isHalted] at hhalted
-  -- Show pc ≤ p.length by showing pc can never exceed p.length from stepping
-  -- Each step of a straight-line program increases pc by exactly 1
-  suffices hsuff : ∀ c c' : Config, Steps p c c' → c'.pc ≤ max c.pc p.length by
-    have := hsuff (Config.init inputs) (Classical.choose h) hsteps
-    simp only [Config.init] at this
-    omega
-  intro c c' hsteps'
-  induction hsteps' using Relation.ReflTransGen.head_induction_on with
-  | refl => omega
-  | head hstep _ ih =>
-    -- Each step increases pc by 1 for non-jumping instructions
-    -- Now handle each case
-    cases hstep with
-    | zero hinstr =>
-      simp only [Program.getInstr] at hinstr
-      have hpc_lt := List.getElem?_eq_some_iff.mp hinstr |>.1
-      simp only at ih ⊢
-      omega
-    | succ hinstr =>
-      simp only [Program.getInstr] at hinstr
-      have hpc_lt := List.getElem?_eq_some_iff.mp hinstr |>.1
-      simp only at ih ⊢
-      omega
-    | trans hinstr =>
-      simp only [Program.getInstr] at hinstr
-      have hpc_lt := List.getElem?_eq_some_iff.mp hinstr |>.1
-      simp only at ih ⊢
-      omega
-    | jump_eq hinstr _ =>
-      -- Jump instructions don't appear in straight-line programs
-      simp only [Program.getInstr] at hinstr
-      have ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.mp hinstr
-      have hmem : (Instr.J _ _ _) ∈ p := heq ▸ List.getElem_mem hlt
-      simp only [Program.isStraightLine, List.all_eq_true] at hsl
-      exact absurd (hsl _ hmem) (by simp [Instr.isNonJumping])
-    | jump_ne hinstr _ =>
-      -- Jump instructions don't appear in straight-line programs
-      simp only [Program.getInstr] at hinstr
-      have ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.mp hinstr
-      have hmem : (Instr.J _ _ _) ∈ p := heq ▸ List.getElem_mem hlt
-      simp only [Program.isStraightLine, List.all_eq_true] at hsl
-      exact absurd (hsl _ hmem) (by simp [Instr.isNonJumping])
-
-/-! ## Standard Form
-
-A program is in "standard form" if it always halts exactly at its length (by falling through
-the end, not by jumping beyond). This property is essential for sequential composition:
-when we concatenate programs, the first program must terminate exactly at its length so
-the second program starts at the correct position.
-
-We assume all programs are in standard form. Later, we will prove that every program
-has a computationally equivalent standard form program. -/
-
-/-- A program is in standard form if, whenever it halts, the program counter equals
-the program length. -/
-def Program.IsStandardForm (p : Program) : Prop :=
-  ∀ (inputs : List ℕ) (c : Config),
-    Steps p (Config.init inputs) c →
-    c.isHalted p →
-    c.pc = p.length
-
-/-- A partial function is URM-computable by a standard form program. -/
-def URMComputableSF (n : ℕ) (f : (Fin n → ℕ) → Part ℕ) : Prop :=
-  ∃ p : Program, p.IsStandardForm ∧
-    ∀ inputs : Fin n → ℕ,
-      let inputList := List.ofFn inputs
-      (Halts p inputList ↔ (f inputs).Dom) ∧
-      ∀ (hHalts : Halts p inputList) (hDom : (f inputs).Dom),
-        Result p inputList hHalts = (f inputs).get hDom
-
-/-- Straight-line programs are in standard form.
-
-Since straight-line programs have no jumps, they can only increment the program counter
-by 1 at each step, so they must halt exactly at the program length. -/
-theorem straightLine_isStandardForm {p : Program} (hsl : p.isStraightLine = true) :
-    p.IsStandardForm := by
-  intro inputs c hsteps hhalted
-  have hHalts : Halts p inputs := ⟨c, hsteps, hhalted⟩
-  have hHalts' := straightLine_halts hsl inputs
-  obtain ⟨hsteps', hhalted'⟩ := Classical.choose_spec hHalts'
-  have heq := Steps.halts_unique hsteps hhalted hsteps' hhalted'
-  rw [heq]
-  exact straightLine_halts_at_length hsl inputs
+/-! ## Standard Form and Concatenation -/
 
 /-- Concatenation of straight-line programs is straight-line. -/
 theorem Program.isStraightLine_concat {p1 p2 : Program}
@@ -935,61 +621,6 @@ variable {p1 p2 : Program}
 /-- Convert a state to a list of register values (first n registers). -/
 def State.toList (s : State) (n : ℕ) : List ℕ :=
   (List.range n).map s
-
-/-- Get instruction from shifted program. -/
-theorem Program.getInstr_shiftJumps (offset : ℕ) (p : Program) (i : ℕ) :
-    (p.shiftJumps offset).getInstr i = (p.getInstr i).map (Instr.shiftJumps offset) := by
-  simp only [Program.shiftJumps, Program.getInstr, List.getElem?_map]
-
-/-- Stepping in the second part of a concatenated program.
-If we can step in p2 from pc=k, we can step in p1.concat p2 from pc=k+p1.length. -/
-theorem Step.concat_right {c c' : Config}
-    (hpc : c.pc < p2.length)
-    (hstep : Step p2 c c') :
-    Step (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ ⟨c'.pc + p1.length, c'.state⟩ := by
-  have hlen : c.pc + p1.length < p1.length + p2.length := by omega
-  have hinstr_eq : (p1.concat p2).getInstr (c.pc + p1.length) =
-      (p2.shiftJumps p1.length).getInstr c.pc := by
-    rw [Program.getInstr_concat_right (c.pc + p1.length) (by omega) hlen]
-    simp only [Nat.add_sub_cancel]
-  match hstep with
-  | .zero (n := n) h =>
-    have h' : (p1.concat p2).getInstr (c.pc + p1.length) = some (Instr.Z n) := by
-      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
-    convert @Step.zero (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ n h' using 2; simp; omega
-  | .succ (n := n) h =>
-    have h' : (p1.concat p2).getInstr (c.pc + p1.length) = some (Instr.S n) := by
-      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
-    convert @Step.succ (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ n h' using 2; simp; omega
-  | .trans (m := m) (n := n) h =>
-    have h' : (p1.concat p2).getInstr (c.pc + p1.length) = some (Instr.T m n) := by
-      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
-    convert @Step.trans (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ m n h' using 2; simp; omega
-  | .jump_eq (m := m) (n := n) (q := q) h heq =>
-    have h' : (p1.concat p2).getInstr (c.pc + p1.length) = some (Instr.J m n (q + p1.length)) := by
-      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
-    exact @Step.jump_eq (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ m n (q + p1.length) h' heq
-  | .jump_ne (m := m) (n := n) (q := q) h hne =>
-    have h' : (p1.concat p2).getInstr (c.pc + p1.length) = some (Instr.J m n (q + p1.length)) := by
-      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
-    convert @Step.jump_ne (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ m n (q + p1.length) h' hne using 2; simp; omega
-
-/-- Multi-step in the second part of a concatenated program. -/
-theorem Steps.concat_right {c c' : Config}
-    (hsteps : Steps p2 c c')
-    (hhalted : c'.isHalted p2) :
-    Steps (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ ⟨c'.pc + p1.length, c'.state⟩ := by
-  induction hsteps using Relation.ReflTransGen.head_induction_on with
-  | refl => exact Relation.ReflTransGen.refl
-  | @head a b hstep hrest ih =>
-    -- hstep : Step p2 a b
-    -- Need: a.pc < p2.length (since a can step)
-    have hpc : a.pc < p2.length := by
-      by_contra hc
-      simp only [not_lt] at hc
-      exact Step.halted_no_step hc hstep
-    have hstep' := Step.concat_right (p1 := p1) hpc hstep
-    exact Relation.ReflTransGen.head hstep' ih
 
 /-- Reverse: stepping in concatenated program with pc in second part gives step in p2.
 The config is "de-offset" by p1.length to get the corresponding p2 step. -/
