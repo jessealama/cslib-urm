@@ -437,13 +437,13 @@ theorem URMComputableSF.comp_binary_unary
           have hT10rest_sf : (T10.concat (pG2.concat T03)).IsStandardForm :=
             hT10_sf.concat (hG2_sf.concat hT03_sf)
           have hClear_sl := clearRegisters_isStraightLine m
-          obtain ⟨sClear, _, hClear_p2_halts⟩ :=
+          obtain ⟨sClear, hClear_steps, hClear_p2_halts⟩ :=
             suffix_of_concat_from_zero hPhase2_steps hPhase2_halted hClear_sf
           obtain ⟨cT10rest, hT10rest_steps, hT10rest_halted⟩ := hClear_p2_halts
 
           -- Step 2: Extract pG2.concat T03 execution from T10.concat (pG2.concat T03)
           have hG2T03_sf : (pG2.concat T03).IsStandardForm := hG2_sf.concat hT03_sf
-          obtain ⟨sT10, _, hG2T03_halts⟩ :=
+          obtain ⟨sT10, hT10_steps, hG2T03_halts⟩ :=
             suffix_of_concat_from_zero hT10rest_steps hT10rest_halted hT10_sf
           obtain ⟨cG2T03, hG2T03_steps, hG2T03_halted⟩ := hG2T03_halts
 
@@ -494,11 +494,31 @@ theorem URMComputableSF.comp_binary_unary
                 rfl
               rw [hgetD_zero]
               -- Now prove sT10.read r = 0
-              -- sT10 = sClear.write 0 (sClear.read (m+1))
-              -- So sT10.read r = sClear.read r for r ≠ 0
-              -- sClear is the result of clearProg from sPhase1
-              -- clearProg clears R[0..m], so sClear.read r = 0 for r ≤ m
-              sorry
+              -- Step 1: Characterize sT10 using single_transfer_halts
+              have hT10_char := single_transfer_halts (m + 1) 0 sClear
+              obtain ⟨cT10', hT10_steps', hT10_halted', _, hT10_state'⟩ := hT10_char
+              have hT10_halted : (⟨T10.length, sT10⟩ : Config).isHalted T10 :=
+                Nat.le_refl _
+              have hconfigs_eq := Steps.halts_unique hT10_steps hT10_halted hT10_steps' hT10_halted'
+              have hsT10_eq : sT10 = sClear.write 0 (sClear.read (m + 1)) := by
+                have : sT10 = cT10'.state := congrArg Config.state hconfigs_eq
+                rw [this, hT10_state']
+              -- Step 2: sT10 r = sClear r for r ≠ 0
+              have hT10_preserves_r : sT10 r = sClear r := by
+                rw [hsT10_eq]; exact State.write_read_diff _ _ _ _ hr0
+              -- Step 3: Characterize sClear using straightLineFinalState
+              have hClear_halted : (⟨clearProg.length, sClear⟩ : Config).isHalted clearProg :=
+                Nat.le_refl _
+              have hsClear_eq : sClear = straightLineFinalState hClear_sl sPhase1 := by
+                have hspec := straightLineFinalState_spec hClear_sl sPhase1
+                have huniq := Steps.halts_unique hClear_steps hClear_halted hspec.1 hspec.2.1
+                exact congrArg Config.state huniq
+              -- Step 4: sClear r = 0 by clearRegisters_zeros
+              have hClear_zeros_r : sClear r = 0 := by
+                rw [hsClear_eq]
+                exact clearRegisters_zeros m sPhase1 r (Nat.le_trans hr hm_ge_G2)
+              -- Combine
+              rw [hT10_preserves_r, hClear_zeros_r]
 
           have hG2_halts' : Halts pG2 (List.ofFn inputs) :=
             Halts.of_agreeing_state hG2_steps' hG2_halted' hagreeG2
