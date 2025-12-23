@@ -964,6 +964,48 @@ theorem comp_binary_unary_halts_imp_f_dom
     have hT03_halts_s1 := single_transfer_halts 0 (m + 3) cG2_s1.state
     obtain ⟨cT03_s1, hT03_steps_s1, hT03_halted_s1, hT03_pc_s1, hT03_state_s1⟩ := hT03_halts_s1
 
+    -- Hoisted: Phase2 step construction (used in both r=0 and r=1 cases)
+    have hG2T03_steps_s1 : Steps (pG2.concat T03) ⟨0, cT10_s1.state⟩ ⟨cT03_s1.pc + pG2.length, cT03_s1.state⟩ := by
+      have hG2T03_prefix := Steps.concat_left_prefix (p2 := T03) hG2_steps_s1 hG2_halted_s1
+      have hT03_steps'' := Steps.concat_right (p1 := pG2) hT03_steps_s1 hT03_halted_s1
+      have hstart_eq : (⟨0 + pG2.length, cG2_s1.state⟩ : Config) = ⟨cG2_s1.pc, cG2_s1.state⟩ := by
+        simp only [Nat.zero_add]; ext; exact hG2_pc_s1.symm; rfl
+      rw [hstart_eq] at hT03_steps''
+      exact Relation.ReflTransGen.trans hG2T03_prefix hT03_steps''
+    have hG2T03_halted_s1 : (⟨cT03_s1.pc + pG2.length, cT03_s1.state⟩ : Config).isHalted (pG2.concat T03) := by
+      simp only [Config.isHalted, Program.concat_length, T03, List.length_singleton] at hT03_halted_s1 ⊢
+      rw [hT03_pc_s1]; omega
+    have hT10G2T03_steps_s1 : Steps (T10.concat (pG2.concat T03)) ⟨0, cClear_s1.state⟩
+        ⟨(cT03_s1.pc + pG2.length) + T10.length, cT03_s1.state⟩ := by
+      have hT10_prefix := Steps.concat_left_prefix (p2 := pG2.concat T03) hT10_steps_s1 hT10_halted_s1
+      have hG2T03_steps'' := Steps.concat_right (p1 := T10) hG2T03_steps_s1 hG2T03_halted_s1
+      have hstart_eq : (⟨0 + T10.length, cT10_s1.state⟩ : Config) = ⟨cT10_s1.pc, cT10_s1.state⟩ := by
+        simp only [Nat.zero_add, T10, List.length_singleton] at hT10_pc_s1 ⊢
+        ext
+        · exact hT10_pc_s1.symm
+        · rfl
+      rw [hstart_eq] at hG2T03_steps''
+      exact Relation.ReflTransGen.trans hT10_prefix hG2T03_steps''
+    have hT10G2T03_halted_s1 : (⟨(cT03_s1.pc + pG2.length) + T10.length, cT03_s1.state⟩ : Config).isHalted (T10.concat (pG2.concat T03)) := by
+      simp only [Config.isHalted, Program.concat_length, T10, T03, List.length_singleton] at hT03_halted_s1 ⊢
+      rw [hT03_pc_s1]; omega
+    have hPhase2_explicit_steps_s1 : Steps phase2 ⟨0, sPhase1⟩ ⟨((cT03_s1.pc + pG2.length) + T10.length) + clearProg.length, cT03_s1.state⟩ := by
+      have hClear_prefix := Steps.concat_left_prefix (p2 := T10.concat (pG2.concat T03)) hClear_steps_s1 hClear_halted_s1
+      have hT10G2T03_steps'' := Steps.concat_right (p1 := clearProg) hT10G2T03_steps_s1 hT10G2T03_halted_s1
+      have hstart_eq : (⟨0 + clearProg.length, cClear_s1.state⟩ : Config) = ⟨cClear_s1.pc, cClear_s1.state⟩ := by
+        simp only [Nat.zero_add]
+        ext
+        · exact hClear_pc_s1.symm
+        · rfl
+      rw [hstart_eq] at hT10G2T03_steps''
+      exact Relation.ReflTransGen.trans hClear_prefix hT10G2T03_steps''
+    have hPhase2_explicit_halted_s1 : (⟨((cT03_s1.pc + pG2.length) + T10.length) + clearProg.length, cT03_s1.state⟩ : Config).isHalted phase2 := by
+      simp only [Config.isHalted, phase2, Program.concat_length, T10, T03, List.length_singleton] at hT03_halted_s1 ⊢
+      rw [hT03_pc_s1]; omega
+    have hPhase2_state_match_s1 : cPhase2_from_s1.state = cT03_s1.state := by
+      have hconfigs := Steps.halts_unique hPhase2_steps_s1 hPhase2_halted_s1 hPhase2_explicit_steps_s1 hPhase2_explicit_halted_s1
+      rw [hconfigs]
+
     by_cases hr0 : r = 0
     · -- Case r = 0: sTsetup.read 0 = fInput 0 = g1(inputs[0])
       subst hr0
@@ -1000,49 +1042,7 @@ theorem comp_binary_unary_halts_imp_f_dom
         have hChain : cT03_s1.state.read (m + 2) = sPhase1.read (m + 2) := by
           rw [hT03_preserves', hG2_preserves', hT10_preserves, hClear_preserves]
 
-        have hPhase2_explicit_steps' : Steps phase2 ⟨0, sPhase1⟩ ⟨((cT03_s1.pc + pG2.length) + T10.length) + clearProg.length, cT03_s1.state⟩ := by
-          have hG2T03_steps' : Steps (pG2.concat T03) ⟨0, cT10_s1.state⟩ ⟨cT03_s1.pc + pG2.length, cT03_s1.state⟩ := by
-            have hG2T03_prefix := Steps.concat_left_prefix (p2 := T03) hG2_steps_s1 hG2_halted_s1
-            have hT03_steps'' := Steps.concat_right (p1 := pG2) hT03_steps_s1 hT03_halted_s1
-            have hstart_eq : (⟨0 + pG2.length, cG2_s1.state⟩ : Config) = ⟨cG2_s1.pc, cG2_s1.state⟩ := by
-              simp only [Nat.zero_add]; ext; exact hG2_pc_s1.symm; rfl
-            rw [hstart_eq] at hT03_steps''
-            exact Relation.ReflTransGen.trans hG2T03_prefix hT03_steps''
-          have hG2T03_halted' : (⟨cT03_s1.pc + pG2.length, cT03_s1.state⟩ : Config).isHalted (pG2.concat T03) := by
-            simp only [Config.isHalted, Program.concat_length, T03, List.length_singleton] at hT03_halted_s1 ⊢
-            rw [hT03_pc_s1]; omega
-          have hT10G2T03_steps' : Steps (T10.concat (pG2.concat T03)) ⟨0, cClear_s1.state⟩
-              ⟨(cT03_s1.pc + pG2.length) + T10.length, cT03_s1.state⟩ := by
-            have hT10_prefix := Steps.concat_left_prefix (p2 := pG2.concat T03) hT10_steps_s1 hT10_halted_s1
-            have hG2T03_steps'' := Steps.concat_right (p1 := T10) hG2T03_steps' hG2T03_halted'
-            have hstart_eq : (⟨0 + T10.length, cT10_s1.state⟩ : Config) = ⟨cT10_s1.pc, cT10_s1.state⟩ := by
-              simp only [Nat.zero_add, T10, List.length_singleton] at hT10_pc_s1 ⊢
-              ext
-              · exact hT10_pc_s1.symm
-              · rfl
-            rw [hstart_eq] at hG2T03_steps''
-            exact Relation.ReflTransGen.trans hT10_prefix hG2T03_steps''
-          have hT10G2T03_halted' : (⟨(cT03_s1.pc + pG2.length) + T10.length, cT03_s1.state⟩ : Config).isHalted (T10.concat (pG2.concat T03)) := by
-            simp only [Config.isHalted, Program.concat_length, T10, T03, List.length_singleton] at hT03_halted_s1 ⊢
-            rw [hT03_pc_s1]; omega
-          have hClear_prefix := Steps.concat_left_prefix (p2 := T10.concat (pG2.concat T03)) hClear_steps_s1 hClear_halted_s1
-          have hT10G2T03_steps'' := Steps.concat_right (p1 := clearProg) hT10G2T03_steps' hT10G2T03_halted'
-          have hstart_eq : (⟨0 + clearProg.length, cClear_s1.state⟩ : Config) = ⟨cClear_s1.pc, cClear_s1.state⟩ := by
-            simp only [Nat.zero_add]
-            ext
-            · exact hClear_pc_s1.symm
-            · rfl
-          rw [hstart_eq] at hT10G2T03_steps''
-          exact Relation.ReflTransGen.trans hClear_prefix hT10G2T03_steps''
-        have hPhase2_explicit_halted' : (⟨((cT03_s1.pc + pG2.length) + T10.length) + clearProg.length, cT03_s1.state⟩ : Config).isHalted phase2 := by
-          simp only [Config.isHalted, phase2, Program.concat_length, T10, T03, List.length_singleton] at hT03_halted_s1 ⊢
-          rw [hT03_pc_s1]; omega
-
-        have hPhase2_state_match' : cPhase2_from_s1.state = cT03_s1.state := by
-          have hconfigs := Steps.halts_unique hPhase2_steps_s1 hPhase2_halted_s1 hPhase2_explicit_steps' hPhase2_explicit_halted'
-          rw [hconfigs]
-
-        rw [hPhase2_state_match', hChain]
+        rw [hPhase2_state_match_s1, hChain]
 
       have hsPhase1_v1 : sPhase1.read (m + 2) = (g1 inputs).get hg1_dom := by
         rw [hsPhase1_eq hPhase1_halts]
@@ -1151,49 +1151,7 @@ theorem comp_binary_unary_halts_imp_f_dom
           have hT03_m3 : cT03_s1.state.read (m + 3) = cG2_s1.state.read 0 := by
             rw [hT03_state_s1, State.write_read_same]
 
-          have hG2T03_steps' : Steps (pG2.concat T03) ⟨0, cT10_s1.state⟩ ⟨cT03_s1.pc + pG2.length, cT03_s1.state⟩ := by
-            have hG2T03_prefix := Steps.concat_left_prefix (p2 := T03) hG2_steps_s1 hG2_halted_s1
-            have hT03_steps'' := Steps.concat_right (p1 := pG2) hT03_steps_s1 hT03_halted_s1
-            have hstart_eq : (⟨0 + pG2.length, cG2_s1.state⟩ : Config) = ⟨cG2_s1.pc, cG2_s1.state⟩ := by
-              simp only [Nat.zero_add]; ext; exact hG2_pc_s1.symm; rfl
-            rw [hstart_eq] at hT03_steps''
-            exact Relation.ReflTransGen.trans hG2T03_prefix hT03_steps''
-          have hG2T03_halted' : (⟨cT03_s1.pc + pG2.length, cT03_s1.state⟩ : Config).isHalted (pG2.concat T03) := by
-            simp only [Config.isHalted, Program.concat_length, T03, List.length_singleton] at hT03_halted_s1 ⊢
-            rw [hT03_pc_s1]; omega
-          have hT10G2T03_steps' : Steps (T10.concat (pG2.concat T03)) ⟨0, cClear_s1.state⟩
-              ⟨(cT03_s1.pc + pG2.length) + T10.length, cT03_s1.state⟩ := by
-            have hT10_prefix := Steps.concat_left_prefix (p2 := pG2.concat T03) hT10_steps_s1 hT10_halted_s1
-            have hG2T03_steps'' := Steps.concat_right (p1 := T10) hG2T03_steps' hG2T03_halted'
-            have hstart_eq : (⟨0 + T10.length, cT10_s1.state⟩ : Config) = ⟨cT10_s1.pc, cT10_s1.state⟩ := by
-              simp only [Nat.zero_add, T10, List.length_singleton] at hT10_pc_s1 ⊢
-              ext
-              · exact hT10_pc_s1.symm
-              · rfl
-            rw [hstart_eq] at hG2T03_steps''
-            exact Relation.ReflTransGen.trans hT10_prefix hG2T03_steps''
-          have hT10G2T03_halted' : (⟨(cT03_s1.pc + pG2.length) + T10.length, cT03_s1.state⟩ : Config).isHalted (T10.concat (pG2.concat T03)) := by
-            simp only [Config.isHalted, Program.concat_length, T10, T03, List.length_singleton] at hT03_halted_s1 ⊢
-            rw [hT03_pc_s1]; omega
-          have hClear_prefix := Steps.concat_left_prefix (p2 := T10.concat (pG2.concat T03)) hClear_steps_s1 hClear_halted_s1
-          have hT10G2T03_steps'' := Steps.concat_right (p1 := clearProg) hT10G2T03_steps' hT10G2T03_halted'
-          have hstart_eq : (⟨0 + clearProg.length, cClear_s1.state⟩ : Config) = ⟨cClear_s1.pc, cClear_s1.state⟩ := by
-            simp only [Nat.zero_add]
-            ext
-            · exact hClear_pc_s1.symm
-            · rfl
-          rw [hstart_eq] at hT10G2T03_steps''
-          have hPhase2_explicit_steps' : Steps phase2 ⟨0, sPhase1⟩ ⟨((cT03_s1.pc + pG2.length) + T10.length) + clearProg.length, cT03_s1.state⟩ :=
-            Relation.ReflTransGen.trans hClear_prefix hT10G2T03_steps''
-          have hPhase2_explicit_halted' : (⟨((cT03_s1.pc + pG2.length) + T10.length) + clearProg.length, cT03_s1.state⟩ : Config).isHalted phase2 := by
-            simp only [Config.isHalted, phase2, Program.concat_length, T10, T03, List.length_singleton] at hT03_halted_s1 ⊢
-            rw [hT03_pc_s1]; omega
-
-          have hPhase2_state_match' : cPhase2_from_s1.state = cT03_s1.state := by
-            have hconfigs := Steps.halts_unique hPhase2_steps_s1 hPhase2_halted_s1 hPhase2_explicit_steps' hPhase2_explicit_halted'
-            rw [hconfigs]
-
-          rw [hsPhase2_eq, hPhase2_state_match', hT03_m3, hcG2_s1_r0]
+          rw [hsPhase2_eq, hPhase2_state_match_s1, hT03_m3, hcG2_s1_r0]
 
         rw [hsTsetup_r1, hsClear'_preserves_m3, hsPhase2_v2]
 
