@@ -560,13 +560,13 @@ theorem clearRegisters_isStraightLine (maxReg : ℕ) :
 
 /-- copyRegisterRange halts on any input. -/
 theorem copyRegisterRange_halts (src dst n : ℕ) (inputs : List ℕ) :
-    Halts (Program.copyRegisterRange src dst n) inputs := by
-  exact straightLine_halts (copyRegisterRange_isStraightLine src dst n) inputs
+    Halts (Program.copyRegisterRange src dst n) inputs :=
+  straightLine_halts (copyRegisterRange_isStraightLine src dst n) inputs
 
 /-- clearRegisters halts on any input. -/
 theorem clearRegisters_halts (maxReg : ℕ) (inputs : List ℕ) :
-    Halts (Program.clearRegisters maxReg) inputs := by
-  exact straightLine_halts (clearRegisters_isStraightLine maxReg) inputs
+    Halts (Program.clearRegisters maxReg) inputs :=
+  straightLine_halts (clearRegisters_isStraightLine maxReg) inputs
 
 /-- Straight-line programs halt from any starting state, not just Config.init.
 This is key for chaining: after running one program, we can run the next
@@ -1186,8 +1186,8 @@ theorem comp_halts_of_defined {n m : ℕ}
     ext i
     exact (Part.sequence_get hSeqDom i).symm
   -- f halts (by ProgramSpec)
-  have hFHalts : Halts Pf (List.ofFn (fun i => (g i inputs).get (hGiDom i))) := by
-    exact (hPf _).1.mpr hFDom
+  have hFHalts : Halts Pf (List.ofFn (fun i => (g i inputs).get (hGiDom i))) :=
+    (hPf _).1.mpr hFDom
   -- Now we need to chain the programs together
   -- Program.compose creates: foldConcat [saveInputs, computeGs, prepareF, runF]
   simp only [Program.compose, Program.foldConcat]

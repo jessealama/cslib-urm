@@ -4,7 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jesse Alama
 -/
 
-import Urm.UnaryComposition
+import Urm.CompositionHelpers
 
 /-! # Binary-Unary Composition
 
@@ -538,24 +538,16 @@ theorem URMComputableSF.comp_binary_unary
                   intro r' _ hhi
                   exact hagreeG1' r' hhi
 
-                -- Get cG1 from Steps.agreeOn
-                let cG1_orig := Classical.choose hG1_halts
-                have hG1_orig_spec := Classical.choose_spec hG1_halts
-                have hG1_orig_steps : Steps pG1 (Config.init (List.ofFn inputs)) cG1_orig := hG1_orig_spec.1
-                have hG1_orig_halted : cG1_orig.isHalted pG1 := hG1_orig_spec.2
-                have hG1_orig_pc : cG1_orig.pc = pG1.length :=
-                  hG1_sf.halts_at_length (List.ofFn inputs) cG1_orig hG1_orig_steps hG1_orig_halted
-                have hpc_eq' : (Config.init (List.ofFn inputs)).pc = (⟨0, sT01'⟩ : Config).pc := rfl
-                obtain ⟨cG1', hG1_steps'', hG1_pc_eq'', hagreeG1_final⟩ :=
-                  Steps.agreeOn hG1_orig_steps hpc_eq' (State.agreeOn_symm hagreeG1'')
-                have hG1_halted'' : cG1'.isHalted pG1 := by
-                  simp only [Config.isHalted] at hG1_orig_halted ⊢
-                  omega
-                have hG1_pc'' : cG1'.pc = pG1.length := hG1_pc_eq''.symm.trans hG1_orig_pc
+                -- Get cG1 execution from agreeing state using helper
+                let eG1 := Halts.executeFromAgreeingState hG1_halts hG1_sf hagreeG1''
+                let cG1' := eG1.config
+                have hG1_steps'' := eG1.steps
+                have hG1_halted'' := eG1.halted
+                have hG1_pc'' := eG1.pc_eq
 
                 -- pG1 preserves R[m+1]
                 have hG1_preserves' : cG1'.state.read (m + 1) = sT01'.read (m + 1) :=
-                  Steps.preserves_high_register hG1_steps'' (m + 1) (by omega : pG1.maxRegister < m + 1)
+                  eG1.preserves_high_register (m + 1) (by omega : pG1.maxRegister < m + 1)
 
                 -- T02 execution from cG1'.state
                 have hT02_halts'' := single_transfer_halts 0 (m + 2) cG1'.state
@@ -571,7 +563,7 @@ theorem URMComputableSF.comp_binary_unary
                   have hG1T02_steps_prefix := Steps.concat_left_prefix (p2 := T02) hG1_steps'' hG1_halted''
                   have hT02_steps''' := Steps.concat_right (p1 := pG1) hT02_steps'' hT02_halted''
                   have hstart_eq : (⟨0 + pG1.length, cG1'.state⟩ : Config) = ⟨cG1'.pc, cG1'.state⟩ := by
-                    simp only [Nat.zero_add, ← hG1_pc'']
+                    simp only [Nat.zero_add]; ext; exact hG1_pc''.symm; rfl
                   rw [hstart_eq] at hT02_steps'''
                   exact Relation.ReflTransGen.trans hG1T02_steps_prefix hT02_steps'''
                 have hG1T02_halted' : (⟨cT02'.pc + pG1.length, cT02'.state⟩ : Config).isHalted (pG1.concat T02) := by
@@ -869,21 +861,14 @@ theorem URMComputableSF.comp_binary_unary
                     intro r' _ hhi
                     exact hagreeG1'' r' hhi
 
-                  let cG1_orig' := Classical.choose hG1_halts
-                  have hG1_orig_spec' := Classical.choose_spec hG1_halts
-                  have hG1_orig_steps' : Steps pG1 (Config.init (List.ofFn inputs)) cG1_orig' := hG1_orig_spec'.1
-                  have hG1_orig_halted' : cG1_orig'.isHalted pG1 := hG1_orig_spec'.2
-                  have hG1_orig_pc' : cG1_orig'.pc = pG1.length :=
-                    hG1_sf.halts_at_length (List.ofFn inputs) cG1_orig' hG1_orig_steps' hG1_orig_halted'
-                  have hpc_eq'' : (Config.init (List.ofFn inputs)).pc = (⟨0, sT01''⟩ : Config).pc := rfl
-                  obtain ⟨cG1'', hG1_steps''', hG1_pc_eq''', _⟩ :=
-                    Steps.agreeOn hG1_orig_steps' hpc_eq'' (State.agreeOn_symm hagreeG1''')
-                  have hG1_halted''' : cG1''.isHalted pG1 := by
-                    simp only [Config.isHalted] at hG1_orig_halted' ⊢
-                    omega
+                  -- Get cG1 execution from agreeing state using helper
+                  let eG1' := Halts.executeFromAgreeingState hG1_halts hG1_sf hagreeG1'''
+                  let cG1'' := eG1'.config
+                  have hG1_steps''' := eG1'.steps
+                  have hG1_halted''' := eG1'.halted
 
                   have hG1_preserves'' : cG1''.state.read (m + 1) = sT01''.read (m + 1) :=
-                    Steps.preserves_high_register hG1_steps''' (m + 1) (by omega : pG1.maxRegister < m + 1)
+                    eG1'.preserves_high_register (m + 1) (by omega : pG1.maxRegister < m + 1)
 
                   -- T02 execution
                   have hT02_halts''' := single_transfer_halts 0 (m + 2) cG1''.state
@@ -895,11 +880,10 @@ theorem URMComputableSF.comp_binary_unary
 
                   -- Build phase1 execution ending at cT02''
                   have hG1T02_steps'' : Steps (pG1.concat T02) ⟨0, sT01''⟩ ⟨cT02''.pc + pG1.length, cT02''.state⟩ := by
-                    have hG1_pc'' : cG1''.pc = pG1.length := hG1_pc_eq'''.symm.trans hG1_orig_pc'
                     have hG1T02_steps_prefix := Steps.concat_left_prefix (p2 := T02) hG1_steps''' hG1_halted'''
                     have hT02_steps'''' := Steps.concat_right (p1 := pG1) hT02_steps''' hT02_halted'''
                     have hstart_eq : (⟨0 + pG1.length, cG1''.state⟩ : Config) = ⟨cG1''.pc, cG1''.state⟩ := by
-                      simp only [Nat.zero_add, ← hG1_pc'']
+                      simp only [Nat.zero_add]; ext; exact eG1'.pc_eq.symm; rfl
                     rw [hstart_eq] at hT02_steps''''
                     exact Relation.ReflTransGen.trans hG1T02_steps_prefix hT02_steps''''
                   have hG1T02_halted'' : (⟨cT02''.pc + pG1.length, cT02''.state⟩ : Config).isHalted (pG1.concat T02) := by
@@ -955,18 +939,15 @@ theorem URMComputableSF.comp_binary_unary
                     have hr_ge' : r' ≥ (List.ofFn inputs).length := by simp only [List.length_ofFn]; omega
                     rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none hr_ge', Option.getD_none]
 
-                -- Derive hG2_halts from hg2_dom'
+                -- Derive hG2_halts from hg2_dom' and get execution from agreeing state
                 have hG2_halts_inner : Halts pG2 (List.ofFn inputs) := (hG2_spec inputs).1.mpr hg2_dom'
-                have hG2_orig' := Classical.choose_spec hG2_halts_inner
-                have hG2_orig_steps' := hG2_orig'.1
-                have hG2_orig_halted' := hG2_orig'.2
-                have hG2_orig_pc' := hG2_sf.halts_at_length (List.ofFn inputs) _ hG2_orig_steps' hG2_orig_halted'
-                have hpc_eq_G2' : (Config.init (List.ofFn inputs)).pc = (⟨0, cT10_s1.state⟩ : Config).pc := rfl
-                obtain ⟨cG2', hG2_steps', hG2_pc_eq', _⟩ := Steps.agreeOn hG2_orig_steps' hpc_eq_G2' (State.agreeOn_symm hagreeG2')
-                have hG2_halted' : cG2'.isHalted pG2 := by simp only [Config.isHalted] at hG2_orig_halted' ⊢; omega
+                let eG2 := Halts.executeFromAgreeingState hG2_halts_inner hG2_sf hagreeG2'
+                let cG2' := eG2.config
+                have hG2_steps' := eG2.steps
+                have hG2_halted' := eG2.halted
 
                 have hG2_preserves' : cG2'.state.read (m + 2) = cT10_s1.state.read (m + 2) :=
-                  Steps.preserves_high_register hG2_steps' (m + 2) (by omega : pG2.maxRegister < m + 2)
+                  eG2.preserves_high_register (m + 2) (by omega : pG2.maxRegister < m + 2)
 
                 -- Step 4: T03 from cG2'.state
                 have hT03_halts' := single_transfer_halts 0 (m + 3) cG2'.state
@@ -981,12 +962,11 @@ theorem URMComputableSF.comp_binary_unary
 
                 -- Show cPhase2_from_s1.state = cT03'.state by determinism
                 have hPhase2_explicit_steps' : Steps phase2 ⟨0, sPhase1⟩ ⟨((cT03'.pc + pG2.length) + T10.length) + clearProg.length, cT03'.state⟩ := by
-                  have hG2_pc' : cG2'.pc = pG2.length := hG2_pc_eq'.symm.trans hG2_orig_pc'
                   have hG2T03_steps' : Steps (pG2.concat T03) ⟨0, cT10_s1.state⟩ ⟨cT03'.pc + pG2.length, cT03'.state⟩ := by
                     have hG2T03_prefix := Steps.concat_left_prefix (p2 := T03) hG2_steps' hG2_halted'
                     have hT03_steps'' := Steps.concat_right (p1 := pG2) hT03_steps' hT03_halted'
                     have hstart_eq : (⟨0 + pG2.length, cG2'.state⟩ : Config) = ⟨cG2'.pc, cG2'.state⟩ := by
-                      simp only [Nat.zero_add, ← hG2_pc']
+                      simp only [Nat.zero_add]; ext; exact eG2.pc_eq.symm; rfl
                     rw [hstart_eq] at hT03_steps''
                     exact Relation.ReflTransGen.trans hG2T03_prefix hT03_steps''
                   have hG2T03_halted' : (⟨cT03'.pc + pG2.length, cT03'.state⟩ : Config).isHalted (pG2.concat T03) := by
@@ -1061,30 +1041,21 @@ theorem URMComputableSF.comp_binary_unary
                   intro r' _ hhi
                   exact hagreeG1'''' r' hhi
 
-                let cG1_orig'' := Classical.choose hG1_halts
-                have hG1_orig_spec'' := Classical.choose_spec hG1_halts
-                have hG1_orig_steps'' : Steps pG1 (Config.init (List.ofFn inputs)) cG1_orig'' := hG1_orig_spec''.1
-                have hG1_orig_halted'' : cG1_orig''.isHalted pG1 := hG1_orig_spec''.2
-                have hG1_orig_pc'' : cG1_orig''.pc = pG1.length :=
-                  hG1_sf.halts_at_length (List.ofFn inputs) cG1_orig'' hG1_orig_steps'' hG1_orig_halted''
-                have hpc_eq''' : (Config.init (List.ofFn inputs)).pc = (⟨0, sT01'''⟩ : Config).pc := rfl
-                obtain ⟨cG1''', hG1_steps'''', hG1_pc_eq'''', hagreeG1_final'⟩ :=
-                  Steps.agreeOn hG1_orig_steps'' hpc_eq''' (State.agreeOn_symm hagreeG1''''')
-                have hG1_halted'''' : cG1'''.isHalted pG1 := by
-                  simp only [Config.isHalted] at hG1_orig_halted'' ⊢
-                  omega
-                have hG1_pc''' : cG1'''.pc = pG1.length := hG1_pc_eq''''.symm.trans hG1_orig_pc''
+                -- Get cG1 execution from agreeing state using helper
+                let eG1'' := Halts.executeFromAgreeingState hG1_halts hG1_sf hagreeG1'''''
+                let cG1''' := eG1''.config
+                have hG1_steps'''' := eG1''.steps
+                have hG1_halted'''' := eG1''.halted
+                have hG1_pc''' := eG1''.pc_eq
 
                 -- cG1'''.state.read 0 = v1 = g1(inputs[0])
                 have hcG1'''_r0 : cG1'''.state.read 0 = (g1 inputs).get hg1_dom' := by
                   have h0_le : 0 ≤ pG1.maxRegister := Nat.zero_le _
-                  have hagree_at_0 := State.agreeOn_read (State.agreeOn_symm hagreeG1_final') (Nat.zero_le 0) h0_le
+                  have hagree_at_0 := State.agreeOn_read eG1''.state_agrees (Nat.zero_le 0) h0_le
                   rw [hagree_at_0]
-                  -- cG1_orig''.state.read 0 = Result pG1 (List.ofFn inputs) hG1_halts = (g1 inputs).get hg1_dom'
-                  -- cG1_orig'' = Classical.choose hG1_halts, so this is rfl after unfolding
-                  have hres : cG1_orig''.state.read 0 = Result pG1 (List.ofFn inputs) hG1_halts := by
+                  -- The original config's R[0] = Result = g1(inputs).get hg1_dom'
+                  have hres : (Classical.choose eG1''.originalHalts).state.read 0 = Result pG1 (List.ofFn inputs) hG1_halts := by
                     simp only [Result, State.output, State.read]
-                    rfl
                   rw [hres]
                   exact (hG1_spec inputs).2 hG1_halts hg1_dom'
 
@@ -1101,7 +1072,7 @@ theorem URMComputableSF.comp_binary_unary
                   have hG1T02_steps_prefix := Steps.concat_left_prefix (p2 := T02) hG1_steps'''' hG1_halted''''
                   have hT02_steps''''' := Steps.concat_right (p1 := pG1) hT02_steps'''' hT02_halted''''
                   have hstart_eq : (⟨0 + pG1.length, cG1'''.state⟩ : Config) = ⟨cG1'''.pc, cG1'''.state⟩ := by
-                    simp only [Nat.zero_add, ← hG1_pc''']
+                    simp only [Nat.zero_add]; ext; exact hG1_pc'''.symm; rfl
                   rw [hstart_eq] at hT02_steps'''''
                   exact Relation.ReflTransGen.trans hG1T02_steps_prefix hT02_steps'''''
                 have hG1T02_halted''' : (⟨cT02'''.pc + pG1.length, cT02'''.state⟩ : Config).isHalted (pG1.concat T02) := by
@@ -1241,18 +1212,11 @@ theorem URMComputableSF.comp_binary_unary
                       intro r' _ hhi
                       exact hagreeG1'' r' hhi
 
-                    let cG1_orig' := Classical.choose hG1_halts
-                    have hG1_orig_spec' := Classical.choose_spec hG1_halts
-                    have hG1_orig_steps' : Steps pG1 (Config.init (List.ofFn inputs)) cG1_orig' := hG1_orig_spec'.1
-                    have hG1_orig_halted' : cG1_orig'.isHalted pG1 := hG1_orig_spec'.2
-                    have hG1_orig_pc' : cG1_orig'.pc = pG1.length :=
-                      hG1_sf.halts_at_length (List.ofFn inputs) cG1_orig' hG1_orig_steps' hG1_orig_halted'
-                    have hpc_eq'' : (Config.init (List.ofFn inputs)).pc = (⟨0, sT01''⟩ : Config).pc := rfl
-                    obtain ⟨cG1'', hG1_steps'', hG1_pc_eq'', _⟩ :=
-                      Steps.agreeOn hG1_orig_steps' hpc_eq'' (State.agreeOn_symm hagreeG1''')
-                    have hG1_halted'' : cG1''.isHalted pG1 := by
-                      simp only [Config.isHalted] at hG1_orig_halted' ⊢
-                      omega
+                    -- Get cG1 execution from agreeing state using helper
+                    let eG1' := Halts.executeFromAgreeingState hG1_halts hG1_sf hagreeG1'''
+                    let cG1'' := eG1'.config
+                    have hG1_steps'' := eG1'.steps
+                    have hG1_halted'' := eG1'.halted
 
                     have hG1_preserves' : cG1''.state.read (m + 1) = sT01''.read (m + 1) :=
                       Steps.preserves_high_register hG1_steps'' (m + 1) (by omega : pG1.maxRegister < m + 1)
@@ -1265,11 +1229,10 @@ theorem URMComputableSF.comp_binary_unary
                       exact State.write_read_diff _ _ _ _ (by omega : m + 1 ≠ m + 2)
 
                     have hG1T02_steps' : Steps (pG1.concat T02) ⟨0, sT01''⟩ ⟨cT02'.pc + pG1.length, cT02'.state⟩ := by
-                      have hG1_pc' : cG1''.pc = pG1.length := hG1_pc_eq''.symm.trans hG1_orig_pc'
                       have hG1T02_steps_prefix := Steps.concat_left_prefix (p2 := T02) hG1_steps'' hG1_halted''
                       have hT02_steps''' := Steps.concat_right (p1 := pG1) hT02_steps'' hT02_halted''
                       have hstart_eq : (⟨0 + pG1.length, cG1''.state⟩ : Config) = ⟨cG1''.pc, cG1''.state⟩ := by
-                        simp only [Nat.zero_add, ← hG1_pc']
+                        simp only [Nat.zero_add]; ext; exact eG1'.pc_eq.symm; rfl
                       rw [hstart_eq] at hT02_steps'''
                       exact Relation.ReflTransGen.trans hG1T02_steps_prefix hT02_steps'''
                     have hG1T02_halted' : (⟨cT02'.pc + pG1.length, cT02'.state⟩ : Config).isHalted (pG1.concat T02) := by
@@ -1326,23 +1289,20 @@ theorem URMComputableSF.comp_binary_unary
                       have hr_ge' : r' ≥ (List.ofFn inputs).length := by simp only [List.length_ofFn]; omega
                       rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none hr_ge', Option.getD_none]
 
-                  -- Derive hG2_halts locally from hG2_spec
+                  -- Derive hG2_halts locally from hG2_spec and get execution from agreeing state
                   have hG2_halts_r1 : Halts pG2 (List.ofFn inputs) := (hG2_spec inputs).1.mpr hg2_dom'
-                  have hG2_orig' := Classical.choose_spec hG2_halts_r1
-                  have hG2_orig_steps' := hG2_orig'.1
-                  have hG2_orig_halted' := hG2_orig'.2
-                  have hG2_orig_pc' := hG2_sf.halts_at_length (List.ofFn inputs) _ hG2_orig_steps' hG2_orig_halted'
-                  have hpc_eq_G2' : (Config.init (List.ofFn inputs)).pc = (⟨0, cT10_s1.state⟩ : Config).pc := rfl
-                  obtain ⟨cG2', hG2_steps', hG2_pc_eq', hagreeG2_final'⟩ := Steps.agreeOn hG2_orig_steps' hpc_eq_G2' (State.agreeOn_symm hagreeG2')
-                  have hG2_halted' : cG2'.isHalted pG2 := by simp only [Config.isHalted] at hG2_orig_halted' ⊢; omega
-                  have hG2_pc' : cG2'.pc = pG2.length := hG2_pc_eq'.symm.trans hG2_orig_pc'
+                  let eG2' := Halts.executeFromAgreeingState hG2_halts_r1 hG2_sf hagreeG2'
+                  let cG2' := eG2'.config
+                  have hG2_steps' := eG2'.steps
+                  have hG2_halted' := eG2'.halted
+                  have hG2_pc' := eG2'.pc_eq
 
                   -- cG2'.state.read 0 = g2(inputs[0])
                   have hcG2'_r0 : cG2'.state.read 0 = (g2 inputs).get hg2_dom' := by
                     have h0_le : 0 ≤ pG2.maxRegister := Nat.zero_le _
-                    have hagree_at_0 := State.agreeOn_read (State.agreeOn_symm hagreeG2_final') (Nat.zero_le 0) h0_le
+                    have hagree_at_0 := State.agreeOn_read eG2'.state_agrees (Nat.zero_le 0) h0_le
                     rw [hagree_at_0]
-                    have hres : (Classical.choose hG2_halts_r1).state.read 0 = Result pG2 (List.ofFn inputs) hG2_halts_r1 := by
+                    have hres : (Classical.choose eG2'.originalHalts).state.read 0 = Result pG2 (List.ofFn inputs) hG2_halts_r1 := by
                       simp only [Result, State.output, State.read]
                     rw [hres]
                     exact (hG2_spec inputs).2 hG2_halts_r1 hg2_dom'
@@ -1359,7 +1319,7 @@ theorem URMComputableSF.comp_binary_unary
                     have hG2T03_prefix := Steps.concat_left_prefix (p2 := T03) hG2_steps' hG2_halted'
                     have hT03_steps'' := Steps.concat_right (p1 := pG2) hT03_steps' hT03_halted'
                     have hstart_eq : (⟨0 + pG2.length, cG2'.state⟩ : Config) = ⟨cG2'.pc, cG2'.state⟩ := by
-                      simp only [Nat.zero_add, ← hG2_pc']
+                      simp only [Nat.zero_add]; ext; exact hG2_pc'.symm; rfl
                     rw [hstart_eq] at hT03_steps''
                     exact Relation.ReflTransGen.trans hG2T03_prefix hT03_steps''
                   have hG2T03_halted' : (⟨cT03'.pc + pG2.length, cT03'.state⟩ : Config).isHalted (pG2.concat T03) := by
@@ -1527,26 +1487,17 @@ theorem URMComputableSF.comp_binary_unary
             -- r ≤ pG1.maxRegister ≤ m < m + 1, so write doesn't affect r
             have hr_ne : r ≠ m + 1 := by omega
             exact State.write_read_diff _ _ _ _ hr_ne
-          -- G1 halts from sT01 - inline from_agreeing_state to get pc equality
-          -- Get the halting config from Config.init
-          let cG1_orig := Classical.choose hG1_halts
-          have hG1_orig_spec := Classical.choose_spec hG1_halts
-          have hG1_orig_steps : Steps pG1 (Config.init (List.ofFn inputs)) cG1_orig := hG1_orig_spec.1
-          have hG1_orig_halted : cG1_orig.isHalted pG1 := hG1_orig_spec.2
-          have hG1_orig_pc : cG1_orig.pc = pG1.length :=
-            hG1_sf.halts_at_length (List.ofFn inputs) cG1_orig hG1_orig_steps hG1_orig_halted
+          -- G1 halts from sT01 - use helper for execution from agreeing state
           -- Convert hagreeG1 to State.agreeOn form
           have hagreeG1' : sT01.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG1.maxRegister := by
             intro r _ hhi
             exact hagreeG1 r hhi
-          -- Use Steps.agreeOn to get parallel execution from sT01
-          have hpc_eq : (Config.init (List.ofFn inputs)).pc = (⟨0, sT01⟩ : Config).pc := rfl
-          obtain ⟨cG1, hG1_steps', hG1_pc_eq', hagree''⟩ :=
-            Steps.agreeOn hG1_orig_steps hpc_eq (State.agreeOn_symm hagreeG1')
-          have hG1_halted' : cG1.isHalted pG1 := by
-            simp only [Config.isHalted] at hG1_orig_halted ⊢
-            omega
-          have hG1_pc' : cG1.pc = pG1.length := hG1_pc_eq'.symm.trans hG1_orig_pc
+          -- Get cG1 execution from agreeing state using helper
+          let eG1 := Halts.executeFromAgreeingState hG1_halts hG1_sf hagreeG1'
+          let cG1 := eG1.config
+          have hG1_steps' := eG1.steps
+          have hG1_halted' := eG1.halted
+          have hG1_pc' := eG1.pc_eq
           -- T02 halts from cG1.state (straight-line halts from any state)
           obtain ⟨cT02, hT02_steps', hT02_halted', hT02_pc'⟩ :=
             straightLine_halts_from_state hT02_sl cG1.state
@@ -1555,7 +1506,7 @@ theorem URMComputableSF.comp_binary_unary
             have hG1T02_steps := Steps.concat_left_prefix (p2 := T02) hG1_steps' hG1_halted'
             have hT02_steps'' := Steps.concat_right (p1 := pG1) hT02_steps' hT02_halted'
             have hstart_eq : (⟨0 + pG1.length, cG1.state⟩ : Config) = ⟨cG1.pc, cG1.state⟩ := by
-              simp only [Nat.zero_add, ← hG1_pc']
+              simp only [Nat.zero_add]; ext; exact hG1_pc'.symm; rfl
             rw [hstart_eq] at hT02_steps''
             have hsteps_total := Relation.ReflTransGen.trans hG1T02_steps hT02_steps''
             refine ⟨⟨cT02.pc + pG1.length, cT02.state⟩, hsteps_total, ?_⟩
@@ -1629,19 +1580,12 @@ theorem URMComputableSF.comp_binary_unary
               have hr_ge : r ≥ (List.ofFn inputs).length := by simp only [List.length_ofFn]; omega
               rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none hr_ge, Option.getD_none]
 
-          -- Get pG2 execution from agreeing state
-          have hG2_orig := Classical.choose_spec hG2_halts
-          have hG2_orig_steps : Steps pG2 (Config.init (List.ofFn inputs)) (Classical.choose hG2_halts) := hG2_orig.1
-          have hG2_orig_halted : (Classical.choose hG2_halts).isHalted pG2 := hG2_orig.2
-          have hG2_orig_pc : (Classical.choose hG2_halts).pc = pG2.length :=
-            hG2_sf.halts_at_length (List.ofFn inputs) _ hG2_orig_steps hG2_orig_halted
-          have hpc_eq : (Config.init (List.ofFn inputs)).pc = (⟨0, cT10.state⟩ : Config).pc := rfl
-          obtain ⟨cG2, hG2_steps, hG2_pc_eq, _⟩ :=
-            Steps.agreeOn hG2_orig_steps hpc_eq (State.agreeOn_symm hagreeG2)
-          have hG2_halted : cG2.isHalted pG2 := by
-            simp only [Config.isHalted] at hG2_orig_halted ⊢
-            omega
-          have hG2_pc : cG2.pc = pG2.length := hG2_pc_eq.symm.trans hG2_orig_pc
+          -- Get pG2 execution from agreeing state using helper
+          let eG2 := Halts.executeFromAgreeingState hG2_halts hG2_sf hagreeG2
+          let cG2 := eG2.config
+          have hG2_steps := eG2.steps
+          have hG2_halted := eG2.halted
+          have hG2_pc := eG2.pc_eq
 
           -- Step 4: T03 halts from cG2.state
           have hT03_sl := single_transfer_isStraightLine 0 (m + 3)
@@ -1656,7 +1600,7 @@ theorem URMComputableSF.comp_binary_unary
             have hG2T03_prefix := Steps.concat_left_prefix (p2 := T03) hG2_steps hG2_halted
             have hT03_steps' := Steps.concat_right (p1 := pG2) hT03_steps hT03_halted
             have hstart_eq : (⟨0 + pG2.length, cG2.state⟩ : Config) = ⟨cG2.pc, cG2.state⟩ := by
-              simp only [Nat.zero_add, ← hG2_pc]
+              simp only [Nat.zero_add]; ext; exact hG2_pc.symm; rfl
             rw [hstart_eq] at hT03_steps'
             exact Relation.ReflTransGen.trans hG2T03_prefix hT03_steps'
           have hG2T03_halted : (⟨cT03.pc + pG2.length, cT03.state⟩ : Config).isHalted (pG2.concat T03) := by
@@ -1748,12 +1692,10 @@ theorem URMComputableSF.comp_binary_unary
               apply Step.trans
               simp only [Program.getInstr, Tsetup, List.getElem?_cons_succ, List.getElem?_cons_zero]
             -- The final state matches cT2.state
-            have hstate2_match : cT1.state.write 1 (cT1.state.read (m + 3)) = cT2.state := by
-              exact hT2_state.symm
+            have hstate2_match : cT1.state.write 1 (cT1.state.read (m + 3)) = cT2.state := hT2_state.symm
             rw [hstate2_match] at hstep2
             -- hstep1 goes to cT1.state by hT1_state
-            have hstate1_match : cClear.state.write 0 (cClear.state.read (m + 2)) = cT1.state := by
-              exact hT1_state.symm
+            have hstate1_match : cClear.state.write 0 (cClear.state.read (m + 2)) = cT1.state := hT1_state.symm
             rw [hstate1_match] at hstep1
             exact Relation.ReflTransGen.head hstep1 (Relation.ReflTransGen.single hstep2)
           have hTsetup_halted : (⟨2, cT2.state⟩ : Config).isHalted Tsetup := by
@@ -1813,19 +1755,12 @@ theorem URMComputableSF.comp_binary_unary
                 have hr_ge : r ≥ (List.ofFn fInput).length := by simp only [List.length_ofFn]; omega
                 rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none hr_ge, Option.getD_none]
 
-          -- Get pF execution from agreeing state
-          have hF_orig := Classical.choose_spec hF_halts
-          have hF_orig_steps : Steps pF (Config.init (List.ofFn fInput)) (Classical.choose hF_halts) := hF_orig.1
-          have hF_orig_halted : (Classical.choose hF_halts).isHalted pF := hF_orig.2
-          have hF_orig_pc : (Classical.choose hF_halts).pc = pF.length :=
-            hF_sf.halts_at_length (List.ofFn fInput) _ hF_orig_steps hF_orig_halted
-          have hpc_eq : (Config.init (List.ofFn fInput)).pc = (⟨0, cTsetup.state⟩ : Config).pc := rfl
-          obtain ⟨cF, hF_steps, hF_pc_eq, _⟩ :=
-            Steps.agreeOn hF_orig_steps hpc_eq (State.agreeOn_symm hagreeF)
-          have hF_halted : cF.isHalted pF := by
-            simp only [Config.isHalted] at hF_orig_halted ⊢
-            omega
-          have hF_pc : cF.pc = pF.length := hF_pc_eq.symm.trans hF_orig_pc
+          -- Get pF execution from agreeing state using helper
+          let eF := Halts.executeFromAgreeingState hF_halts hF_sf hagreeF
+          let cF := eF.config
+          have hF_steps := eF.steps
+          have hF_halted := eF.halted
+          have hF_pc := eF.pc_eq
 
           -- Now chain all phases using concat_continuation
           -- phase3 = clearProg.concat (Tsetup.concat pF)
@@ -1907,31 +1842,23 @@ theorem URMComputableSF.comp_binary_unary
           have hagreeG1' : sT01.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG1.maxRegister := by
             intro r _ hhi
             exact hagreeG1 r hhi
-          -- Get cG1 from Steps.agreeOn
-          let cG1_orig := Classical.choose hG1_halts
-          have hG1_orig_spec := Classical.choose_spec hG1_halts
-          have hG1_orig_steps : Steps pG1 (Config.init (List.ofFn inputs)) cG1_orig := hG1_orig_spec.1
-          have hG1_orig_halted : cG1_orig.isHalted pG1 := hG1_orig_spec.2
-          have hG1_orig_pc : cG1_orig.pc = pG1.length :=
-            hG1_sf.halts_at_length (List.ofFn inputs) cG1_orig hG1_orig_steps hG1_orig_halted
-          have hpc_eq : (Config.init (List.ofFn inputs)).pc = (⟨0, sT01⟩ : Config).pc := rfl
-          obtain ⟨cG1, hG1_steps', hG1_pc_eq', hagreeG1_final⟩ :=
-            Steps.agreeOn hG1_orig_steps hpc_eq (State.agreeOn_symm hagreeG1')
-          have hG1_halted' : cG1.isHalted pG1 := by
-            simp only [Config.isHalted] at hG1_orig_halted ⊢
-            omega
-          have hG1_pc' : cG1.pc = pG1.length := hG1_pc_eq'.symm.trans hG1_orig_pc
+          -- Get cG1 execution from agreeing state using helper
+          let eG1 := Halts.executeFromAgreeingState hG1_halts hG1_sf hagreeG1'
+          let cG1 := eG1.config
+          have hG1_steps' := eG1.steps
+          have hG1_halted' := eG1.halted
+          have hG1_pc' := eG1.pc_eq
 
           -- cG1 output equals v1 (via agreement with original execution)
           have hcG1_r0_eq : cG1.state.read 0 = v1 := by
             have h0_le : 0 ≤ pG1.maxRegister := Nat.zero_le _
-            have hagree_at_0 := State.agreeOn_read (State.agreeOn_symm hagreeG1_final) (Nat.zero_le 0) h0_le
+            have hagree_at_0 := State.agreeOn_read eG1.state_agrees (Nat.zero_le 0) h0_le
             rw [hagree_at_0]
             rfl
 
           -- pG1 preserves R[m+1]
-          have hG1_preserves : cG1.state.read (m + 1) = sT01.read (m + 1) := by
-            exact Steps.preserves_high_register hG1_steps' (m + 1) (by omega : pG1.maxRegister < m + 1)
+          have hG1_preserves : cG1.state.read (m + 1) = sT01.read (m + 1) :=
+            Steps.preserves_high_register hG1_steps' (m + 1) (by omega : pG1.maxRegister < m + 1)
 
           -- Step 4: T02 execution from cG1.state
           have hT02_sl := single_transfer_isStraightLine 0 (m + 2)
@@ -1950,7 +1877,7 @@ theorem URMComputableSF.comp_binary_unary
             have hG1T02_steps_prefix := Steps.concat_left_prefix (p2 := T02) hG1_steps' hG1_halted'
             have hT02_steps'' := Steps.concat_right (p1 := pG1) hT02_steps' hT02_halted'
             have hstart_eq : (⟨0 + pG1.length, cG1.state⟩ : Config) = ⟨cG1.pc, cG1.state⟩ := by
-              simp only [Nat.zero_add, ← hG1_pc']
+              simp only [Nat.zero_add]; ext; exact hG1_pc'.symm; rfl
             rw [hstart_eq] at hT02_steps''
             exact Relation.ReflTransGen.trans hG1T02_steps_prefix hT02_steps''
           have hG1T02_halted : (⟨cT02.pc + pG1.length, cT02.state⟩ : Config).isHalted (pG1.concat T02) := by
@@ -2009,22 +1936,16 @@ theorem URMComputableSF.comp_binary_unary
               rw [heq, hstate']
             rw [hT01_state]
             exact State.write_read_diff _ _ _ _ (by omega : r ≠ m + 1)
-          have hG1_orig_halts := Classical.choose_spec hG1_halts
-          have hG1_orig_steps := hG1_orig_halts.1
-          have hG1_orig_halted := hG1_orig_halts.2
-          have hG1_orig_pc : (Classical.choose hG1_halts).pc = pG1.length :=
-            hG1_sf.halts_at_length (List.ofFn inputs) _ hG1_orig_steps hG1_orig_halted
-          have hpc_eq : (Config.init (List.ofFn inputs)).pc = (⟨0, sT01⟩ : Config).pc := rfl
-          obtain ⟨cG1', hG1_steps', hG1_pc', hagreeG1_final'⟩ :=
-            Steps.agreeOn hG1_orig_steps hpc_eq (State.agreeOn_symm hagreeG1')
-          have hG1_halted' : cG1'.isHalted pG1 := by
-            simp only [Config.isHalted] at hG1_orig_halted ⊢
-            omega
+          -- Get cG1 execution from agreeing state using helper
+          let eG1' := Halts.executeFromAgreeingState hG1_halts hG1_sf hagreeG1'
+          let cG1' := eG1'.config
+          have hG1_steps' := eG1'.steps
+          have hG1_halted' := eG1'.halted
 
           -- cG1'.state.read 0 = v1 (via agreement with original execution)
           have hcG1'_r0_eq : cG1'.state.read 0 = v1 := by
             have h0_le : 0 ≤ pG1.maxRegister := Nat.zero_le _
-            have hagree_at_0 := State.agreeOn_read (State.agreeOn_symm hagreeG1_final') (Nat.zero_le 0) h0_le
+            have hagree_at_0 := State.agreeOn_read eG1'.state_agrees (Nat.zero_le 0) h0_le
             rw [hagree_at_0]
             rfl
 
@@ -2034,11 +1955,10 @@ theorem URMComputableSF.comp_binary_unary
 
           -- Step 4: Build the full phase1 execution
           have hG1T02_steps : Steps (pG1.concat T02) ⟨0, sT01⟩ ⟨cT02'.pc + pG1.length, cT02'.state⟩ := by
-            have hG1'_pc' : cG1'.pc = pG1.length := hG1_pc'.symm.trans hG1_orig_pc
             have hG1T02_steps_prefix := Steps.concat_left_prefix (p2 := T02) hG1_steps' hG1_halted'
             have hT02_steps'' := Steps.concat_right (p1 := pG1) hT02_steps' hT02_halted'
             have hstart_eq : (⟨0 + pG1.length, cG1'.state⟩ : Config) = ⟨cG1'.pc, cG1'.state⟩ := by
-              simp only [Nat.zero_add, ← hG1'_pc']
+              simp only [Nat.zero_add]; ext; exact eG1'.pc_eq.symm; rfl
             rw [hstart_eq] at hT02_steps''
             exact Relation.ReflTransGen.trans hG1T02_steps_prefix hT02_steps''
           have hG1T02_halted : (⟨cT02'.pc + pG1.length, cT02'.state⟩ : Config).isHalted (pG1.concat T02) := by
@@ -2122,8 +2042,7 @@ theorem URMComputableSF.comp_binary_unary
             -- Lift phase2 execution to concatenation
             have hPhase2_lifted := Steps.concat_right (p1 := phase1) hPhase2_steps_final hPhase2_halted_final
             -- Adjust starting point
-            have hstart_eq : (⟨0 + phase1.length, s1⟩ : Config) = ⟨phase1.length, s1⟩ := by simp
-            rw [hstart_eq] at hPhase2_lifted
+            simp only [Nat.zero_add] at hPhase2_lifted
             -- Chain the executions
             have hsteps_total := Relation.ReflTransGen.trans hPhase1_lifted hPhase2_lifted
             -- Final config is ⟨cPhase2_final.pc + phase1.length, cPhase2_final.state⟩
@@ -2192,14 +2111,12 @@ theorem URMComputableSF.comp_binary_unary
               simp only [State.fromInputs, State.read]
               have hr_ge : r ≥ (List.ofFn inputs).length := by simp only [List.length_ofFn]; omega
               rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none hr_ge, Option.getD_none]
-          have hG2_orig := Classical.choose_spec hG2_halts
-          have hG2_orig_steps := hG2_orig.1
-          have hG2_orig_halted := hG2_orig.2
-          have hG2_orig_pc := hG2_sf.halts_at_length (List.ofFn inputs) _ hG2_orig_steps hG2_orig_halted
-          have hpc_eq_G2 : (Config.init (List.ofFn inputs)).pc = (⟨0, cT10.state⟩ : Config).pc := rfl
-          obtain ⟨cG2, hG2_steps, hG2_pc_eq, _⟩ := Steps.agreeOn hG2_orig_steps hpc_eq_G2 (State.agreeOn_symm hagreeG2)
-          have hG2_halted : cG2.isHalted pG2 := by simp only [Config.isHalted] at hG2_orig_halted ⊢; omega
-          have hG2_pc := hG2_pc_eq.symm.trans hG2_orig_pc
+          -- Get cG2 execution from agreeing state using helper
+          let eG2 := Halts.executeFromAgreeingState hG2_halts hG2_sf hagreeG2
+          let cG2 := eG2.config
+          have hG2_steps := eG2.steps
+          have hG2_halted := eG2.halted
+          have hG2_pc := eG2.pc_eq
           have hG2_preserves_m2 : cG2.state.read (m + 2) = cT10.state.read (m + 2) :=
             Steps.preserves_high_register hG2_steps (m + 2) (by omega : pG2.maxRegister < m + 2)
 
@@ -2221,7 +2138,7 @@ theorem URMComputableSF.comp_binary_unary
               have hG2T03_prefix := Steps.concat_left_prefix (p2 := T03) hG2_steps hG2_halted
               have hT03_steps' := Steps.concat_right (p1 := pG2) hT03_steps hT03_halted
               have hstart_eq : (⟨0 + pG2.length, cG2.state⟩ : Config) = ⟨cG2.pc, cG2.state⟩ := by
-                simp only [Nat.zero_add, ← hG2_pc]
+                simp only [Nat.zero_add]; ext; exact hG2_pc.symm; rfl
               rw [hstart_eq] at hT03_steps'
               exact Relation.ReflTransGen.trans hG2T03_prefix hT03_steps'
             have hG2T03_halted : (⟨cT03.pc + pG2.length, cT03.state⟩ : Config).isHalted (pG2.concat T03) := by
@@ -2291,8 +2208,7 @@ theorem URMComputableSF.comp_binary_unary
           have hPhase12_state_eq' : cPhase12.state = cPhase2_final'.state := by
             have hPhase1_lifted := Steps.concat_left_prefix (p2 := phase2) hPhase1_steps_s1' (by simp [Config.isHalted])
             have hPhase2_lifted := Steps.concat_right (p1 := phase1) hPhase2_steps_final' hPhase2_halted_final'
-            have hstart_eq : (⟨0 + phase1.length, s1'⟩ : Config) = ⟨phase1.length, s1'⟩ := by simp
-            rw [hstart_eq] at hPhase2_lifted
+            simp only [Nat.zero_add] at hPhase2_lifted
             have hsteps_total := Relation.ReflTransGen.trans hPhase1_lifted hPhase2_lifted
             have hfinal_halted : (⟨cPhase2_final'.pc + phase1.length, cPhase2_final'.state⟩ : Config).isHalted (phase1.concat phase2) := by
               simp only [Config.isHalted, Program.concat_length] at hPhase2_halted_final' ⊢
@@ -2343,19 +2259,17 @@ theorem URMComputableSF.comp_binary_unary
               simp only [State.fromInputs, State.read]
               have hr_ge : r ≥ (List.ofFn inputs).length := by simp only [List.length_ofFn]; omega
               rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none hr_ge, Option.getD_none]
-          have hG2_orig' := Classical.choose_spec hG2_halts
-          have hG2_orig_steps' := hG2_orig'.1
-          have hG2_orig_halted' := hG2_orig'.2
-          have hG2_orig_pc' := hG2_sf.halts_at_length (List.ofFn inputs) _ hG2_orig_steps' hG2_orig_halted'
-          have hpc_eq_G2' : (Config.init (List.ofFn inputs)).pc = (⟨0, cT10'.state⟩ : Config).pc := rfl
-          obtain ⟨cG2', hG2_steps', hG2_pc_eq', hagreeG2_final'⟩ := Steps.agreeOn hG2_orig_steps' hpc_eq_G2' (State.agreeOn_symm hagreeG2')
-          have hG2_halted' : cG2'.isHalted pG2 := by simp only [Config.isHalted] at hG2_orig_halted' ⊢; omega
-          have hG2_pc' := hG2_pc_eq'.symm.trans hG2_orig_pc'
+          -- Get cG2 execution from agreeing state using helper
+          let eG2' := Halts.executeFromAgreeingState hG2_halts hG2_sf hagreeG2'
+          let cG2' := eG2'.config
+          have hG2_steps' := eG2'.steps
+          have hG2_halted' := eG2'.halted
+          have hG2_pc' := eG2'.pc_eq
 
           -- cG2'.state.read 0 = v2 (via agreement)
           have hcG2'_r0_eq : cG2'.state.read 0 = v2 := by
             have h0_le : 0 ≤ pG2.maxRegister := Nat.zero_le _
-            have hagree_at_0 := State.agreeOn_read (State.agreeOn_symm hagreeG2_final') (Nat.zero_le 0) h0_le
+            have hagree_at_0 := State.agreeOn_read eG2'.state_agrees (Nat.zero_le 0) h0_le
             rw [hagree_at_0]
             rfl  -- v2 = Result pG2 ... = (Classical.choose hG2_halts).state.output
 
@@ -2371,7 +2285,10 @@ theorem URMComputableSF.comp_binary_unary
               have hG2T03_prefix := Steps.concat_left_prefix (p2 := T03) hG2_steps' hG2_halted'
               have hT03_steps'' := Steps.concat_right (p1 := pG2) hT03_steps' hT03_halted'
               have hstart_eq : (⟨0 + pG2.length, cG2'.state⟩ : Config) = ⟨cG2'.pc, cG2'.state⟩ := by
-                simp only [Nat.zero_add, ← hG2_pc']
+                simp only [Nat.zero_add]
+                ext
+                · exact hG2_pc'.symm
+                · rfl
               rw [hstart_eq] at hT03_steps''
               exact Relation.ReflTransGen.trans hG2T03_prefix hT03_steps''
             have hG2T03_halted : (⟨cT03'.pc + pG2.length, cT03'.state⟩ : Config).isHalted (pG2.concat T03) := by

@@ -350,8 +350,8 @@ theorem URMComputableSF.comp_unary
         intro hHalts
         -- H = Pg.concat(clearProg.concat Pf)
         -- By standard form decomposition, Pg halts
-        have hPg_halts : Halts Pg (List.ofFn inputs) := by
-          exact Halts.prefix_of_concat_sf hHalts hPg_sf
+        have hPg_halts : Halts Pg (List.ofFn inputs) :=
+          Halts.prefix_of_concat_sf hHalts hPg_sf
 
         -- Therefore g inputs is defined
         have hg_dom : (g inputs).Dom := (hPg inputs).1.mp hPg_halts
@@ -556,8 +556,8 @@ theorem URMComputableSF.comp_unary
         -- Build Steps through clearProg.concat Pf starting from cPg.state
 
         -- Lift clearProg steps to clearProg.concat Pf
-        have hClear_steps_lifted : Steps (clearProg.concat Pf) ⟨0, cPg.state⟩ cClear := by
-          exact Steps.concat_left_prefix (p2 := Pf) hClear_steps hClear_halted
+        have hClear_steps_lifted : Steps (clearProg.concat Pf) ⟨0, cPg.state⟩ cClear :=
+          Steps.concat_left_prefix (p2 := Pf) hClear_steps hClear_halted
 
         -- Lift Pf steps to clearProg.concat Pf (offset by clearProg.length)
         have hPf_steps_lifted : Steps (clearProg.concat Pf)
