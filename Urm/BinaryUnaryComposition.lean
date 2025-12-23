@@ -872,6 +872,13 @@ theorem comp_binary_unary_halts_imp_f_dom
       have : sTsetup = cTsetup'.state := congrArg Config.state hconfigs_eq
       rw [this, hTsetup_state']
 
+    -- Hoisted: clearProg halts from sPhase1 (used in both r=0 and r=1 cases)
+    have hClear_halts_s1 := straightLine_halts_from_state hClear_sl sPhase1
+    obtain ⟨cClear_s1, hClear_steps_s1, hClear_halted_s1, hClear_pc_s1⟩ := hClear_halts_s1
+    have hClear_state_eq_s1 : cClear_s1.state = straightLineFinalState hClear_sl sPhase1 := by
+      have hspec := straightLineFinalState_spec hClear_sl sPhase1
+      exact Steps.halts_unique hClear_steps_s1 hClear_halted_s1 hspec.1 hspec.2.1 ▸ rfl
+
     by_cases hr0 : r = 0
     · -- Case r = 0: sTsetup.read 0 = fInput 0 = g1(inputs[0])
       subst hr0
@@ -890,13 +897,8 @@ theorem comp_binary_unary_halts_imp_f_dom
       have hsPhase2_eq : sPhase2 = cPhase2_from_s1.state := congrArg Config.state hconfigs
 
       have hPhase2_preserves_m2 : cPhase2_from_s1.state.read (m + 2) = sPhase1.read (m + 2) := by
-        have hClear_halts_s1 := straightLine_halts_from_state hClear_sl sPhase1
-        obtain ⟨cClear_s1, hClear_steps_s1, hClear_halted_s1, hClear_pc_s1⟩ := hClear_halts_s1
         have hClear_preserves : cClear_s1.state.read (m + 2) = sPhase1.read (m + 2) := by
-          have hClear_state_eq : cClear_s1.state = straightLineFinalState hClear_sl sPhase1 := by
-            have hspec := straightLineFinalState_spec hClear_sl sPhase1
-            exact Steps.halts_unique hClear_steps_s1 hClear_halted_s1 hspec.1 hspec.2.1 ▸ rfl
-          rw [hClear_state_eq]
+          rw [hClear_state_eq_s1]
           exact clearRegisters_preserves_above m sPhase1 (m + 2) (by omega)
 
         have hT10_halts_s1 := single_transfer_halts (m + 1) 0 cClear_s1.state
@@ -1095,19 +1097,13 @@ theorem comp_binary_unary_halts_imp_f_dom
             have huniq := Steps.halts_unique hPhase2_steps_from_s1 h1 hPhase2_steps_s1 hPhase2_halted_s1
             exact congrArg Config.state huniq
 
-          have hClear_halts_s1 := straightLine_halts_from_state hClear_sl sPhase1
-          obtain ⟨cClear_s1, hClear_steps_s1, hClear_halted_s1, hClear_pc_s1⟩ := hClear_halts_s1
-
           have hT10_halts_s1 := single_transfer_halts (m + 1) 0 cClear_s1.state
           obtain ⟨cT10_s1, hT10_steps_s1, hT10_halted_s1, hT10_pc_s1, hT10_state_s1⟩ := hT10_halts_s1
 
           have hT10_r0_s1 : cT10_s1.state.read 0 = sPhase1.read (m + 1) := by
             rw [hT10_state_s1, State.write_read_same]
             have hClear_preserves_m1 : cClear_s1.state.read (m + 1) = sPhase1.read (m + 1) := by
-              have hClear_state_eq : cClear_s1.state = straightLineFinalState hClear_sl sPhase1 := by
-                have hspec := straightLineFinalState_spec hClear_sl sPhase1
-                exact Steps.halts_unique hClear_steps_s1 hClear_halted_s1 hspec.1 hspec.2.1 ▸ rfl
-              rw [hClear_state_eq]
+              rw [hClear_state_eq_s1]
               exact clearRegisters_preserves_above m sPhase1 (m + 1) (by omega)
             exact hClear_preserves_m1
 
@@ -2696,19 +2692,12 @@ theorem comp_binary_unary_result
         intro s
         have hClear_halts := straightLine_halts_from_state hClear_sl s
         obtain ⟨c, hsteps, hhalted, hpc⟩ := hClear_halts
+        have hstate_eq : c.state = straightLineFinalState hClear_sl s := by
+          have hspec := straightLineFinalState_spec hClear_sl s
+          exact (Steps.halts_unique hsteps hhalted hspec.1 hspec.2.1).symm ▸ rfl
         refine ⟨c, hsteps, hhalted, hpc, ?_, ?_⟩
-        · intro r hr
-          have hstate_eq : c.state = straightLineFinalState hClear_sl s := by
-            have hspec := straightLineFinalState_spec hClear_sl s
-            exact (Steps.halts_unique hsteps hhalted hspec.1 hspec.2.1).symm ▸ rfl
-          rw [hstate_eq]
-          exact clearRegisters_zeros m s r hr
-        · intro r hr
-          have hstate_eq : c.state = straightLineFinalState hClear_sl s := by
-            have hspec := straightLineFinalState_spec hClear_sl s
-            exact (Steps.halts_unique hsteps hhalted hspec.1 hspec.2.1).symm ▸ rfl
-          rw [hstate_eq]
-          exact clearRegisters_preserves_above m s r hr
+        · intro r hr; rw [hstate_eq]; exact clearRegisters_zeros m s r hr
+        · intro r hr; rw [hstate_eq]; exact clearRegisters_preserves_above m s r hr
 
       -- === REMAINING TRACE CONSTRUCTION ===
       -- Build the full trace: T01 → G1 → T02 → clearProg → T10 → G2 → T03 → clearProg → Tsetup
