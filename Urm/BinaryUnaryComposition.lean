@@ -742,7 +742,9 @@ theorem URMComputableSF.comp_binary_unary
           have hr0 : sSetup.read 0 = v1 := by simp [sSetup, State.read]
           have hr1 : sSetup.read 1 = v2 := by simp [sSetup, State.read]
           have hzeros : ∀ r, 2 ≤ r → r ≤ m → sSetup.read r = 0 := by
-            sorry
+            intro r hr2 hrm
+            simp only [sSetup, State.read]
+            simp only [if_neg (by omega : r ≠ 0), if_neg (by omega : r ≠ 1), if_pos hrm]
 
           refine ⟨sSetup, hr0, hr1, hzeros, ?_⟩
 
@@ -759,7 +761,8 @@ theorem URMComputableSF.comp_binary_unary
           obtain ⟨cT01, hT01_steps, hT01_halted, hT01_pc, hT01_state⟩ := hT01_exec
           -- After T01: state is s0.write (m+1) (s0.read 0) = s0.write (m+1) x
           have hT01_state_r0 : cT01.state.read 0 = s0.read 0 := by
-            sorry
+            rw [hT01_state]
+            exact State.write_read_diff s0 0 (m + 1) (s0.read 0) (by omega)
           have hT01_state_saved : cT01.state.read (m + 1) = s0.read 0 := by
             rw [hT01_state]; exact State.write_read_same s0 (m + 1) (s0.read 0)
 
