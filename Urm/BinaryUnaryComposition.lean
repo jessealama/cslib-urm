@@ -275,6 +275,7 @@ theorem comp_function_dom {f : (Fin 2 → ℕ) → Part ℕ} {g1 g2 : (Fin 1 →
     | ⟨0, _⟩ => simp [Part.sequence_get, mkPair]
     | ⟨1, _⟩ => simp [Part.sequence_get, mkPair]
 
+
 -- Increase heartbeats limit for this complex proof
 set_option maxHeartbeats 800000 in
 /-- Binary-unary composition preserves URM-computability for standard form programs.
@@ -2323,14 +2324,7 @@ theorem URMComputableSF.comp_binary_unary
           rw [hPhase2_state_match', hT03'_m3]
 
         have hH_halts : Halts (phase1.concat (phase2.concat phase3)) (List.ofFn inputs) := by
-          have hassoc : phase1.concat (phase2.concat phase3) = (phase1.concat phase2).concat phase3 := by
-            simp only [Program.concat, Program.shiftJumps, List.append_assoc, List.length_append,
-              List.map_append, List.map_map]
-            simp only [List.length_map]
-            congr 2
-            apply List.map_congr_left
-            intro instr _
-            cases instr <;> simp [Instr.shiftJumps]; omega
+          have hassoc := (Program.concat_assoc phase1 phase2 phase3).symm
           rw [hassoc]
           exact Halts.concat_continuation hPhase12_halts hPhase12_pc (hPhase3_halts_from cPhase12.state hPhase12_v1 hPhase12_v2)
 

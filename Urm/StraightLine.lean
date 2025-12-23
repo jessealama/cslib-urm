@@ -41,6 +41,26 @@ def Instr.isNonJumping : Instr → Bool
 def Program.isStraightLine (p : Program) : Bool :=
   p.all Instr.isNonJumping
 
+/-- shiftJumps is identity for non-jumping instructions. -/
+theorem Instr.shiftJumps_of_isNonJumping {instr : Instr} (h : instr.isNonJumping = true) (offset : ℕ) :
+    instr.shiftJumps offset = instr := by
+  cases instr with
+  | Z n => rfl
+  | S n => rfl
+  | T m n => rfl
+  | J m n q => simp [isNonJumping] at h
+
+/-- shiftJumps is identity for straight-line programs. -/
+theorem Program.shiftJumps_of_isStraightLine {p : Program} (h : p.isStraightLine = true) (offset : ℕ) :
+    p.shiftJumps offset = p := by
+  simp only [Program.shiftJumps]
+  induction p with
+  | nil => rfl
+  | cons hd tl ih =>
+    simp only [List.map_cons]
+    simp only [Program.isStraightLine, List.all_cons, Bool.and_eq_true] at h
+    rw [Instr.shiftJumps_of_isNonJumping h.1 offset, ih h.2]
+
 /-- Stepping through a non-jumping instruction increases pc by 1. -/
 theorem Step.nonJumping_pc_inc {p : Program} {c c' : Config} {instr : Instr}
     (hstep : Step p c c')

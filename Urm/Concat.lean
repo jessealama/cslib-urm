@@ -5,6 +5,7 @@ Authors: Jesse Alama
 -/
 
 import Urm.Execution
+import Urm.StraightLine
 
 /-! # Program Concatenation
 
@@ -245,5 +246,20 @@ theorem Halts.concat_left_lift (h : Halts p1 inputs) :
   exact Steps.concat_left_prefix hsteps hhalted
 
 end ConcatLemmas
+
+/-! ## Straight-Line Bridge Lemmas -/
+
+/-- For straight-line p2, concat equals simple append.
+This is because shiftJumps is a no-op when there are no jumps. -/
+theorem Program.concat_eq_append_of_isStraightLine (p1 p2 : Program) (h : p2.isStraightLine = true) :
+    p1.concat p2 = p1 ++ p2 := by
+  simp only [concat, Program.shiftJumps_of_isStraightLine h]
+
+/-- For straight-line programs, concat equals simple append.
+This is a convenience variant when both programs are straight-line. -/
+theorem Program.concat_eq_append_of_both_isStraightLine (p1 p2 : Program)
+    (_h1 : p1.isStraightLine = true) (h2 : p2.isStraightLine = true) :
+    p1.concat p2 = p1 ++ p2 :=
+  concat_eq_append_of_isStraightLine p1 p2 h2
 
 end Urm
