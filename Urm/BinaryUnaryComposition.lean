@@ -566,10 +566,8 @@ theorem comp_binary_unary_halts_imp_g2_dom
 
       -- Step 2: sClear.read (m + 1) = sPhase1.read (m + 1) via clearRegisters_preserves_above
       have hClear_halted : (⟨clearProg.length, sClear⟩ : Config).isHalted clearProg := Nat.le_refl _
-      have hsClear_eq : sClear = straightLineFinalState hClear_sl sPhase1 := by
-        have hspec := straightLineFinalState_spec hClear_sl sPhase1
-        have huniq := Steps.halts_unique hClear_steps hClear_halted hspec.1 hspec.2.1
-        exact congrArg Config.state huniq
+      have hsClear_eq : sClear = straightLineFinalState hClear_sl sPhase1 :=
+        straightLineFinalState_eq_of_halted hClear_sl sPhase1 ⟨clearProg.length, sClear⟩ hClear_steps hClear_halted
       have hsClear_preserves : sClear.read (m + 1) = sPhase1.read (m + 1) := by
         rw [hsClear_eq]
         exact clearRegisters_preserves_above m sPhase1 (m + 1) (by omega : m < m + 1)
@@ -694,12 +692,9 @@ theorem comp_binary_unary_halts_imp_g2_dom
         rw [this, hT10_state']
       have hT10_preserves_r : sT10 r = sClear r := by
         rw [hsT10_eq]; exact State.write_read_diff _ _ _ _ hr0
-      have hClear_halted : (⟨clearProg.length, sClear⟩ : Config).isHalted clearProg :=
-        Nat.le_refl _
-      have hsClear_eq : sClear = straightLineFinalState hClear_sl sPhase1 := by
-        have hspec := straightLineFinalState_spec hClear_sl sPhase1
-        have huniq := Steps.halts_unique hClear_steps hClear_halted hspec.1 hspec.2.1
-        exact congrArg Config.state huniq
+      have hClear_halted : (⟨clearProg.length, sClear⟩ : Config).isHalted clearProg := Nat.le_refl _
+      have hsClear_eq : sClear = straightLineFinalState hClear_sl sPhase1 :=
+        straightLineFinalState_eq_of_halted hClear_sl sPhase1 ⟨clearProg.length, sClear⟩ hClear_steps hClear_halted
       have hClear_zeros_r : sClear r = 0 := by
         rw [hsClear_eq]
         exact clearRegisters_zeros m sPhase1 r (Nat.le_trans hr hm_ge_G2)
