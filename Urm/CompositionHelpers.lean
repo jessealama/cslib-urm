@@ -249,6 +249,57 @@ theorem double_transfer_isStandardForm (s1 d1 s2 d2 : ℕ) :
     Program.IsStandardForm [Instr.T s1 d1, Instr.T s2 d2] :=
   straightLine_isStandardForm (double_transfer_isStraightLine' s1 d1 s2 d2)
 
+/-! ## SingleTransferResult Structure
+
+Bundles single transfer execution with all commonly-needed properties to avoid
+repeated unpacking and State.write_read_same/diff calls. -/
+
+/-- Bundle single transfer execution with commonly-needed properties.
+This eliminates the repeated pattern of:
+```
+have hex := single_transfer_halts src dst s
+obtain ⟨c', hsteps', hhalted', hpc', hstate'⟩ := hex
+-- then State.write_read_same/diff calls
+```
+-/
+structure SingleTransferResult (src dst : ℕ) (s : State) where
+  /-- The final state after the transfer -/
+  finalState : State
+  /-- Steps from initial config to halted config -/
+  steps : Steps [Instr.T src dst] ⟨0, s⟩ ⟨1, finalState⟩
+  /-- The config is halted -/
+  halted : (⟨1, finalState⟩ : Config).isHalted [Instr.T src dst]
+  /-- The destination register has the source value -/
+  dst_eq : finalState.read dst = s.read src
+  /-- All other registers are preserved -/
+  preserved : ∀ r, r ≠ dst → finalState.read r = s.read r
+
+/-- Execute a single transfer and get bundled result with all properties. -/
+noncomputable def executeSingleTransfer (src dst : ℕ) (s : State) :
+    SingleTransferResult src dst s where
+  finalState := s.write dst (s.read src)
+  steps := Relation.ReflTransGen.single (by
+    apply Step.trans
+    simp [Program.getInstr])
+  halted := by simp [Config.isHalted]
+  dst_eq := State.write_read_same s dst (s.read src)
+  preserved := fun r hr => State.write_read_diff s r dst (s.read src) hr
+
+/-- The final config of a SingleTransferResult. -/
+def SingleTransferResult.config {src dst : ℕ} {s : State}
+    (tr : SingleTransferResult src dst s) : Config :=
+  ⟨1, tr.finalState⟩
+
+/-- The PC of the final config is 1. -/
+theorem SingleTransferResult.pc_eq {src dst : ℕ} {s : State}
+    (tr : SingleTransferResult src dst s) : tr.config.pc = 1 := rfl
+
+/-- Halting execution exists for single transfer (for compatibility). -/
+theorem SingleTransferResult.halts_exists {src dst : ℕ} {s : State}
+    (tr : SingleTransferResult src dst s) :
+    ∃ c, Steps [Instr.T src dst] ⟨0, s⟩ c ∧ c.isHalted [Instr.T src dst] :=
+  ⟨tr.config, tr.steps, tr.halted⟩
+
 /-- Execute a double transfer and get the final state. -/
 theorem double_transfer_halts (s1 d1 s2 d2 : ℕ) (s : State) :
     ∃ c, Steps [Instr.T s1 d1, Instr.T s2 d2] ⟨0, s⟩ c ∧
