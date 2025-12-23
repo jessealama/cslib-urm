@@ -196,27 +196,43 @@ theorem Steps.concat_right {c c' : Config}
     have hstep' := Step.concat_right (p1 := p1) hpc hstep
     exact Relation.ReflTransGen.head hstep' ih
 
-/-- Multi-step from within p1 stays in p1 until halting.
-If we execute Steps in p1 from c to a halted config c', then the same path exists in p1.concat p2. -/
-theorem Steps.concat_left_prefix {c c' : Config}
-    (hsteps : Steps p1 c c') (_hhalted : c'.isHalted p1) :
-    Steps (p1.concat p2) c c' := by
-  -- Use head induction: at each step, the current config can step (so pc < p1.length),
-  -- allowing us to lift the step to the concatenation
+/-- Multi-step in the second part of a concatenated program (interior version).
+Unlike concat_right, this version does NOT require the final config to be halted.
+The proof works because each stepping config must have pc < p2.length. -/
+theorem Steps.concat_right_interior {c c' : Config}
+    (hsteps : Steps p2 c c') :
+    Steps (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ ⟨c'.pc + p1.length, c'.state⟩ := by
   induction hsteps using Relation.ReflTransGen.head_induction_on with
   | refl => exact Relation.ReflTransGen.refl
   | @head a b hstep hrest ih =>
-    -- hstep : Step p1 a b, hrest : Steps p1 b c'
-    -- ih : Steps (p1.concat p2) b c' (already applied with _hhalted)
-    -- Since a can step in p1, a.pc < p1.length
+    have hpc : a.pc < p2.length := by
+      by_contra hc
+      simp only [not_lt] at hc
+      exact Step.halted_no_step hc hstep
+    have hstep' := Step.concat_right (p1 := p1) hpc hstep
+    exact Relation.ReflTransGen.head hstep' ih
+
+/-- Multi-step from within p1 (interior version, no halting required).
+The proof works because each stepping config must have pc < p1.length. -/
+theorem Steps.concat_left_prefix_interior {c c' : Config}
+    (hsteps : Steps p1 c c') :
+    Steps (p1.concat p2) c c' := by
+  induction hsteps using Relation.ReflTransGen.head_induction_on with
+  | refl => exact Relation.ReflTransGen.refl
+  | @head a b hstep hrest ih =>
     have hpc : a.pc < p1.length := by
       by_contra hc
       simp only [not_lt] at hc
       exact Step.halted_no_step hc hstep
-    -- Lift the step to the concatenation
     have hstep' : Step (p1.concat p2) a b := Step.concat_left hpc hstep
-    -- Combine with IH
     exact Relation.ReflTransGen.head hstep' ih
+
+/-- Multi-step from within p1 stays in p1 until halting.
+If we execute Steps in p1 from c to a halted config c', then the same path exists in p1.concat p2. -/
+theorem Steps.concat_left_prefix {c c' : Config}
+    (hsteps : Steps p1 c c') (_hhalted : c'.isHalted p1) :
+    Steps (p1.concat p2) c c' :=
+  Steps.concat_left_prefix_interior hsteps
 
 /-- If p1 halts, we can lift the Steps from p1 to the concatenation. -/
 theorem Halts.concat_left_lift (h : Halts p1 inputs) :
