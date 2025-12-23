@@ -115,6 +115,15 @@ theorem clearRegisters_preserves_above (maxReg : ℕ) (s : State) (r : ℕ) (hr 
   simp only [Instr.writesTo, ne_eq, Option.some.injEq]
   omega
 
+/-- For a straight-line program, if c is the halted configuration from state s,
+then c.state equals straightLineFinalState. This is a common pattern for
+proving state equality after straight-line execution. -/
+theorem straightLineFinalState_eq_of_halted {p : Program} (hsl : p.isStraightLine = true) (s : State)
+    (c : Config) (hsteps : Steps p ⟨0, s⟩ c) (hhalted : c.isHalted p) :
+    c.state = straightLineFinalState hsl s := by
+  have hspec := straightLineFinalState_spec hsl s
+  exact Steps.halts_unique hsteps hhalted hspec.1 hspec.2.1 ▸ rfl
+
 /-! ## Binary-Unary Composition Construction -/
 
 /-- The base register for safe storage in binary-unary composition.
@@ -1484,9 +1493,7 @@ theorem comp_binary_unary_dom_imp_halts
     obtain ⟨cClear, hClear_steps, hClear_halted, hClear_pc⟩ := hClear_halts
     -- cClear.state preserves R[m+1]
     have hClear_preserves : cClear.state.read (m + 1) = s.read (m + 1) := by
-      have hClear_state_eq : cClear.state = straightLineFinalState hClear_sl s := by
-        have hspec := straightLineFinalState_spec hClear_sl s
-        exact Steps.halts_unique hClear_steps hClear_halted hspec.1 hspec.2.1 ▸ rfl
+      have hClear_state_eq := straightLineFinalState_eq_of_halted hClear_sl s cClear hClear_steps hClear_halted
       rw [hClear_state_eq]
       exact clearRegisters_preserves_above m s (m + 1) (by omega)
 
@@ -1520,9 +1527,7 @@ theorem comp_binary_unary_dom_imp_halts
           exact State.write_read_diff _ _ _ _ (by omega : r ≠ 0)
         -- cClear.state.read r = 0 for r ≤ m
         have hClear_zeros_r : cClear.state.read r = 0 := by
-          have hClear_state_eq : cClear.state = straightLineFinalState hClear_sl s := by
-            have hspec := straightLineFinalState_spec hClear_sl s
-            exact Steps.halts_unique hClear_steps hClear_halted hspec.1 hspec.2.1 ▸ rfl
+          have hClear_state_eq := straightLineFinalState_eq_of_halted hClear_sl s cClear hClear_steps hClear_halted
           rw [hClear_state_eq]
           exact clearRegisters_zeros m s r (by omega : r ≤ m)
         rw [hT10_preserves_r, hClear_zeros_r]
@@ -1611,9 +1616,7 @@ theorem comp_binary_unary_dom_imp_halts
     have hClear_halts := straightLine_halts_from_state hClear_sl s
     obtain ⟨cClear, hClear_steps, hClear_halted, hClear_pc⟩ := hClear_halts
     -- cClear.state preserves R[m+2] and R[m+3]
-    have hClear_state_eq : cClear.state = straightLineFinalState hClear_sl s := by
-      have hspec := straightLineFinalState_spec hClear_sl s
-      exact Steps.halts_unique hClear_steps hClear_halted hspec.1 hspec.2.1 ▸ rfl
+    have hClear_state_eq := straightLineFinalState_eq_of_halted hClear_sl s cClear hClear_steps hClear_halted
     have hClear_preserves_v1 : cClear.state.read (m + 2) = v1 := by
       rw [hClear_state_eq, clearRegisters_preserves_above m s (m + 2) (by omega), hs_v1]
     have hClear_preserves_v2 : cClear.state.read (m + 3) = v2 := by
@@ -1997,31 +2000,22 @@ theorem comp_binary_unary_dom_imp_halts
     have hClear_sl := clearRegisters_isStraightLine m
     have hClear_halts := straightLine_halts_from_state hClear_sl s1
     obtain ⟨cClear, hClear_steps, hClear_halted, hClear_pc⟩ := hClear_halts
+    have hClear_state_eq := straightLineFinalState_eq_of_halted hClear_sl s1 cClear hClear_steps hClear_halted
     have hClear_preserves_m2 : cClear.state.read (m + 2) = s1.read (m + 2) := by
-      have hClear_state_eq : cClear.state = straightLineFinalState hClear_sl s1 := by
-        have hspec := straightLineFinalState_spec hClear_sl s1
-        exact Steps.halts_unique hClear_steps hClear_halted hspec.1 hspec.2.1 ▸ rfl
-      rw [hClear_state_eq]
-      exact clearRegisters_preserves_above m s1 (m + 2) (by omega)
+      rw [hClear_state_eq]; exact clearRegisters_preserves_above m s1 (m + 2) (by omega)
 
     -- Step 5b: T10 halts and preserves m+2 (writes to 0)
     have hT10_halts := single_transfer_halts (m + 1) 0 cClear.state
     obtain ⟨cT10, hT10_steps, hT10_halted, hT10_pc, hT10_state⟩ := hT10_halts
     have hT10_preserves_m2 : cT10.state.read (m + 2) = cClear.state.read (m + 2) := by
-      rw [hT10_state]
-      exact State.write_read_diff _ _ _ _ (by omega : m + 2 ≠ 0)
+      rw [hT10_state]; exact State.write_read_diff _ _ _ _ (by omega : m + 2 ≠ 0)
 
     -- Step 5c: pG2 halts and preserves m+2 (maxRegister ≤ m < m+2)
-    -- First set up state agreement for pG2
     have hm_ge_G2 : pG2.maxRegister ≤ m := compositionBaseBU_ge_G2 pF pG1 pG2
     have hT10_r0 : cT10.state.read 0 = inputs ⟨0, by omega⟩ := by
       rw [hT10_state, State.write_read_same]
       have hClear_preserves_m1 : cClear.state.read (m + 1) = s1.read (m + 1) := by
-        have hClear_state_eq : cClear.state = straightLineFinalState hClear_sl s1 := by
-          have hspec := straightLineFinalState_spec hClear_sl s1
-          exact Steps.halts_unique hClear_steps hClear_halted hspec.1 hspec.2.1 ▸ rfl
-        rw [hClear_state_eq]
-        exact clearRegisters_preserves_above m s1 (m + 1) (by omega)
+        rw [hClear_state_eq]; exact clearRegisters_preserves_above m s1 (m + 1) (by omega)
       rw [hClear_preserves_m1, hs1_input]
     have hagreeG2 : cT10.state.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG2.maxRegister := by
       intro r _ hhi
@@ -2031,11 +2025,7 @@ theorem comp_binary_unary_dom_imp_halts
         have hT10_preserves_r : cT10.state.read r = cClear.state.read r := by
           rw [hT10_state]; exact State.write_read_diff _ _ _ _ (by omega : r ≠ 0)
         have hClear_zeros_r : cClear.state.read r = 0 := by
-          have hClear_state_eq : cClear.state = straightLineFinalState hClear_sl s1 := by
-            have hspec := straightLineFinalState_spec hClear_sl s1
-            exact Steps.halts_unique hClear_steps hClear_halted hspec.1 hspec.2.1 ▸ rfl
-          rw [hClear_state_eq]
-          exact clearRegisters_zeros m s1 r (by omega : r ≤ m)
+          rw [hClear_state_eq]; exact clearRegisters_zeros m s1 r (by omega : r ≤ m)
         rw [hT10_preserves_r, hClear_zeros_r]
         simp only [State.fromInputs, State.read]
         have hr_ge : r ≥ (List.ofFn inputs).length := by simp only [List.length_ofFn]; omega
@@ -2156,12 +2146,9 @@ theorem comp_binary_unary_dom_imp_halts
     have hClear_sl' := clearRegisters_isStraightLine m
     have hClear_halts' := straightLine_halts_from_state hClear_sl' s1'
     obtain ⟨cClear', hClear_steps', hClear_halted', hClear_pc'⟩ := hClear_halts'
+    have hClear_state_eq' := straightLineFinalState_eq_of_halted hClear_sl' s1' cClear' hClear_steps' hClear_halted'
     have hClear_preserves_m1' : cClear'.state.read (m + 1) = s1'.read (m + 1) := by
-      have hClear_state_eq' : cClear'.state = straightLineFinalState hClear_sl' s1' := by
-        have hspec := straightLineFinalState_spec hClear_sl' s1'
-        exact Steps.halts_unique hClear_steps' hClear_halted' hspec.1 hspec.2.1 ▸ rfl
-      rw [hClear_state_eq']
-      exact clearRegisters_preserves_above m s1' (m + 1) (by omega)
+      rw [hClear_state_eq']; exact clearRegisters_preserves_above m s1' (m + 1) (by omega)
 
     -- Step 5b: T10
     have hT10_halts' := single_transfer_halts (m + 1) 0 cClear'.state
@@ -2179,11 +2166,7 @@ theorem comp_binary_unary_dom_imp_halts
         have hT10_preserves_r : cT10'.state.read r = cClear'.state.read r := by
           rw [hT10_state']; exact State.write_read_diff _ _ _ _ (by omega : r ≠ 0)
         have hClear_zeros_r : cClear'.state.read r = 0 := by
-          have hClear_state_eq' : cClear'.state = straightLineFinalState hClear_sl' s1' := by
-            have hspec := straightLineFinalState_spec hClear_sl' s1'
-            exact Steps.halts_unique hClear_steps' hClear_halted' hspec.1 hspec.2.1 ▸ rfl
-          rw [hClear_state_eq']
-          exact clearRegisters_zeros m s1' r (by omega : r ≤ m)
+          rw [hClear_state_eq']; exact clearRegisters_zeros m s1' r (by omega : r ≤ m)
         rw [hT10_preserves_r, hClear_zeros_r]
         simp only [State.fromInputs, State.read]
         have hr_ge : r ≥ (List.ofFn inputs).length := by simp only [List.length_ofFn]; omega
