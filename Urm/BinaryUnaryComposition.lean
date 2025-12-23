@@ -201,6 +201,91 @@ private theorem single_transfer_isStraightLine (src dst : ℕ) :
 private theorem double_transfer_isStraightLine (s1 d1 s2 d2 : ℕ) :
     Program.isStraightLine [Instr.T s1 d1, Instr.T s2 d2] = true := rfl
 
+/-! ## T01 Execution Helpers
+
+The T01 instruction `[Instr.T 0 (m + 1)]` copies R[0] to R[m+1] at the start of
+the composed program. These lemmas encapsulate the common execution pattern
+that appears in all the composition theorems. -/
+
+/-- After executing T01 = [T 0 (m+1)] from initial state, the result state
+equals the initial state with R[m+1] set to the input value. -/
+theorem T01_state_eq (m : ℕ) (inputs : Fin 1 → ℕ) :
+    let hT01_sl := single_transfer_isStraightLine 0 (m + 1)
+    let hT01_halts := straightLine_halts hT01_sl (List.ofFn inputs)
+    (Classical.choose hT01_halts).state = (State.fromInputs (List.ofFn inputs)).write (m + 1)
+        ((State.fromInputs (List.ofFn inputs)).read 0) := by
+  intro hT01_sl hT01_halts
+  have hex := single_transfer_halts 0 (m + 1) (State.fromInputs (List.ofFn inputs))
+  obtain ⟨c', hsteps', hhalted', _, hstate'⟩ := hex
+  have hspec := Classical.choose_spec hT01_halts
+  have heq := Steps.halts_unique hspec.1 hspec.2 hsteps' hhalted'
+  show (Classical.choose hT01_halts).state = _
+  rw [heq, hstate']
+
+/-- T01 preserves all registers except m+1. In particular, for r ≤ m,
+the state after T01 agrees with the initial state. -/
+theorem T01_preserves_below (m : ℕ) (inputs : Fin 1 → ℕ) (r : ℕ) (hr : r ≤ m) :
+    let hT01_sl := single_transfer_isStraightLine 0 (m + 1)
+    let hT01_halts := straightLine_halts hT01_sl (List.ofFn inputs)
+    (Classical.choose hT01_halts).state.read r = (State.fromInputs (List.ofFn inputs)).read r := by
+  intro hT01_sl hT01_halts
+  have hT01_state := T01_state_eq m inputs
+  simp only at hT01_state
+  conv_lhs => rw [hT01_state]
+  have hr_ne : r ≠ m + 1 := by omega
+  exact State.write_read_diff _ _ _ _ hr_ne
+
+/-- T01 stores the input value in R[m+1]. -/
+theorem T01_stores_input (m : ℕ) (inputs : Fin 1 → ℕ) :
+    let hT01_sl := single_transfer_isStraightLine 0 (m + 1)
+    let hT01_halts := straightLine_halts hT01_sl (List.ofFn inputs)
+    (Classical.choose hT01_halts).state.read (m + 1) = inputs ⟨0, by omega⟩ := by
+  intro hT01_sl hT01_halts
+  have hT01_state := T01_state_eq m inputs
+  simp only at hT01_state
+  conv_lhs => rw [hT01_state]
+  rw [State.write_read_same]
+  simp only [State.fromInputs, State.read]
+  rfl
+
+/-- After T01, the state agrees with the initial inputs on registers ≤ maxReg,
+provided maxReg ≤ m. This is the key lemma for using Halts.of_agreeing_state. -/
+theorem T01_agreeOn_for_subprogram (m : ℕ) (inputs : Fin 1 → ℕ) (maxReg : ℕ) (h : maxReg ≤ m) :
+    let hT01_sl := single_transfer_isStraightLine 0 (m + 1)
+    let hT01_halts := straightLine_halts hT01_sl (List.ofFn inputs)
+    ∀ r, r ≤ maxReg → (Classical.choose hT01_halts).state.read r =
+        (State.fromInputs (List.ofFn inputs)).read r := by
+  intro hT01_sl hT01_halts r hr
+  exact T01_preserves_below m inputs r (Nat.le_trans hr h)
+
+/-- For any halting proof of T01, the result state agrees with initial inputs on registers ≤ m.
+This version works with any `hT01_halts` obtained from different sources (suffix extraction, etc.). -/
+theorem T01_preserves_below_any (m : ℕ) (inputs : Fin 1 → ℕ)
+    (hT01_halts : Halts [Instr.T 0 (m + 1)] (List.ofFn inputs))
+    (r : ℕ) (hr : r ≤ m) :
+    (Classical.choose hT01_halts).state.read r = (State.fromInputs (List.ofFn inputs)).read r := by
+  -- Bridge to the canonical halting proof via uniqueness
+  have hT01_sl := single_transfer_isStraightLine 0 (m + 1)
+  have hT01_halts' := straightLine_halts hT01_sl (List.ofFn inputs)
+  have hspec := Classical.choose_spec hT01_halts
+  have hspec' := Classical.choose_spec hT01_halts'
+  have huniq := Steps.halts_unique hspec.1 hspec.2 hspec'.1 hspec'.2
+  rw [huniq]
+  exact T01_preserves_below m inputs r hr
+
+/-- For any halting proof of T01, register m+1 contains the input value.
+This version works with any `hT01_halts` obtained from different sources. -/
+theorem T01_stores_input_any (m : ℕ) (inputs : Fin 1 → ℕ)
+    (hT01_halts : Halts [Instr.T 0 (m + 1)] (List.ofFn inputs)) :
+    (Classical.choose hT01_halts).state.read (m + 1) = inputs ⟨0, by omega⟩ := by
+  have hT01_sl := single_transfer_isStraightLine 0 (m + 1)
+  have hT01_halts' := straightLine_halts hT01_sl (List.ofFn inputs)
+  have hspec := Classical.choose_spec hT01_halts
+  have hspec' := Classical.choose_spec hT01_halts'
+  have huniq := Steps.halts_unique hspec.1 hspec.2 hspec'.1 hspec'.2
+  rw [huniq]
+  exact T01_stores_input m inputs
+
 /-- Helper: the composed program is in standard form if all components are. -/
 theorem composeBU_isStandardForm {pF pG1 pG2 : Program}
     (hF : pF.IsStandardForm)
@@ -340,24 +425,11 @@ theorem comp_binary_unary_halts_imp_g1_dom
   -- Show sT01 agrees with State.fromInputs on registers 0..pG1.maxRegister
   have hm_ge_G1 : pG1.maxRegister ≤ m := compositionBaseBU_ge_G1 pF pG1 pG2
 
-  -- sT01 is the state after T01 = [T 0 (m+1)] from Config.init
-  -- T01 only writes to register m+1, so registers 0..m are unchanged
+  -- Use helper: T01 preserves registers below m+1
   have hagreeG1 : ∀ r, r ≤ pG1.maxRegister → sT01.read r = (State.fromInputs (List.ofFn inputs)).read r := by
     intro r hr
     rw [hsT01_eq hT01_halts]
-    -- Get the execution trace of T01
-    have hex := single_transfer_halts 0 (m + 1) (State.fromInputs (List.ofFn inputs))
-    obtain ⟨c', hsteps_c', hhalted_c', _, hstate'⟩ := hex
-    -- By uniqueness of halted configs
-    have hspec := Classical.choose_spec hT01_halts
-    have huniq := Steps.halts_unique hsteps_c' hhalted_c' hspec.1 hspec.2
-    rw [← huniq, hstate']
-    -- Reading register r ≤ pG1.maxRegister ≤ m from s.write (m+1) ...
-    simp only [State.read, State.write, Function.update]
-    have hr_ne : r ≠ m + 1 := by
-      have : r ≤ m := Nat.le_trans hr hm_ge_G1
-      omega
-    simp [hr_ne]
+    exact T01_preserves_below_any m inputs hT01_halts r (Nat.le_trans hr hm_ge_G1)
 
   -- Use Halts.of_agreeing_state to conclude Halts pG1 (List.ofFn inputs)
   have hG1_halts : Halts pG1 (List.ofFn inputs) :=
@@ -509,28 +581,16 @@ theorem comp_binary_unary_halts_imp_g2_dom
         have hT01_halts := straightLine_halts hT01_sl (List.ofFn inputs)
         let sT01' := (Classical.choose hT01_halts).state
 
-        -- sT01'.read (m+1) = inputs[0]
+        -- Use T01 helpers
         have hT01_state : sT01' = (State.fromInputs (List.ofFn inputs)).write (m + 1)
-            ((State.fromInputs (List.ofFn inputs)).read 0) := by
-          have hex := single_transfer_halts 0 (m + 1) (State.fromInputs (List.ofFn inputs))
-          obtain ⟨c', hsteps', hhalted', _, hstate'⟩ := hex
-          have hspec' := Classical.choose_spec hT01_halts
-          have heq := Steps.halts_unique hspec'.1 hspec'.2 hsteps' hhalted'
-          show (Classical.choose hT01_halts).state = _
-          rw [heq, hstate']
-        have hsT01'_m1 : sT01'.read (m + 1) = inputs ⟨0, by omega⟩ := by
-          rw [hT01_state, State.write_read_same]
-          simp only [State.fromInputs, State.read]
-          rfl
+            ((State.fromInputs (List.ofFn inputs)).read 0) := T01_state_eq m inputs
+        have hsT01'_m1 : sT01'.read (m + 1) = inputs ⟨0, by omega⟩ := T01_stores_input m inputs
 
         -- pG1 preserves R[m+1]
         have hm_ge_G1' : pG1.maxRegister ≤ m := compositionBaseBU_ge_G1 pF pG1 pG2
         have hagreeG1' : ∀ r, r ≤ pG1.maxRegister →
-            sT01'.read r = (State.fromInputs (List.ofFn inputs)).read r := by
-          intro r' hr'
-          rw [hT01_state]
-          have hr_ne : r' ≠ m + 1 := by omega
-          exact State.write_read_diff _ _ _ _ hr_ne
+            sT01'.read r = (State.fromInputs (List.ofFn inputs)).read r := fun r' hr' =>
+          T01_preserves_below m inputs r' (Nat.le_trans hr' hm_ge_G1')
         have hagreeG1'' : sT01'.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG1.maxRegister := by
           intro r' _ hhi
           exact hagreeG1' r' hhi
@@ -718,22 +778,13 @@ theorem comp_binary_unary_halts_imp_f_dom
   have hSuffix12 := Halts.suffix_of_concat_sf hHalts' hPhase1_sf
   obtain ⟨sPhase1, _, hsPhase1_eq, cPhase23, hPhase23_steps, hPhase23_halted⟩ := hSuffix12
 
-  -- T01 execution facts (hoisted to avoid duplication in hsPhase1_m1 and hsPhase1_v1)
+  -- T01 execution facts (using helpers)
   have hT01_sl := single_transfer_isStraightLine 0 (m + 1)
   have hT01_halts' := straightLine_halts hT01_sl (List.ofFn inputs)
   let sT01 := (Classical.choose hT01_halts').state
   have hT01_state : sT01 = (State.fromInputs (List.ofFn inputs)).write (m + 1)
-      ((State.fromInputs (List.ofFn inputs)).read 0) := by
-    have hex := single_transfer_halts 0 (m + 1) (State.fromInputs (List.ofFn inputs))
-    obtain ⟨c', hsteps', hhalted', _, hstate'⟩ := hex
-    have hspec' := Classical.choose_spec hT01_halts'
-    have heq := Steps.halts_unique hspec'.1 hspec'.2 hsteps' hhalted'
-    show (Classical.choose hT01_halts').state = _
-    rw [heq, hstate']
-  have hsT01_m1 : sT01.read (m + 1) = inputs ⟨0, by omega⟩ := by
-    rw [hT01_state, State.write_read_same]
-    simp only [State.fromInputs, State.read]
-    rfl
+      ((State.fromInputs (List.ofFn inputs)).read 0) := T01_state_eq m inputs
+  have hsT01_m1 : sT01.read (m + 1) = inputs ⟨0, by omega⟩ := T01_stores_input m inputs
   have hT01_steps := (Classical.choose_spec hT01_halts').1
   have hT01_halted := (Classical.choose_spec hT01_halts').2
   have hT01_pc : (Classical.choose hT01_halts').pc = T01.length := by
@@ -751,14 +802,10 @@ theorem comp_binary_unary_halts_imp_f_dom
 
     have hm_ge_G1 : pG1.maxRegister ≤ m := compositionBaseBU_ge_G1 pF pG1 pG2
     have hagreeG1' : ∀ r', r' ≤ pG1.maxRegister →
-        sT01.read r' = (State.fromInputs (List.ofFn inputs)).read r' := by
-      intro r' hr'
-      rw [hT01_state]
-      have hr_ne : r' ≠ m + 1 := by omega
-      exact State.write_read_diff _ _ _ _ hr_ne
-    have hagreeG1'' : sT01.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG1.maxRegister := by
-      intro r' _ hhi
-      exact hagreeG1' r' hhi
+        sT01.read r' = (State.fromInputs (List.ofFn inputs)).read r' := fun r' hr' =>
+      T01_preserves_below m inputs r' (Nat.le_trans hr' hm_ge_G1)
+    have hagreeG1'' : sT01.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG1.maxRegister := fun _ _ hhi =>
+      hagreeG1' _ hhi
 
     let eG1 := Halts.executeFromAgreeingState hG1_halts hG1_sf hagreeG1''
     let cG1' := eG1.config
@@ -1393,30 +1440,10 @@ theorem comp_binary_unary_dom_imp_halts
     -- T01 writes to register m+1, and m+1 > m ≥ pG1.maxRegister
     -- So sT01 agrees with State.fromInputs on registers 0..pG1.maxRegister
     have hm_ge_G1 : pG1.maxRegister ≤ m := compositionBaseBU_ge_G1 pF pG1 pG2
-    have hagreeG1 : ∀ r, r ≤ pG1.maxRegister → sT01.read r = (State.fromInputs (List.ofFn inputs)).read r := by
-      intro r hr
-      -- sT01 is after executing T01 = [T 0 (m+1)]
-      -- The final state is (Config.init inputs).state.write (m+1) (inputs[0])
-      have hT01_state : sT01 = (State.fromInputs (List.ofFn inputs)).write (m + 1) ((State.fromInputs (List.ofFn inputs)).read 0) := by
-        -- Get the execution trace of T01
-        have hex := single_transfer_halts 0 (m + 1) (State.fromInputs (List.ofFn inputs))
-        obtain ⟨c', hsteps', hhalted', hpc', hstate'⟩ := hex
-        -- sT01 = (Classical.choose hT01_halts).state
-        -- We need to show this equals c'.state
-        have heq : (Classical.choose hT01_halts) = c' := by
-          have hspec := Classical.choose_spec hT01_halts
-          exact Steps.halts_unique hspec.1 hspec.2 hsteps' hhalted'
-        show (Classical.choose hT01_halts).state = _
-        rw [heq, hstate']
-      rw [hT01_state]
-      -- r ≤ pG1.maxRegister ≤ m < m + 1, so write doesn't affect r
-      have hr_ne : r ≠ m + 1 := by omega
-      exact State.write_read_diff _ _ _ _ hr_ne
-    -- G1 halts from sT01 - use helper for execution from agreeing state
-    -- Convert hagreeG1 to State.agreeOn form
-    have hagreeG1' : sT01.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG1.maxRegister := by
-      intro r _ hhi
-      exact hagreeG1 r hhi
+    have hagreeG1 : ∀ r, r ≤ pG1.maxRegister → sT01.read r = (State.fromInputs (List.ofFn inputs)).read r := fun r hr =>
+      T01_preserves_below m inputs r (Nat.le_trans hr hm_ge_G1)
+    have hagreeG1' : sT01.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG1.maxRegister := fun _ _ hhi =>
+      hagreeG1 _ hhi
     -- Get cG1 execution from agreeing state using helper
     let eG1 := Halts.executeFromAgreeingState hG1_halts hG1_sf hagreeG1'
     let cG1 := eG1.config
@@ -1743,30 +1770,17 @@ theorem comp_binary_unary_dom_imp_halts
     have hT01_pc := straightLine_halts_at_length hT01_sl (List.ofFn inputs)
     let sT01 := (Classical.choose hT01_halts).state
 
-    -- Step 2: sT01.read (m+1) = inputs[0]
-    have hT01_state : sT01 = (State.fromInputs (List.ofFn inputs)).write (m + 1) ((State.fromInputs (List.ofFn inputs)).read 0) := by
-      have hex := single_transfer_halts 0 (m + 1) (State.fromInputs (List.ofFn inputs))
-      obtain ⟨c', hsteps', hhalted', _, hstate'⟩ := hex
-      have hspec := Classical.choose_spec hT01_halts
-      have heq := Steps.halts_unique hspec.1 hspec.2 hsteps' hhalted'
-      show (Classical.choose hT01_halts).state = _
-      rw [heq, hstate']
-    have hsT01_m1 : sT01.read (m + 1) = inputs ⟨0, by omega⟩ := by
-      rw [hT01_state, State.write_read_same]
-      simp only [State.fromInputs, State.read]
-      rfl
+    -- Step 2: sT01.read (m+1) = inputs[0] (using helpers)
+    have hT01_state : sT01 = (State.fromInputs (List.ofFn inputs)).write (m + 1)
+        ((State.fromInputs (List.ofFn inputs)).read 0) := T01_state_eq m inputs
+    have hsT01_m1 : sT01.read (m + 1) = inputs ⟨0, by omega⟩ := T01_stores_input m inputs
 
-    -- Step 3: pG1.concat T02 from sT01 preserves R[m+1]
-    -- First, pG1 preserves R[m+1]
+    -- Step 3: pG1.concat T02 from sT01 preserves R[m+1] (using helpers)
     have hm_ge_G1 : pG1.maxRegister ≤ m := compositionBaseBU_ge_G1 pF pG1 pG2
-    have hagreeG1 : ∀ r, r ≤ pG1.maxRegister → sT01.read r = (State.fromInputs (List.ofFn inputs)).read r := by
-      intro r hr
-      rw [hT01_state]
-      have hr_ne : r ≠ m + 1 := by omega
-      exact State.write_read_diff _ _ _ _ hr_ne
-    have hagreeG1' : sT01.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG1.maxRegister := by
-      intro r _ hhi
-      exact hagreeG1 r hhi
+    have hagreeG1 : ∀ r, r ≤ pG1.maxRegister → sT01.read r = (State.fromInputs (List.ofFn inputs)).read r := fun r hr =>
+      T01_preserves_below m inputs r (Nat.le_trans hr hm_ge_G1)
+    have hagreeG1' : sT01.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG1.maxRegister := fun _ _ hhi =>
+      hagreeG1 _ hhi
     -- Get cG1 execution from agreeing state using helper
     let eG1 := Halts.executeFromAgreeingState hG1_halts hG1_sf hagreeG1'
     let cG1 := eG1.config
@@ -1847,20 +1861,10 @@ theorem comp_binary_unary_dom_imp_halts
     have hT01_halts' := straightLine_halts hT01_sl (List.ofFn inputs)
     let sT01 := (Classical.choose hT01_halts').state
 
-    -- Step 2: Run pG1 from sT01 using agreement with original execution
+    -- Step 2: Run pG1 from sT01 using agreement with original execution (using helpers)
     have hm_ge_G1 : pG1.maxRegister ≤ m := compositionBaseBU_ge_G1 pF pG1 pG2
-    have hagreeG1' : sT01.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG1.maxRegister := by
-      intro r hlo hhi
-      have hT01_state : sT01 = (State.fromInputs (List.ofFn inputs)).write (m + 1)
-          ((State.fromInputs (List.ofFn inputs)).read 0) := by
-        have hex := single_transfer_halts 0 (m + 1) (State.fromInputs (List.ofFn inputs))
-        obtain ⟨c', hsteps', hhalted', _, hstate'⟩ := hex
-        have hspec := Classical.choose_spec hT01_halts'
-        have heq := Steps.halts_unique hspec.1 hspec.2 hsteps' hhalted'
-        show (Classical.choose hT01_halts').state = _
-        rw [heq, hstate']
-      rw [hT01_state]
-      exact State.write_read_diff _ _ _ _ (by omega : r ≠ m + 1)
+    have hagreeG1' : sT01.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG1.maxRegister := fun _ _ hhi =>
+      T01_preserves_below m inputs _ (Nat.le_trans hhi hm_ge_G1)
     -- Get cG1 execution from agreeing state using helper
     let eG1' := Halts.executeFromAgreeingState hG1_halts hG1_sf hagreeG1'
     let cG1' := eG1'.config
