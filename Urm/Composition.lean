@@ -11,21 +11,24 @@ import Urm.StandardForm
 import Mathlib.Data.Finset.Basic
 import Mathlib.Data.Fin.Tuple.Basic
 
-/-! # Closure Under Composition
+/-! # Composition Infrastructure
 
-This file proves that URM-computable functions are closed under composition.
+This file provides common infrastructure for composition proofs, including
+register isolation lemmas, straight-line program execution, and continuation
+lemmas for sequential program execution.
+
+## Main definitions
+
+- `Program.clearRegisters`: Generate zero instructions for registers 0..maxReg
+- `Part.sequence`: Sequence a family of partial values into a partial tuple
+- `straightLineFinalState`: Final state after running a straight-line program
 
 ## Main results
 
-- `URMComputable.comp`: If `f` is m-ary URM-computable and `g₀, ..., g_{m-1}` are n-ary
-  URM-computable, then `h(x) = f(g₀(x), ..., g_{m-1}(x))` is URM-computable.
-
-## Implementation
-
-The proof follows Cutland's construction (Theorem 3.1):
-1. Store inputs in safe registers above all subprograms' working registers
-2. Run each gᵢ in sequence, saving results to safe storage
-3. Copy results to input positions and run f
+- `Steps.preserves_high_register`: Execution preserves registers above maxRegister
+- `Part.sequence_dom`: Domain characterization for Part.sequence
+- `straightLine_halts_from_state`: Straight-line programs always halt
+- `Halts.concat_continuation`: Chaining halting programs via concatenation
 
 ## References
 
@@ -38,36 +41,9 @@ namespace Urm
 
 namespace Program
 
-/-- Generate Transfer instructions to copy a contiguous range of registers.
-
-`copyRegisterRange src dst n` produces `[T src dst, T (src+1) (dst+1), ..., T (src+n-1) (dst+n-1)]` -/
-def copyRegisterRange (srcStart dstStart n : ℕ) : Program :=
-  (List.range n).map fun i => Instr.T (srcStart + i) (dstStart + i)
-
-@[simp]
-theorem copyRegisterRange_length (src dst n : ℕ) :
-    (copyRegisterRange src dst n).length = n := by
-  simp [copyRegisterRange]
-
-theorem copyRegisterRange_zero (src dst : ℕ) : copyRegisterRange src dst 0 = [] := rfl
-
 /-- Clear registers `[0, maxReg]` by setting them to zero. -/
 def clearRegisters (maxReg : ℕ) : Program :=
   (List.range (maxReg + 1)).map Instr.Z
-
-@[simp]
-theorem clearRegisters_length (maxReg : ℕ) :
-    (clearRegisters maxReg).length = maxReg + 1 := by
-  simp [clearRegisters]
-
-/-- Fold-concatenate a list of programs with proper jump adjustment. -/
-def foldConcat (ps : List Program) : Program :=
-  ps.foldl concat []
-
-theorem foldConcat_nil : foldConcat [] = [] := rfl
-
-theorem foldConcat_singleton (p : Program) : foldConcat [p] = p := by
-  simp [foldConcat, concat_nil_left]
 
 end Program
 
@@ -215,105 +191,6 @@ theorem Part.sequence_get {α : Type*} {n : ℕ} {f : Fin n → Part α}
       -- Technical: extract the recursive call from the bind/map structure
       simp only [Part.sequence_succ, Part.bind, Part.map] at hdom ⊢
       exact ih _ ⟨j, Nat.lt_of_succ_lt_succ hlt⟩
-
-/-! ## Full Composition Program Construction -/
-
-/-- Maximum register used by a list of programs. -/
-def maxRegisterOfList : List Program → ℕ
-  | [] => 0
-  | p :: ps => max p.maxRegister (maxRegisterOfList ps)
-
-/-- The base register for safe storage in composition.
-This is above all registers used by f, all g_i, and the input/output positions. -/
-def compositionBase (n m : ℕ) (f : Program) (gs : List Program) : ℕ :=
-  max n (max m (max f.maxRegister (maxRegisterOfList gs)))
-
-/-- Build the program for running each g_i in sequence, saving results. -/
-def computeGsProgram (inputSafe resultSafe base : ℕ) (n : ℕ) : List Program → ℕ → Program
-  | [], _ => []
-  | g :: rest, i =>
-    let restore := Program.copyRegisterRange inputSafe 0 n
-    let clear := Program.clearRegisters base
-    let run := g
-    let save : Program := [Instr.T 0 (resultSafe + i)]
-    let thisG := Program.foldConcat [restore, clear, run, save]
-    thisG.concat (computeGsProgram inputSafe resultSafe base n rest (i + 1))
-
-/-- Build the composition program following Cutland's Theorem 3.1.
-
-Given:
-- `f`: m-ary function program
-- `gs`: list of n-ary function programs [g₀, ..., g_{m-1}]
-
-The program:
-1. Copies inputs x₀, ..., x_{n-1} to safe storage above working registers
-2. For each i from 0 to m-1:
-   - Restores inputs from safe storage
-   - Clears workspace
-   - Runs g_i
-   - Saves result to safe storage
-3. Copies results g₀(x), ..., g_{m-1}(x) to positions 0, ..., m-1
-4. Runs f -/
-def Program.compose (n m : ℕ) (f : Program) (gs : List Program) : Program :=
-  let base := compositionBase n m f gs
-  let inputSafe := base + 1  -- inputs stored at [base+1, base+n]
-  let resultSafe := base + n + 1  -- results stored at [base+n+1, base+n+m]
-
-  -- Step 1: Copy inputs to safe storage
-  let saveInputs := copyRegisterRange 0 inputSafe n
-
-  -- Step 2: For each g_i, restore inputs, clear workspace, run g_i, save result
-  let computeGs := computeGsProgram inputSafe resultSafe base n gs 0
-
-  -- Step 3: Copy results to input positions for f
-  let prepareF := copyRegisterRange resultSafe 0 m
-
-  -- Step 4: Run f
-  let runF := f
-
-  foldConcat [saveInputs, computeGs, prepareF, runF]
-
-/-! ## Composition Program Properties -/
-
-/-- The safe input region is above all working registers. -/
-theorem compositionBase_ge_n (n m : ℕ) (f : Program) (gs : List Program) :
-    n ≤ compositionBase n m f gs := by
-  simp only [compositionBase]
-  exact Nat.le_max_left _ _
-
-/-- The base is above m. -/
-theorem compositionBase_ge_m (n m : ℕ) (f : Program) (gs : List Program) :
-    m ≤ compositionBase n m f gs := by
-  simp only [compositionBase]
-  exact Nat.le_trans (Nat.le_max_left _ _) (Nat.le_max_right _ _)
-
-/-- The safe input region is above f's working registers. -/
-theorem compositionBase_ge_f (n m : ℕ) (f : Program) (gs : List Program) :
-    f.maxRegister ≤ compositionBase n m f gs := by
-  simp only [compositionBase]
-  calc f.maxRegister
-      ≤ max f.maxRegister (maxRegisterOfList gs) := Nat.le_max_left _ _
-    _ ≤ max m (max f.maxRegister (maxRegisterOfList gs)) := Nat.le_max_right _ _
-    _ ≤ max n (max m (max f.maxRegister (maxRegisterOfList gs))) := Nat.le_max_right _ _
-
-/-- The safe input region is above each g_i's working registers. -/
-theorem compositionBase_ge_gi (n m : ℕ) (f : Program) (gs : List Program)
-    (g : Program) (hg : g ∈ gs) :
-    g.maxRegister ≤ compositionBase n m f gs := by
-  simp only [compositionBase]
-  have h1 : g.maxRegister ≤ maxRegisterOfList gs := by
-    induction gs with
-    | nil => simp at hg
-    | cons h t ih =>
-      simp only [maxRegisterOfList]
-      cases List.mem_cons.mp hg with
-      | inl heq => subst heq; exact Nat.le_max_left _ _
-      | inr hmem => exact Nat.le_trans (ih hmem) (Nat.le_max_right _ _)
-  calc g.maxRegister
-      ≤ maxRegisterOfList gs := h1
-    _ ≤ max f.maxRegister (maxRegisterOfList gs) := Nat.le_max_right _ _
-    _ ≤ max m (max f.maxRegister (maxRegisterOfList gs)) := Nat.le_max_right _ _
-    _ ≤ max n (max m (max f.maxRegister (maxRegisterOfList gs))) := Nat.le_max_right _ _
 
 /-! ## Standard Form and Concatenation -/
 
@@ -538,16 +415,6 @@ theorem prefix_of_concat_from_zero {p1 p2 : Program} {s : State} {c : Config}
     obtain ⟨c'', hsteps_dc'', hhalted_c''⟩ := ih hhalted' hd_pc_le
     exact ⟨c'', Relation.ReflTransGen.head hstep_p1 hsteps_dc'', hhalted_c''⟩
 
-/-- copyRegisterRange produces a straight-line program. -/
-theorem copyRegisterRange_isStraightLine (src dst n : ℕ) :
-    (Program.copyRegisterRange src dst n).isStraightLine = true := by
-  simp only [Program.copyRegisterRange, Program.isStraightLine, List.all_map]
-  induction n with
-  | zero => simp
-  | succ k ih =>
-    simp only [List.range_succ, List.all_append, ih, List.all_cons, List.all_nil,
-      Function.comp_apply, Instr.isNonJumping, Bool.and_self]
-
 /-- clearRegisters produces a straight-line program. -/
 theorem clearRegisters_isStraightLine (maxReg : ℕ) :
     (Program.clearRegisters maxReg).isStraightLine = true := by
@@ -557,16 +424,6 @@ theorem clearRegisters_isStraightLine (maxReg : ℕ) :
   | succ k ih =>
     simp only [List.range_succ, List.all_append, ih, List.all_cons, List.all_nil,
       Function.comp_apply, Instr.isNonJumping, Bool.and_self]
-
-/-- copyRegisterRange halts on any input. -/
-theorem copyRegisterRange_halts (src dst n : ℕ) (inputs : List ℕ) :
-    Halts (Program.copyRegisterRange src dst n) inputs :=
-  straightLine_halts (copyRegisterRange_isStraightLine src dst n) inputs
-
-/-- clearRegisters halts on any input. -/
-theorem clearRegisters_halts (maxReg : ℕ) (inputs : List ℕ) :
-    Halts (Program.clearRegisters maxReg) inputs :=
-  straightLine_halts (clearRegisters_isStraightLine maxReg) inputs
 
 /-- Straight-line programs halt from any starting state, not just Config.init.
 This is key for chaining: after running one program, we can run the next
@@ -619,6 +476,44 @@ theorem straightLineFinalState_spec {p : Program} (hsl : p.isStraightLine = true
     Steps p ⟨0, s⟩ c ∧ c.isHalted p ∧ c.pc = p.length :=
   Classical.choose_spec (straightLine_halts_from_state hsl s)
 
+/-- In a straight-line program, we can characterize the state at any intermediate pc.
+This gives us the configuration after executing instructions 0..pc-1. -/
+theorem straightLine_state_at_pc {p : Program} (hsl : p.isStraightLine = true)
+    (s : State) (targetPc : ℕ) (htarget : targetPc ≤ p.length) :
+    ∃ c, Steps p ⟨0, s⟩ c ∧ c.pc = targetPc := by
+  induction targetPc with
+  | zero => exact ⟨⟨0, s⟩, Relation.ReflTransGen.refl, rfl⟩
+  | succ n ih =>
+    have hn_le : n ≤ p.length := Nat.le_of_succ_le htarget
+    obtain ⟨c_n, hsteps_n, hpc_n⟩ := ih hn_le
+    have hn_lt : n < p.length := Nat.lt_of_succ_le htarget
+    have hinstr : ∃ instr, p.getInstr n = some instr := by
+      simp only [Program.getInstr]
+      exact ⟨p[n], List.getElem?_eq_getElem hn_lt⟩
+    obtain ⟨instr, hinstr⟩ := hinstr
+    have hnonjump : instr.isNonJumping = true := by
+      simp only [Program.isStraightLine, List.all_eq_true] at hsl
+      have hmem : instr ∈ p := by
+        simp only [Program.getInstr] at hinstr
+        exact List.getElem?_eq_some_iff.mp hinstr |>.2 ▸ List.getElem_mem hn_lt
+      exact hsl instr hmem
+    -- Convert hinstr to use c_n.pc
+    have hinstr' : p.getInstr c_n.pc = some instr := by rw [hpc_n]; exact hinstr
+    have hstep : ∃ c', Step p c_n c' ∧ c'.pc = n + 1 := by
+      cases instr with
+      | Z m =>
+        refine ⟨⟨c_n.pc + 1, c_n.state.write m 0⟩, Step.zero hinstr', ?_⟩
+        rw [hpc_n]
+      | S m =>
+        refine ⟨⟨c_n.pc + 1, c_n.state.write m (c_n.state.read m + 1)⟩, Step.succ hinstr', ?_⟩
+        rw [hpc_n]
+      | T m1 m2 =>
+        refine ⟨⟨c_n.pc + 1, c_n.state.write m2 (c_n.state.read m1)⟩, Step.trans hinstr', ?_⟩
+        rw [hpc_n]
+      | J _ _ _ => simp [Instr.isNonJumping] at hnonjump
+    obtain ⟨c', hstep', hpc'⟩ := hstep
+    exact ⟨c', Relation.ReflTransGen.tail hsteps_n hstep', hpc'⟩
+
 /-- A single step in a straight-line program modifies at most one register. -/
 theorem Step.straightLine_preserves {p : Program} {c c' : Config} {r : ℕ}
     (hsl : p.isStraightLine = true) (hstep : Step p c c')
@@ -669,66 +564,11 @@ theorem Steps.straightLine_preserves {p : Program} {c c' : Config} {r : ℕ}
     simp only [Program.getInstr] at hinstr
     exact List.mem_of_getElem? hinstr
 
-/-- copyRegisterRange preserves registers outside the destination range.
-Uses the relational semantics directly. -/
-theorem copyRegisterRange_preserves_outside (src dst n : ℕ) (σ : State) (r : ℕ)
-    (hOutside : r < dst ∨ dst + n ≤ r) :
-    (straightLineFinalState (copyRegisterRange_isStraightLine src dst n) σ).read r = σ.read r := by
-  -- The program only writes to registers dst, dst+1, ..., dst+n-1
-  -- Since r is outside this range, it is preserved
-  have hsl := copyRegisterRange_isStraightLine src dst n
-  have ⟨hsteps, _, _⟩ := straightLineFinalState_spec hsl σ
-  apply Steps.straightLine_preserves hsl hsteps
-  intro instr hmem
-  -- Each instruction in copyRegisterRange is T (src+i) (dst+i) for some i
-  simp only [Program.copyRegisterRange, List.mem_map] at hmem
-  obtain ⟨i, hi_range, hinstr_eq⟩ := hmem
-  simp only [List.mem_range] at hi_range
-  subst hinstr_eq
-  simp only [Instr.writesTo, ne_eq, Option.some.injEq]
-  cases hOutside with
-  | inl h => omega
-  | inr h => omega
-
-/-- copyRegisterRange correctly copies values when ranges don't overlap.
-
-When dst + n ≤ src (destination range entirely before source range),
-the destination registers receive exact copies of the source values.
-Uses the relational semantics directly.
-
-TODO: This requires more infrastructure to prove with relational semantics.
-The proof needs to track that after k steps, registers dst..dst+k-1 have been
-copied and the source registers are still unchanged. -/
-theorem copyRegisterRange_correct_nonoverlap (src dst n : ℕ) (σ : State)
-    (hNoOverlap : dst + n ≤ src) :
-    ∀ i : Fin n, (straightLineFinalState (copyRegisterRange_isStraightLine src dst n) σ).read (dst + i) =
-                 σ.read (src + i) := by
-  sorry
-
-/-! ## State Invariants for Composition -/
-
-/-- Inputs are preserved in safe storage (for restore operations).
-
-During composition, the original inputs need to be preserved in safe storage
-so they can be restored before running each g_i. -/
-def InputsPreserved (n : ℕ) (inputs : Fin n → ℕ) (inputSafe : ℕ) (state : State) : Prop :=
-  ∀ j : Fin n, state.read (inputSafe + j) = inputs j
-
-/-- Values are loaded in registers 0..n-1 (ready to run a program).
-
-A program expecting n inputs needs those values in registers 0, 1, ..., n-1. -/
-def InputsLoaded (n : ℕ) (vals : Fin n → ℕ) (state : State) : Prop :=
-  ∀ j : Fin n, state.read j = vals j
-
 /-! ## Continuation Lemmas for Sequential Execution -/
 
 section Continuation
 
 variable {p1 p2 : Program}
-
-/-- Convert a state to a list of register values (first n registers). -/
-def State.toList (s : State) (n : ℕ) : List ℕ :=
-  (List.range n).map s
 
 /-- Reverse: stepping in concatenated program with pc in second part gives step in p2.
 The config is "de-offset" by p1.length to get the corresponding p2 step. -/
@@ -1051,259 +891,5 @@ theorem Halts.concat_straightLine {p1 p2 : Program} {inputs : List ℕ}
   exact Halts.concat_continuation h1 h1_pc h2
 
 end Continuation
-
-/-! ## Shift-Based Composition Infrastructure
-
-The key insight for composition is that each subprogram gᵢ can run on a disjoint
-register range using shifted execution. This avoids the need for clearing registers
-between subprogram executions.
-
-Given n-ary functions g₀, ..., g_{m-1}, we run each gᵢ shifted by offset_i where
-the offsets are chosen so register ranges don't overlap. Then gᵢ's result lands
-at register offset_i.
--/
-
-section ShiftedComposition
-
-/-- Offset for running the i-th subprogram in shifted composition.
-We leave n registers at the start for the original inputs, then space each
-subprogram by (maxG + 1) registers to ensure disjoint ranges.
-
-offset_i = n + i * (maxG + 1), where maxG = maxRegisterOfList gs
--/
-def shiftOffset (n : ℕ) (maxG : ℕ) (i : ℕ) : ℕ := n + i * (maxG + 1)
-
-/-- Offsets for different subprograms are distinct. -/
-theorem shiftOffset_injective (n maxG : ℕ) {i j : ℕ}
-    (hij : i ≠ j) : shiftOffset n maxG i ≠ shiftOffset n maxG j := by
-  simp only [shiftOffset]
-  intro h
-  have : i = j := by
-    have h' : i * (maxG + 1) = j * (maxG + 1) := by omega
-    exact Nat.eq_of_mul_eq_mul_right (Nat.zero_lt_succ maxG) h'
-  contradiction
-
-/-- Register ranges for shifted subprograms are disjoint.
-Program at offset_i uses [offset_i, offset_i + maxG], and these don't overlap. -/
-theorem shiftOffset_ranges_disjoint (n maxG : ℕ) {i j : ℕ}
-    (hij : i < j) :
-    shiftOffset n maxG i + maxG < shiftOffset n maxG j := by
-  simp only [shiftOffset]
-  have h1 : n + i * (maxG + 1) + maxG < n + i * (maxG + 1) + (maxG + 1) := by omega
-  have h2 : n + i * (maxG + 1) + (maxG + 1) = n + (i + 1) * (maxG + 1) := by
-    have : (i + 1) * (maxG + 1) = i * (maxG + 1) + (maxG + 1) := Nat.succ_mul i (maxG + 1)
-    omega
-  have h3 : (i + 1) * (maxG + 1) ≤ j * (maxG + 1) := Nat.mul_le_mul_right _ hij
-  omega
-
-/-- The i-th subprogram's result (at offset_i) is below j-th's working registers. -/
-theorem shiftOffset_result_below_work (n maxG : ℕ) {i j : ℕ}
-    (hij : i < j) :
-    shiftOffset n maxG i < shiftOffset n maxG j := by
-  simp only [shiftOffset]
-  have h : i * (maxG + 1) < j * (maxG + 1) := Nat.mul_lt_mul_of_pos_right hij (Nat.zero_lt_succ maxG)
-  omega
-
-/-- Running a shifted subprogram preserves lower registers.
-Since shifted program uses registers ≥ offset, registers < offset are unchanged. -/
-theorem Steps.shiftRegisters_preserves_below {p : Program} {c c' : Config} {offset : ℕ}
-    (hsteps : Steps (p.shiftRegisters offset) c c') (r : ℕ) (hr : r < offset) :
-    c'.state.read r = c.state.read r := by
-  -- Registers below offset are not modified by a shifted program
-  induction hsteps using Relation.ReflTransGen.head_induction_on with
-  | refl => rfl
-  | head hstep _ ih =>
-    rw [ih]
-    -- hstep : Step (p.shiftRegisters offset) _ _
-    -- All registers modified by p.shiftRegisters offset are ≥ offset
-    match hstep with
-    | .zero (n := reg) hinstr =>
-      have ⟨hlo, _⟩ := Program.shiftRegisters_uses_range hinstr reg (Or.inr rfl)
-      simp only [State.read, State.write, Function.update_of_ne (by omega : r ≠ reg)]
-    | .succ (n := reg) hinstr =>
-      have ⟨hlo, _⟩ := Program.shiftRegisters_uses_range hinstr reg
-        (Or.inl (List.mem_singleton.mpr rfl))
-      simp only [State.read, State.write, Function.update_of_ne (by omega : r ≠ reg)]
-    | .trans (n := dst) hinstr =>
-      have ⟨hlo, _⟩ := Program.shiftRegisters_uses_range hinstr dst (Or.inr rfl)
-      simp only [State.read, State.write, Function.update_of_ne (by omega : r ≠ dst)]
-    | .jump_eq _ _ => rfl
-    | .jump_ne _ _ => rfl
-
-/-- Running a shifted subprogram also preserves registers above its range.
-Since program uses at most registers in [offset, offset + maxRegister], higher registers
-are unchanged.
-
-Note: This uses Steps.preserves_high_register applied to the shifted program. -/
-theorem Steps.shiftRegisters_preserves_above {p : Program} {c c' : Config} {offset : ℕ}
-    (hsteps : Steps (p.shiftRegisters offset) c c') (r : ℕ)
-    (hp : p ≠ [])
-    (hr : offset + p.maxRegister < r) :
-    c'.state.read r = c.state.read r := by
-  -- The shifted program's maxRegister = p.maxRegister + offset (for nonempty p)
-  have hmax : (p.shiftRegisters offset).maxRegister = p.maxRegister + offset :=
-    Program.maxRegister_shiftRegisters offset p hp
-  have hr' : (p.shiftRegisters offset).maxRegister < r := by omega
-  exact Steps.preserves_high_register hsteps r hr'
-
-end ShiftedComposition
-
-/-! ## Main Composition Theorem -/
-
-/-- Helper: Type abbreviation for the specification of a program computing a function. -/
-abbrev ProgramSpec (arity : ℕ) (func : (Fin arity → ℕ) → Part ℕ) (prog : Program) : Prop :=
-  ∀ inputs : Fin arity → ℕ,
-    (Halts prog (List.ofFn inputs) ↔ (func inputs).Dom) ∧
-    ∀ (hHalts : Halts prog (List.ofFn inputs)) (hDom : (func inputs).Dom),
-      Result prog (List.ofFn inputs) hHalts = (func inputs).get hDom
-
-/-- If all g_i are defined and f is defined on the results, then H halts.
-
-This is the "backward" direction: definedness implies halting. -/
-theorem comp_halts_of_defined {n m : ℕ}
-    {f : (Fin m → ℕ) → Part ℕ}
-    {g : Fin m → ((Fin n → ℕ) → Part ℕ)}
-    (Pf : Program) (Pg : Fin m → Program)
-    (hPf : ProgramSpec m f Pf)
-    (hPg : ∀ i, ProgramSpec n (g i) (Pg i))
-    (inputs : Fin n → ℕ)
-    (hDom : ((Part.sequence (fun i => g i inputs)).bind f).Dom) :
-    Halts (Program.compose n m Pf (List.ofFn Pg)) (List.ofFn inputs) := by
-  -- Extract definedness of each g_i from the domain condition
-  have hSeqDom : (Part.sequence (fun i => g i inputs)).Dom := Part.bind_dom.mp hDom |>.1
-  -- Each g_i is defined on inputs
-  have hGiDom : ∀ i, (g i inputs).Dom := Part.sequence_dom.mp hSeqDom
-  -- Each g_i halts (by ProgramSpec)
-  have hGiHalts : ∀ i, Halts (Pg i) (List.ofFn inputs) := fun i =>
-    (hPg i inputs).1.mpr (hGiDom i)
-  -- f is defined on the results (from Part.bind_dom)
-  -- When Part.sequence is defined, its get returns a function that gives (g i inputs).get
-  have hFDom : (f (fun i => (g i inputs).get (hGiDom i))).Dom := by
-    have h := Part.bind_dom.mp hDom |>.2
-    -- h is: (f (Part.sequence ...).get hSeqDom).Dom
-    -- Convert using Part.sequence_get which shows the values are equal
-    convert h using 2
-    ext i
-    exact (Part.sequence_get hSeqDom i).symm
-  -- f halts (by ProgramSpec)
-  have hFHalts : Halts Pf (List.ofFn (fun i => (g i inputs).get (hGiDom i))) :=
-    (hPf _).1.mpr hFDom
-  -- Now we need to chain the programs together
-  -- Program.compose creates: foldConcat [saveInputs, computeGs, prepareF, runF]
-  simp only [Program.compose, Program.foldConcat]
-  -- The proof requires showing that each stage halts and the state is preserved
-  -- This is complex due to state tracking; use sorry for now pending full infrastructure
-  sorry
-
-/-- If H halts, then all g_i are defined and f is defined on the results.
-
-This is the "forward" direction: halting implies definedness. -/
-theorem comp_defined_of_halts {n m : ℕ}
-    {f : (Fin m → ℕ) → Part ℕ}
-    {g : Fin m → ((Fin n → ℕ) → Part ℕ)}
-    (Pf : Program) (Pg : Fin m → Program)
-    (hPf : ProgramSpec m f Pf)
-    (hPg : ∀ i, ProgramSpec n (g i) (Pg i))
-    (inputs : Fin n → ℕ)
-    (hHalts : Halts (Program.compose n m Pf (List.ofFn Pg)) (List.ofFn inputs)) :
-    ((Part.sequence (fun i => g i inputs)).bind f).Dom := by
-  sorry
-
-/-- When H halts and the composed function is defined, the results match. -/
-theorem comp_result_eq {n m : ℕ}
-    {f : (Fin m → ℕ) → Part ℕ}
-    {g : Fin m → ((Fin n → ℕ) → Part ℕ)}
-    (Pf : Program) (Pg : Fin m → Program)
-    (hPf : ProgramSpec m f Pf)
-    (hPg : ∀ i, ProgramSpec n (g i) (Pg i))
-    (inputs : Fin n → ℕ)
-    (hHalts : Halts (Program.compose n m Pf (List.ofFn Pg)) (List.ofFn inputs))
-    (hDom : ((Part.sequence (fun i => g i inputs)).bind f).Dom) :
-    Result (Program.compose n m Pf (List.ofFn Pg)) (List.ofFn inputs) hHalts =
-    ((Part.sequence (fun i => g i inputs)).bind f).get hDom := by
-  -- Extract intermediate hypotheses from hDom
-  have hSeqDom : (Part.sequence (fun i => g i inputs)).Dom := Part.bind_dom.mp hDom |>.1
-  have hGiDom : ∀ i, (g i inputs).Dom := Part.sequence_dom.mp hSeqDom
-  have hGiHalts : ∀ i, Halts (Pg i) (List.ofFn inputs) := fun i => (hPg i inputs).1.mpr (hGiDom i)
-  have hFDom : (f (fun i => (g i inputs).get (hGiDom i))).Dom := by
-    have h := Part.bind_dom.mp hDom |>.2
-    convert h using 2; ext i; exact (Part.sequence_get hSeqDom i).symm
-  have hFHalts : Halts Pf (List.ofFn (fun i => (g i inputs).get (hGiDom i))) :=
-    (hPf _).1.mpr hFDom
-  -- Use ProgramSpec to get result equalities
-  have hGiResult : ∀ i, Result (Pg i) (List.ofFn inputs) (hGiHalts i) = (g i inputs).get (hGiDom i) :=
-    fun i => (hPg i inputs).2 (hGiHalts i) (hGiDom i)
-  have hFResult : Result Pf (List.ofFn (fun i => (g i inputs).get (hGiDom i))) hFHalts =
-                  (f (fun i => (g i inputs).get (hGiDom i))).get hFDom :=
-    (hPf _).2 hFHalts hFDom
-  -- Rewrite RHS using Part.Dom.bind: when o.Dom, o.bind f = f (o.get h)
-  -- Use Part.Dom.bind to simplify the bind
-  have hSimp : (Part.sequence (fun i => g i inputs)).bind f =
-               f ((Part.sequence (fun i => g i inputs)).get hSeqDom) :=
-    Part.Dom.bind hSeqDom f
-  -- Show the argument to f equals what we expect
-  have hArgEq : (Part.sequence (fun i => g i inputs)).get hSeqDom =
-                (fun i => (g i inputs).get (hGiDom i)) := by
-    ext i
-    exact Part.sequence_get hSeqDom i
-  -- Combine to get the RHS equality using cast
-  have hRHS : ((Part.sequence (fun i => g i inputs)).bind f).get hDom =
-              (f (fun i => (g i inputs).get (hGiDom i))).get hFDom := by
-    -- The bind simplifies and we can use the argument equality
-    have h1 : (f ((Part.sequence (fun i => g i inputs)).get hSeqDom)) =
-              (f (fun i => (g i inputs).get (hGiDom i))) := by rw [hArgEq]
-    simp only [hSimp, h1]
-  rw [hRHS, ← hFResult]
-  -- Goal: Result (Program.compose ...) _ _ = Result Pf (List.ofFn (fun i => (g i inputs).get _)) _
-  --
-  -- This requires a key semantic lemma about foldConcat execution:
-  -- After phases [saveInputs, computeGs, prepareF], registers 0..m-1 contain the g_i values.
-  -- Then runF (= Pf) runs on this state, and its Result is the composed program's Result.
-  --
-  -- Missing infrastructure needed:
-  -- 1. foldConcat_result_eq_last: Result of foldConcat equals Result of last phase
-  --    when run from the post-intermediate-phases state
-  -- 2. prepareF_regs_match: After prepareF, registers 0..m-1 contain exactly
-  --    the values List.ofFn (fun i => (g i inputs).get _)
-  -- 3. computeGs_halts_with_values: computeGs correctly computes each g_i
-  --
-  -- These lemmas require tracing execution through each phase of Program.compose.
-  sorry
-
-/-- Closure under composition (Cutland's Theorem 3.1).
-
-If f is an m-ary URM-computable function and g₀, ..., g_{m-1} are n-ary
-URM-computable functions, then h(x) = f(g₀(x), ..., g_{m-1}(x)) is
-URM-computable.
-
-The composed function h is defined iff all gᵢ are defined on x AND
-f is defined on (g₀(x), ..., g_{m-1}(x)). -/
-theorem URMComputable.comp {n m : ℕ}
-    {f : (Fin m → ℕ) → Part ℕ}
-    {g : Fin m → ((Fin n → ℕ) → Part ℕ)}
-    (hf : URMComputable m f)
-    (hg : ∀ i, URMComputable n (g i)) :
-    URMComputable n (fun x =>
-      (Part.sequence (fun i => g i x)).bind f) := by
-  -- Extract the programs from the computability witnesses
-  obtain ⟨Pf, hPf⟩ := hf
-  -- For each g_i, we get a program P_{g_i}
-  have hPg_exists : ∀ i, ∃ p : Program, ProgramSpec n (g i) p := hg
-  -- Choose the programs for each g_i
-  let Pg : Fin m → Program := fun i => Classical.choose (hPg_exists i)
-  have hPg : ∀ i, ProgramSpec n (g i) (Pg i) :=
-    fun i => Classical.choose_spec (hPg_exists i)
-  -- Build the composed program
-  let H := Program.compose n m Pf (List.ofFn Pg)
-  -- Prove URMComputable using H
-  use H
-  intro inputs
-  constructor
-  -- Part 1: Halts H (List.ofFn inputs) ↔ ((Part.sequence ...).bind f).Dom
-  · constructor
-    · exact comp_defined_of_halts Pf Pg hPf hPg inputs
-    · exact comp_halts_of_defined Pf Pg hPf hPg inputs
-  -- Part 2: When both defined, results match
-  · exact comp_result_eq Pf Pg hPf hPg inputs
 
 end Urm

@@ -77,45 +77,9 @@ end Program
 
 /-! ## Execution semantics for clearRegistersFrom
 
-These theorems use the unified relational semantics via `straightLineFinalState`. -/
+These theorems use the unified relational semantics via `straightLineFinalState`.
 
-/-- In a straight-line program, we can characterize the state at any intermediate pc.
-This gives us the configuration after executing instructions 0..pc-1. -/
-theorem straightLine_state_at_pc {p : Program} (hsl : p.isStraightLine = true)
-    (s : State) (targetPc : ℕ) (htarget : targetPc ≤ p.length) :
-    ∃ c, Steps p ⟨0, s⟩ c ∧ c.pc = targetPc := by
-  induction targetPc with
-  | zero => exact ⟨⟨0, s⟩, Relation.ReflTransGen.refl, rfl⟩
-  | succ n ih =>
-    have hn_le : n ≤ p.length := Nat.le_of_succ_le htarget
-    obtain ⟨c_n, hsteps_n, hpc_n⟩ := ih hn_le
-    have hn_lt : n < p.length := Nat.lt_of_succ_le htarget
-    have hinstr : ∃ instr, p.getInstr n = some instr := by
-      simp only [Program.getInstr]
-      exact ⟨p[n], List.getElem?_eq_getElem hn_lt⟩
-    obtain ⟨instr, hinstr⟩ := hinstr
-    have hnonjump : instr.isNonJumping = true := by
-      simp only [Program.isStraightLine, List.all_eq_true] at hsl
-      have hmem : instr ∈ p := by
-        simp only [Program.getInstr] at hinstr
-        exact List.getElem?_eq_some_iff.mp hinstr |>.2 ▸ List.getElem_mem hn_lt
-      exact hsl instr hmem
-    -- Convert hinstr to use c_n.pc
-    have hinstr' : p.getInstr c_n.pc = some instr := by rw [hpc_n]; exact hinstr
-    have hstep : ∃ c', Step p c_n c' ∧ c'.pc = n + 1 := by
-      cases instr with
-      | Z m =>
-        refine ⟨⟨c_n.pc + 1, c_n.state.write m 0⟩, Step.zero hinstr', ?_⟩
-        rw [hpc_n]
-      | S m =>
-        refine ⟨⟨c_n.pc + 1, c_n.state.write m (c_n.state.read m + 1)⟩, Step.succ hinstr', ?_⟩
-        rw [hpc_n]
-      | T m1 m2 =>
-        refine ⟨⟨c_n.pc + 1, c_n.state.write m2 (c_n.state.read m1)⟩, Step.trans hinstr', ?_⟩
-        rw [hpc_n]
-      | J _ _ _ => simp [Instr.isNonJumping] at hnonjump
-    obtain ⟨c', hstep', hpc'⟩ := hstep
-    exact ⟨c', Relation.ReflTransGen.tail hsteps_n hstep', hpc'⟩
+Note: `straightLine_state_at_pc` is defined in `Composition.lean` and imported here. -/
 
 /-- After executing instruction k (which is Z r) in a straight-line program,
 register r becomes 0. -/
