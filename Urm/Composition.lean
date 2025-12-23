@@ -384,7 +384,81 @@ theorem Halts.prefix_of_concat_sf {p1 p2 : Program} {inputs : List ℕ}
   -- Find the first config where pc = p1.length
   -- The prefix of the path up to that point is an execution of p1
   -- At pc = p1.length, p1 is halted
-  sorry
+  obtain ⟨cH, hsteps, hhalted⟩ := hH
+  -- Build p1 steps by extracting prefix of concat execution while pc < p1.length
+  -- Key: we need to show there exists a config c with Steps p1 (Config.init inputs) c and c.isHalted p1
+  -- Strategy: induction on hsteps, maintaining that we're building parallel p1 steps
+
+  -- Handle empty p1 case first
+  by_cases hp1 : p1.length = 0
+  · -- Empty p1: Config.init is already halted
+    exact ⟨Config.init inputs, Relation.ReflTransGen.refl, by simp [Config.isHalted, hp1]⟩
+
+  -- Non-empty p1: we need to find where pc first reaches p1.length
+  -- Use induction on the execution path.
+  -- Key insight: at each step, while pc < p1.length, we can convert the step to a p1 step.
+  -- When pc reaches p1.length, p1 is halted.
+
+  -- Helper: from any config c with pc ≤ p1.length and steps to a halted config in concat,
+  -- we can find a halted config in p1 reachable from c
+  suffices h : ∀ c c' : Config,
+      Steps (p1.concat p2) c c' → c'.isHalted (p1.concat p2) →
+      c.pc ≤ p1.length →
+      (∃ c'', Steps p1 c c'' ∧ c''.isHalted p1) by
+    have hpc0 : (Config.init inputs).pc ≤ p1.length := by simp [Config.init]
+    exact h (Config.init inputs) cH hsteps hhalted hpc0
+
+  intro c c' hsteps'
+  -- Use head_induction_on which gives the right IH structure:
+  -- motive a := c'.isHalted → a.pc ≤ p1.length → ∃ c'', Steps p1 a c'' ∧ c''.isHalted p1
+  -- Given Step a d and Steps d c', the IH applies to d
+  induction hsteps' using Relation.ReflTransGen.head_induction_on with
+  | refl =>
+    -- At the end: c = c'. Need to prove the motive for c'.
+    -- Given c'.isHalted (concat) and c'.pc ≤ p1.length, show c' is halted in p1.
+    intro hhalted' hpc_le
+    simp only [Config.isHalted, Program.concat_length] at hhalted'
+    have hpc_eq : c'.pc = p1.length := by omega
+    exact ⟨c', Relation.ReflTransGen.refl, by simp [Config.isHalted, hpc_eq]⟩
+  | @head a d hstep hrest ih =>
+    -- hstep : Step (p1.concat p2) a d
+    -- hrest : Steps (p1.concat p2) d c'
+    -- ih : c'.isHalted (p1.concat p2) → d.pc ≤ p1.length → ∃ c'', Steps p1 d c'' ∧ c''.isHalted p1
+    intro hhalted' hpc_le
+
+    -- Check if a is already halted in p1
+    by_cases hhalted_p1 : a.isHalted p1
+    · exact ⟨a, Relation.ReflTransGen.refl, hhalted_p1⟩
+
+    -- a is not halted in p1, so a.pc < p1.length
+    have hpc_lt : a.pc < p1.length := by
+      simp only [Config.isHalted, not_le] at hhalted_p1
+      exact hhalted_p1
+
+    -- Since a.pc < p1.length, we can convert the step to a p1 step
+    have hstep_p1 : Step p1 a d := Step.of_concat_left hpc_lt hstep
+
+    -- d.pc ≤ p1.length by standard form
+    have hd_pc_le : d.pc ≤ p1.length := by
+      cases hstep_p1 with
+      | zero h => simp only; omega
+      | succ h => simp only; omega
+      | trans h => simp only; omega
+      | jump_eq h _ =>
+        simp only [Program.getInstr] at h
+        have ⟨hpc_valid, hinstr_eq⟩ := List.getElem?_eq_some_iff.mp h
+        have hmem : Instr.J _ _ _ ∈ p1 := hinstr_eq ▸ List.getElem_mem hpc_valid
+        simp only [Program.IsStandardForm, Program.isStandardForm, List.all_eq_true] at h1
+        have hbounded := h1 _ hmem
+        simp only [Instr.hasBoundedJump, decide_eq_true_eq] at hbounded
+        exact hbounded
+      | jump_ne h _ => simp only; omega
+
+    -- Apply IH to get p1 execution from d
+    obtain ⟨c'', hsteps_dc'', hhalted_c''⟩ := ih hhalted' hd_pc_le
+
+    -- Chain: a → d in p1, then d →* c'' in p1
+    exact ⟨c'', Relation.ReflTransGen.head hstep_p1 hsteps_dc'', hhalted_c''⟩
 
 /-- If p1.concat p2 halts and p1 is standard form, we can recover the intermediate state
 after p1 halts (at pc = p1.length). -/
@@ -432,7 +506,29 @@ theorem Halts.suffix_of_concat_sf {p1 p2 : Program} {inputs : List ℕ}
     rw [huniq]
   · -- The execution of H from Config.init to final config passes through c1
     -- The suffix from c1 to final is the execution of p2 from c1.state
-    -- This requires extracting the suffix of the execution path
+    let c1 := Classical.choose hP1
+    let s1 := c1.state
+    -- Get the halted config of H
+    obtain ⟨cH, hH_steps, hH_halted⟩ := hH
+    -- Get the p1 execution lifted to H
+    have h_to_c1 : Steps (p1.concat p2) (Config.init inputs) c1 :=
+      Steps.concat_left_prefix hc1_spec.1 hc1_spec.2
+    -- By deterministic_continuation, the path from c1 to cH exists
+    have h_suffix : Steps (p1.concat p2) c1 cH :=
+      Steps.deterministic_continuation h_to_c1 hH_steps hH_halted
+    -- Rewrite c1 as ⟨p1.length, s1⟩
+    have h_suffix_start : c1 = ⟨p1.length, s1⟩ := by
+      ext
+      · exact hc1_pc
+      · rfl
+    rw [h_suffix_start] at h_suffix
+    -- Show cH.pc ≥ p1.length (needed for Steps.of_concat_right)
+    have hcH_pc : cH.pc ≥ p1.length := by
+      simp only [Config.isHalted, Program.concat_length] at hH_halted
+      omega
+    -- Extract p2 execution using Steps.of_concat_right
+    -- NOTE: Steps.of_concat_right is defined later in this file
+    -- This proof is structurally correct but needs file reorganization
     sorry
 
 /-- copyRegisterRange produces a straight-line program. -/
