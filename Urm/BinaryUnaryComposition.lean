@@ -141,11 +141,7 @@ theorem clearRegisters_exec (maxReg : ℕ) (s : State) :
 
 /-! ## Binary-Unary Composition Construction -/
 
-/-- The base register for safe storage in binary-unary composition.
-This is at least 1 (to avoid collision with R[1] used for binary input) and
-above all registers used by F, G₁, and G₂. -/
-def compositionBaseBU (pF pG1 pG2 : Program) : ℕ :=
-  max 1 (max pF.maxRegister (max pG1.maxRegister pG2.maxRegister))
+-- compositionBaseBU is defined in CompositionHelpers
 
 /-- Build the binary-unary composition program.
 
