@@ -227,6 +227,79 @@ theorem agrees_two_inputs_after_clear_transfer {m : ℕ} {p : Program} {s : Stat
       have hr_ge : r ≥ [v1, v2].length := by simp; omega
       rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none hr_ge, Option.getD_none]
 
+/-- General case: after clearing registers and setting R[0..n-1] to match inputs,
+agreement holds for programs with maxRegister ≤ m.
+
+This is the key lemma for general composition: it shows that if a state has:
+- R[i] = inputs[i] for i < inputs.length
+- R[r] = 0 for inputs.length ≤ r ≤ m
+
+Then the state agrees with State.fromInputs inputs on registers 0..p.maxRegister.
+
+Use this when setting up inputs for running gᵢ from a prepared state. -/
+theorem agrees_list_inputs_after_clear_transfer {m : ℕ} {p : Program} {s : State} {inputs : List ℕ}
+    (hp : p.maxRegister ≤ m)
+    (hs_inputs : ∀ i, i < inputs.length → s.read i = inputs.getD i 0)
+    (hs_zeros : ∀ r, inputs.length ≤ r → r ≤ m → s.read r = 0) :
+    s.agreeOn (State.fromInputs inputs) 0 p.maxRegister := by
+  intro r _ hhi
+  simp only [State.fromInputs, State.read]
+  by_cases hr_in : r < inputs.length
+  · -- r < inputs.length: s.read r = inputs[r]
+    have heq := hs_inputs r hr_in
+    simp only [State.read] at heq
+    rw [heq, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hr_in]
+  · -- r ≥ inputs.length: both are 0
+    have hr_ge : inputs.length ≤ r := Nat.le_of_not_lt hr_in
+    have hr_le_m : r ≤ m := Nat.le_trans hhi hp
+    have heq := hs_zeros r hr_ge hr_le_m
+    simp only [State.read] at heq
+    rw [heq, List.getD_eq_getElem?_getD, List.getElem?_eq_none hr_ge, Option.getD_none]
+
+/-! ## General Composition Infrastructure
+
+This section provides the building blocks for the general composition theorem.
+
+### General Composition Pattern
+
+Given:
+- f : n-ary computable function (takes n inputs)
+- g₁, ..., gₙ : k-ary computable functions (all take k inputs)
+
+We want to prove h(x₁,...,xₖ) = f(g₁(xs), ..., gₙ(xs)) is computable.
+
+The proof structure involves n+1 phases:
+1. **Setup phase**: Copy k inputs to high registers m+1, ..., m+k
+2. **Phases 1..n**: For each i, clear → restore inputs → run gᵢ → store result in m+k+i
+3. **Final phase**: Clear → transfer n results to R[0..n-1] → run f
+
+The key abstractions are:
+- `SubprogramPhase`: Run a subprogram gᵢ from a prepared state, store result
+- `agrees_list_inputs_after_clear_transfer`: State agreement for k inputs
+- `AgreeingExecution`: Run program from state that agrees with inputs
+
+### Register Layout for General Composition
+
+For composing f (n-ary) with g₁,...,gₙ (all k-ary):
+- R[0..k-1]: Working registers for running gᵢ (set up with inputs)
+- R[k..m]: Additional working registers (cleared between phases)
+- R[m+1..m+k]: Preserved original inputs x₁,...,xₖ
+- R[m+k+1..m+k+n]: Stored results g₁(xs),...,gₙ(xs)
+
+Where m = max(maxRegister(f), maxRegister(g₁), ..., maxRegister(gₙ)).
+-/
+
+/-- The result register value after running a subprogram from an agreeing state
+equals the result from running from standard inputs.
+
+This is the key lemma for composition: it shows that running gᵢ from a prepared
+state (after clear+transfer) gives the same result as running gᵢ from Config.init. -/
+theorem AgreeingExecution.result_matches_original {p : Program} {inputs : List ℕ} {s : State}
+    (e : AgreeingExecution p inputs s) :
+    e.config.state.read 0 = Result p inputs e.originalHalts := by
+  simp only [Result]
+  exact e.output_eq (by omega : 0 ≤ p.maxRegister)
+
 /-! ## Transfer Instruction Properties -/
 
 /-- Single transfer is a straight-line program. -/
