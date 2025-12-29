@@ -938,36 +938,24 @@ theorem comp_binary_unary_halts_imp_f_dom
       have : sTsetup = cTsetup'.state := congrArg Config.state hconfigs_eq
       rw [this, hTsetup_state']
 
-    -- Hoisted: clearProg halts from sPhase1 (used in both r=0 and r=1 cases)
-    have hClear_halts_s1 := straightLine_halts_from_state hClear_sl sPhase1
-    obtain ⟨cClear_s1, hClear_steps_s1, hClear_halted_s1, hClear_pc_s1⟩ := hClear_halts_s1
-    have hClear_state_eq_s1 := straightLineFinalState_eq_of_halted hClear_sl sPhase1 cClear_s1 hClear_steps_s1 hClear_halted_s1
+    -- Hoisted: clearProg halts from sPhase1, zeros R[0..m], preserves R[m+1..]
+    obtain ⟨cClear_s1, hClear_steps_s1, hClear_halted_s1, hClear_pc_s1, hClear_zeros_s1, hClear_preserves_s1⟩ :=
+      clearRegisters_exec m sPhase1
+    have hClear_preserves_m1 : cClear_s1.state.read (m + 1) = sPhase1.read (m + 1) := hClear_preserves_s1 (m + 1) (by omega)
 
     -- Hoisted: T10 execution from cClear_s1.state (used in both r=0 and r=1 cases)
-    have hT10_halts_s1 := single_transfer_halts (m + 1) 0 cClear_s1.state
-    obtain ⟨cT10_s1, hT10_steps_s1, hT10_halted_s1, hT10_pc_s1, hT10_state_s1⟩ := hT10_halts_s1
-    have hT10_r0_s1 : cT10_s1.state.read 0 = sPhase1.read (m + 1) := by
-      rw [hT10_state_s1, State.write_read_same]
-      have hClear_preserves_m1 : cClear_s1.state.read (m + 1) = sPhase1.read (m + 1) := by
-        rw [hClear_state_eq_s1]; exact clearRegisters_preserves_above m sPhase1 (m + 1) (by omega)
-      exact hClear_preserves_m1
+    obtain ⟨cT10_s1, hT10_steps_s1, hT10_halted_s1, hT10_pc_s1, hT10_state_s1⟩ :=
+      single_transfer_halts (m + 1) 0 cClear_s1.state
     have hT10_r0_eq : cT10_s1.state.read 0 = inputs ⟨0, by omega⟩ := by
-      rw [hT10_r0_s1, hsPhase1_m1]
+      rw [hT10_state_s1, State.write_read_same, hClear_preserves_m1, hsPhase1_m1]
 
     -- Hoisted: hagreeG2' (used in both r=0 and r=1 cases)
     have hm_ge_G2' : pG2.maxRegister ≤ m := compositionBaseBU_ge_G2 pF pG1 pG2
+    have hcT10_zeros_s1 : ∀ r, 1 ≤ r → r ≤ m → cT10_s1.state.read r = 0 := by
+      intro r _ hrm; rw [hT10_state_s1, State.write_read_diff _ _ _ _ (by omega : r ≠ 0), hClear_zeros_s1 r hrm]
+    have hlist_eq' : List.ofFn inputs = [inputs ⟨0, by omega⟩] := List.ofFn_succ_last
     have hagreeG2' : cT10_s1.state.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG2.maxRegister := by
-      intro r' _ hhi
-      by_cases hr0' : r' = 0
-      · rw [hr0', hT10_r0_eq]; simp [State.fromInputs, State.read]
-      · have hT10_preserves_r' : cT10_s1.state.read r' = cClear_s1.state.read r' := by
-          rw [hT10_state_s1]; exact State.write_read_diff _ _ _ _ (by omega : r' ≠ 0)
-        have hClear_zeros_r' : cClear_s1.state.read r' = 0 := by
-          rw [hClear_state_eq_s1]; exact clearRegisters_zeros m sPhase1 r' (by omega : r' ≤ m)
-        rw [hT10_preserves_r', hClear_zeros_r']
-        simp only [State.fromInputs, State.read]
-        have hr_ge' : r' ≥ (List.ofFn inputs).length := by simp only [List.length_ofFn]; omega
-        rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none hr_ge', Option.getD_none]
+      rw [hlist_eq']; exact agrees_single_input_after_clear_transfer hm_ge_G2' hT10_r0_eq hcT10_zeros_s1
 
     -- Hoisted: G2 execution from cT10_s1.state (used in both r=0 and r=1 cases)
     have hG2_halts_s1 : Halts pG2 (List.ofFn inputs) := (hG2_spec inputs).1.mpr hg2_dom
@@ -1041,9 +1029,8 @@ theorem comp_binary_unary_halts_imp_f_dom
       have hsPhase2_eq : sPhase2 = cPhase2_from_s1.state := congrArg Config.state hconfigs
 
       have hPhase2_preserves_m2 : cPhase2_from_s1.state.read (m + 2) = sPhase1.read (m + 2) := by
-        have hClear_preserves : cClear_s1.state.read (m + 2) = sPhase1.read (m + 2) := by
-          rw [hClear_state_eq_s1]
-          exact clearRegisters_preserves_above m sPhase1 (m + 2) (by omega)
+        have hClear_preserves : cClear_s1.state.read (m + 2) = sPhase1.read (m + 2) :=
+          hClear_preserves_s1 (m + 2) (by omega)
 
         have hT10_preserves : cT10_s1.state.read (m + 2) = cClear_s1.state.read (m + 2) := by
           rw [hT10_state_s1]
@@ -1336,32 +1323,20 @@ theorem comp_binary_unary_dom_imp_halts
     -- phase2 = clearProg.concat (T10.concat (pG2.concat T03))
     -- The proof chains: clearProg → T10 → G2 → T03
 
-    -- Step 1: clearProg halts and preserves R[m+1]
-    have hClear_sl := clearRegisters_isStraightLine m
-    have hClear_halts := straightLine_halts_from_state hClear_sl s
-    obtain ⟨cClear, hClear_steps, hClear_halted, hClear_pc⟩ := hClear_halts
-    -- cClear.state preserves R[m+1]
-    have hClear_preserves : cClear.state.read (m + 1) = s.read (m + 1) := by
-      have hClear_state_eq := straightLineFinalState_eq_of_halted hClear_sl s cClear hClear_steps hClear_halted
-      rw [hClear_state_eq]
-      exact clearRegisters_preserves_above m s (m + 1) (by omega)
+    -- Step 1: clearProg halts, zeros R[0..m], preserves R[m+1..]
+    obtain ⟨cClear, hClear_steps, hClear_halted, hClear_pc, hClear_zeros, hClear_preserves_above⟩ :=
+      clearRegisters_exec m s
+    have hClear_preserves : cClear.state.read (m + 1) = s.read (m + 1) := hClear_preserves_above (m + 1) (by omega)
 
     -- Step 2: T10 halts from cClear.state and sets R[0] = R[m+1]
-    have hT10_sl := single_transfer_isStraightLine (m + 1) 0
-    have hT10_halts := single_transfer_halts (m + 1) 0 cClear.state
-    obtain ⟨cT10, hT10_steps, hT10_halted, hT10_pc, hT10_state⟩ := hT10_halts
-
-    -- After T10: R[0] = original R[m+1] = inputs[0]
+    obtain ⟨cT10, hT10_steps, hT10_halted, hT10_pc, hT10_state⟩ := single_transfer_halts (m + 1) 0 cClear.state
     have hT10_r0 : cT10.state.read 0 = inputs ⟨0, by omega⟩ := by
       rw [hT10_state, State.write_read_same, hClear_preserves, hs_input]
 
     -- Step 3: pG2 halts from cT10.state because it agrees with initial state
     have hm_ge_G2 : pG2.maxRegister ≤ m := compositionBaseBU_ge_G2 pF pG1 pG2
     have hcT10_zeros : ∀ r, 1 ≤ r → r ≤ m → cT10.state.read r = 0 := by
-      intro r hr1 hrm
-      rw [hT10_state, State.write_read_diff _ _ _ _ (by omega : r ≠ 0)]
-      have hClear_state_eq := straightLineFinalState_eq_of_halted hClear_sl s cClear hClear_steps hClear_halted
-      rw [hClear_state_eq]; exact clearRegisters_zeros m s r hrm
+      intro r _ hrm; rw [hT10_state, State.write_read_diff _ _ _ _ (by omega : r ≠ 0), hClear_zeros r hrm]
     have hlist_eq : List.ofFn inputs = [inputs ⟨0, by omega⟩] := List.ofFn_succ_last
     have hagreeG2 : cT10.state.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG2.maxRegister := by
       rw [hlist_eq]; exact agrees_single_input_after_clear_transfer hm_ge_G2 hT10_r0 hcT10_zeros
@@ -1440,16 +1415,13 @@ theorem comp_binary_unary_dom_imp_halts
     -- phase3 = clearProg.concat (Tsetup.concat pF)
     -- The proof chains: clearProg → Tsetup → pF
 
-    -- Step 1: clearProg halts and preserves R[m+2], R[m+3]
-    have hClear_sl := clearRegisters_isStraightLine m
-    have hClear_halts := straightLine_halts_from_state hClear_sl s
-    obtain ⟨cClear, hClear_steps, hClear_halted, hClear_pc⟩ := hClear_halts
-    -- cClear.state preserves R[m+2] and R[m+3]
-    have hClear_state_eq := straightLineFinalState_eq_of_halted hClear_sl s cClear hClear_steps hClear_halted
+    -- Step 1: clearProg halts, zeros R[0..m], preserves R[m+1..]
+    obtain ⟨cClear, hClear_steps, hClear_halted, hClear_pc, hClear_zeros, hClear_preserves_above⟩ :=
+      clearRegisters_exec m s
     have hClear_preserves_v1 : cClear.state.read (m + 2) = v1 := by
-      rw [hClear_state_eq, clearRegisters_preserves_above m s (m + 2) (by omega), hs_v1]
+      rw [hClear_preserves_above (m + 2) (by omega), hs_v1]
     have hClear_preserves_v2 : cClear.state.read (m + 3) = v2 := by
-      rw [hClear_state_eq, clearRegisters_preserves_above m s (m + 3) (by omega), hs_v2]
+      rw [hClear_preserves_above (m + 3) (by omega), hs_v2]
 
     -- Step 2: Tsetup halts from cClear.state and sets R[0] = v1, R[1] = v2
     -- Tsetup = [T (m+2) 0, T (m+3) 1]
@@ -1470,10 +1442,9 @@ theorem comp_binary_unary_dom_imp_halts
     -- Step 3: pF halts from cTsetup.state because it agrees with fInput
     have hm_ge_F : pF.maxRegister ≤ m := compositionBaseBU_ge_F pF pG1 pG2
     have hcTsetup_zeros : ∀ r, 2 ≤ r → r ≤ m → cTsetup.state.read r = 0 := by
-      intro r hr2 hrm
+      intro r _ hrm
       rw [hTsetup_state', State.write_read_diff _ _ _ _ (by omega : r ≠ 1),
-          State.write_read_diff _ _ _ _ (by omega : r ≠ 0)]
-      rw [hClear_state_eq]; exact clearRegisters_zeros m s r hrm
+          State.write_read_diff _ _ _ _ (by omega : r ≠ 0), hClear_zeros r hrm]
     have hlist_eq : List.ofFn fInput = [v1, v2] := List.ofFn_succ_last
     have hagreeF : cTsetup.state.agreeOn (State.fromInputs (List.ofFn fInput)) 0 pF.maxRegister := by
       rw [hlist_eq]; exact agrees_two_inputs_after_clear_transfer hm_ge_F hTsetup_r0 hTsetup_r1 hcTsetup_zeros
@@ -1643,26 +1614,20 @@ theorem comp_binary_unary_dom_imp_halts
     rw [hs1_eq]; exact hPhase1_preserves_input
 
   -- Hoisted: Phase2 trace construction (used by hPhase12_v1 and hPhase12_v2)
-  -- Step 5a: clearProg halts and preserves high registers
-  have hClear_sl := clearRegisters_isStraightLine m
-  have hClear_halts := straightLine_halts_from_state hClear_sl s1
-  obtain ⟨cClear, hClear_steps, hClear_halted, hClear_pc⟩ := hClear_halts
-  have hClear_state_eq := straightLineFinalState_eq_of_halted hClear_sl s1 cClear hClear_steps hClear_halted
+  -- Step 5a: clearProg halts, zeros R[0..m], preserves R[m+1..]
+  obtain ⟨cClear, hClear_steps, hClear_halted, hClear_pc, hClear_zeros, hClear_preserves_above⟩ :=
+    clearRegisters_exec m s1
+  have hClear_preserves_m1 : cClear.state.read (m + 1) = s1.read (m + 1) := hClear_preserves_above (m + 1) (by omega)
 
   -- Step 5b: T10 halts and sets R[0] = R[m+1]
-  have hT10_halts := single_transfer_halts (m + 1) 0 cClear.state
-  obtain ⟨cT10, hT10_steps, hT10_halted, hT10_pc, hT10_state⟩ := hT10_halts
-  have hClear_preserves_m1 : cClear.state.read (m + 1) = s1.read (m + 1) := by
-    rw [hClear_state_eq]; exact clearRegisters_preserves_above m s1 (m + 1) (by omega)
+  obtain ⟨cT10, hT10_steps, hT10_halted, hT10_pc, hT10_state⟩ := single_transfer_halts (m + 1) 0 cClear.state
   have hT10_r0 : cT10.state.read 0 = inputs ⟨0, by omega⟩ := by
     rw [hT10_state, State.write_read_same, hClear_preserves_m1, hs1_input]
 
   -- Step 5c: G2 execution
   have hm_ge_G2 : pG2.maxRegister ≤ m := compositionBaseBU_ge_G2 pF pG1 pG2
   have hcT10_zeros : ∀ r, 1 ≤ r → r ≤ m → cT10.state.read r = 0 := by
-    intro r hr1 hrm
-    rw [hT10_state, State.write_read_diff _ _ _ _ (by omega : r ≠ 0)]
-    rw [hClear_state_eq]; exact clearRegisters_zeros m s1 r hrm
+    intro r _ hrm; rw [hT10_state, State.write_read_diff _ _ _ _ (by omega : r ≠ 0), hClear_zeros r hrm]
   have hlist_eq : List.ofFn inputs = [inputs ⟨0, by omega⟩] := List.ofFn_succ_last
   have hagreeG2 : cT10.state.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG2.maxRegister := by
     rw [hlist_eq]; exact agrees_single_input_after_clear_transfer hm_ge_G2 hT10_r0 hcT10_zeros
@@ -1722,8 +1687,8 @@ theorem comp_binary_unary_dom_imp_halts
   have hPhase12_v1 : cPhase12.state.read (m + 2) = v1 := by
     -- Uses hoisted Phase2 trace: phase2 preserves m+2
     rw [hPhase12_state_eq, hPhase2_state_match]
-    have hClear_preserves_m2 : cClear.state.read (m + 2) = s1.read (m + 2) := by
-      rw [hClear_state_eq]; exact clearRegisters_preserves_above m s1 (m + 2) (by omega)
+    have hClear_preserves_m2 : cClear.state.read (m + 2) = s1.read (m + 2) :=
+      hClear_preserves_above (m + 2) (by omega)
     have hT10_preserves_m2 : cT10.state.read (m + 2) = cClear.state.read (m + 2) := by
       rw [hT10_state]; exact State.write_read_diff _ _ _ _ (by omega : m + 2 ≠ 0)
     have hG2_preserves_m2 : cG2.state.read (m + 2) = cT10.state.read (m + 2) :=
