@@ -1356,35 +1356,15 @@ theorem comp_binary_unary_dom_imp_halts
       rw [hT10_state, State.write_read_same, hClear_preserves, hs_input]
 
     -- Step 3: pG2 halts from cT10.state because it agrees with initial state
-    -- First show agreement on registers 0..pG2.maxRegister
     have hm_ge_G2 : pG2.maxRegister ≤ m := compositionBaseBU_ge_G2 pF pG1 pG2
+    have hcT10_zeros : ∀ r, 1 ≤ r → r ≤ m → cT10.state.read r = 0 := by
+      intro r hr1 hrm
+      rw [hT10_state, State.write_read_diff _ _ _ _ (by omega : r ≠ 0)]
+      have hClear_state_eq := straightLineFinalState_eq_of_halted hClear_sl s cClear hClear_steps hClear_halted
+      rw [hClear_state_eq]; exact clearRegisters_zeros m s r hrm
+    have hlist_eq : List.ofFn inputs = [inputs ⟨0, by omega⟩] := List.ofFn_succ_last
     have hagreeG2 : cT10.state.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG2.maxRegister := by
-      intro r _ hhi
-      -- For r = 0: cT10.state.read 0 = inputs[0] by hT10_r0
-      -- For r > 0 with r ≤ pG2.maxRegister ≤ m:
-      --   cT10.state.read r = cClear.state.read r (T10 only writes to 0)
-      --   cClear.state.read r = 0 (clearRegisters zeros r ≤ m)
-      --   State.fromInputs.read r = 0 for r ≥ 1 (only 1 input)
-      by_cases hr0 : r = 0
-      · rw [hr0, hT10_r0]
-        simp only [State.fromInputs, State.read]
-        rfl
-      · have hr_pos : 0 < r := Nat.pos_of_ne_zero hr0
-        -- cT10.state.read r = cClear.state.read r
-        have hT10_preserves_r : cT10.state.read r = cClear.state.read r := by
-          rw [hT10_state]
-          exact State.write_read_diff _ _ _ _ (by omega : r ≠ 0)
-        -- cClear.state.read r = 0 for r ≤ m
-        have hClear_zeros_r : cClear.state.read r = 0 := by
-          have hClear_state_eq := straightLineFinalState_eq_of_halted hClear_sl s cClear hClear_steps hClear_halted
-          rw [hClear_state_eq]
-          exact clearRegisters_zeros m s r (by omega : r ≤ m)
-        rw [hT10_preserves_r, hClear_zeros_r]
-        -- State.fromInputs.read r = 0 for r ≥ 1 with 1 input
-        simp only [State.fromInputs, State.read]
-        -- For r ≥ 1 and List.ofFn inputs has length 1, getD returns default 0
-        have hr_ge : r ≥ (List.ofFn inputs).length := by simp only [List.length_ofFn]; omega
-        rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none hr_ge, Option.getD_none]
+      rw [hlist_eq]; exact agrees_single_input_after_clear_transfer hm_ge_G2 hT10_r0 hcT10_zeros
 
     -- Get pG2 execution from agreeing state using helper
     let eG2 := Halts.executeFromAgreeingState hG2_halts hG2_sf hagreeG2
@@ -1489,32 +1469,14 @@ theorem comp_binary_unary_dom_imp_halts
 
     -- Step 3: pF halts from cTsetup.state because it agrees with fInput
     have hm_ge_F : pF.maxRegister ≤ m := compositionBaseBU_ge_F pF pG1 pG2
+    have hcTsetup_zeros : ∀ r, 2 ≤ r → r ≤ m → cTsetup.state.read r = 0 := by
+      intro r hr2 hrm
+      rw [hTsetup_state', State.write_read_diff _ _ _ _ (by omega : r ≠ 1),
+          State.write_read_diff _ _ _ _ (by omega : r ≠ 0)]
+      rw [hClear_state_eq]; exact clearRegisters_zeros m s r hrm
+    have hlist_eq : List.ofFn fInput = [v1, v2] := List.ofFn_succ_last
     have hagreeF : cTsetup.state.agreeOn (State.fromInputs (List.ofFn fInput)) 0 pF.maxRegister := by
-      intro r _ hhi
-      -- r ≤ pF.maxRegister ≤ m
-      by_cases hr0 : r = 0
-      · -- R[0] = v1 = fInput 0
-        rw [hr0, hTsetup_r0]
-        simp only [State.fromInputs, State.read, fInput]
-        rfl
-      · by_cases hr1 : r = 1
-        · -- R[1] = v2 = fInput 1
-          rw [hr1, hTsetup_r1]
-          simp only [State.fromInputs, State.read, fInput]
-          rfl
-        · -- r > 1: cTsetup.state.read r = 0 (from clearProg)
-          --        fromInputs.read r = 0 (only 2 inputs)
-          have hTsetup_preserves_r : cTsetup.state.read r = cClear.state.read r := by
-            rw [hTsetup_state', State.write_read_diff _ _ _ _ (by omega : r ≠ 1),
-                State.write_read_diff _ _ _ _ (by omega : r ≠ 0)]
-          have hClear_zeros_r : cClear.state.read r = 0 := by
-            rw [hClear_state_eq]
-            exact clearRegisters_zeros m s r (by omega : r ≤ m)
-          rw [hTsetup_preserves_r, hClear_zeros_r]
-          -- fromInputs.read r = 0 for r ≥ 2
-          simp only [State.fromInputs, State.read]
-          have hr_ge : r ≥ (List.ofFn fInput).length := by simp only [List.length_ofFn]; omega
-          rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none hr_ge, Option.getD_none]
+      rw [hlist_eq]; exact agrees_two_inputs_after_clear_transfer hm_ge_F hTsetup_r0 hTsetup_r1 hcTsetup_zeros
 
     -- Get pF execution from agreeing state using helper
     let eF := Halts.executeFromAgreeingState hF_halts hF_sf hagreeF
@@ -1697,19 +1659,13 @@ theorem comp_binary_unary_dom_imp_halts
 
   -- Step 5c: G2 execution
   have hm_ge_G2 : pG2.maxRegister ≤ m := compositionBaseBU_ge_G2 pF pG1 pG2
+  have hcT10_zeros : ∀ r, 1 ≤ r → r ≤ m → cT10.state.read r = 0 := by
+    intro r hr1 hrm
+    rw [hT10_state, State.write_read_diff _ _ _ _ (by omega : r ≠ 0)]
+    rw [hClear_state_eq]; exact clearRegisters_zeros m s1 r hrm
+  have hlist_eq : List.ofFn inputs = [inputs ⟨0, by omega⟩] := List.ofFn_succ_last
   have hagreeG2 : cT10.state.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG2.maxRegister := by
-    intro r _ hhi
-    by_cases hr0 : r = 0
-    · rw [hr0, hT10_r0]; simp [State.fromInputs, State.read]
-    · have hr_pos : 0 < r := Nat.pos_of_ne_zero hr0
-      have hT10_preserves_r : cT10.state.read r = cClear.state.read r := by
-        rw [hT10_state]; exact State.write_read_diff _ _ _ _ (by omega : r ≠ 0)
-      have hClear_zeros_r : cClear.state.read r = 0 := by
-        rw [hClear_state_eq]; exact clearRegisters_zeros m s1 r (by omega : r ≤ m)
-      rw [hT10_preserves_r, hClear_zeros_r]
-      simp only [State.fromInputs, State.read]
-      have hr_ge : r ≥ (List.ofFn inputs).length := by simp only [List.length_ofFn]; omega
-      rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none hr_ge, Option.getD_none]
+    rw [hlist_eq]; exact agrees_single_input_after_clear_transfer hm_ge_G2 hT10_r0 hcT10_zeros
   let eG2 := Halts.executeFromAgreeingState hG2_halts hG2_sf hagreeG2
   let cG2 := eG2.config
   have hG2_steps := eG2.steps
@@ -2302,18 +2258,11 @@ theorem comp_binary_unary_result
         rw [State.write_read_diff cClear1.state (m + 2) 0 _ (by omega), hClear1_m2]
 
       -- G2 from agreeing state (cT10.state agrees with init on R[0..maxRegister])
+      have hcT10_zeros : ∀ r, 1 ≤ r → r ≤ m → cT10.state.read r = 0 := by
+        intro r _ hrm; rw [hT10_state, State.write_read_diff _ _ _ _ (by omega : r ≠ 0), hClear1_zeros r hrm]
+      have hlist_eq : List.ofFn inputs = [inputs ⟨0, by omega⟩] := List.ofFn_succ_last
       have hagreeG2 : cT10.state.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG2.maxRegister := by
-        intro r _ hhi
-        by_cases hr0 : r = 0
-        · rw [hr0, hcT10_r0]
-          simp only [State.fromInputs, State.read, x, List.ofFn, List.getD]
-          rfl
-        · rw [hT10_state, State.write_read_diff cClear1.state r 0 _ hr0]
-          have hr_le_m : r ≤ m := by omega
-          rw [hClear1_zeros r hr_le_m]
-          simp only [State.fromInputs, State.read]
-          have hr_ge : r ≥ (List.ofFn inputs).length := by simp only [List.length_ofFn]; omega
-          rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none hr_ge, Option.getD_none]
+        rw [hlist_eq]; exact agrees_single_input_after_clear_transfer hm_ge_G2 hcT10_r0 hcT10_zeros
 
       let eG2 := Halts.executeFromAgreeingState hG2_halts hG2_sf hagreeG2
       let cG2' := eG2.config
