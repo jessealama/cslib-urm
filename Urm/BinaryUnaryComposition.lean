@@ -445,208 +445,77 @@ theorem comp_binary_unary_halts_imp_g2_dom
     (inputs : Fin 1 → ℕ)
     (hHalts : Halts (Program.composeBU pF pG1 pG2) (List.ofFn inputs)) :
     (g2 inputs).Dom := by
-  -- Derive g1 halting (needed for tracking phase1's preservation of R[m+1])
-  have hg1_dom : (g1 inputs).Dom := comp_binary_unary_halts_imp_g1_dom hG1_sf hG1_spec inputs hHalts
-  have hG1_halts : Halts pG1 (List.ofFn inputs) := (hG1_spec inputs).1.mpr hg1_dom
-
-  -- Set up program structure using ComposeBUComponents
-  let bu := ComposeBUComponents.mk' pF pG1 pG2
-  let m := bu.m
-  have hT01_sf := ComposeBUComponents.T01_sf' m
-  have hT10_sf := ComposeBUComponents.T10_sf' m
-  have hT03_sf := ComposeBUComponents.T03_sf' m
-  have hClear_sf := ComposeBUComponents.clearProg_sf' m
+  have hg1_dom := comp_binary_unary_halts_imp_g1_dom hG1_sf hG1_spec inputs hHalts
+  have hG1_halts := (hG1_spec inputs).1.mpr hg1_dom
+  let bu := ComposeBUComponents.mk' pF pG1 pG2; let m := bu.m
+  have hClear_sl := clearRegisters_isStraightLine m
   have hPhase1_sf := ComposeBUComponents.phase1_sf' m hG1_sf
   have hPhase2_sf := ComposeBUComponents.phase2_sf' m hG2_sf
-
-  -- H = bu.phase1.concat (bu.phase2.concat bu.phase3)
-  let H := Program.composeBU pF pG1 pG2
-  have hH_eq : H = bu.phase1.concat (bu.phase2.concat bu.phase3) := rfl
-
-  -- Convert hHalts to use H
-  have hHalts' : Halts H (List.ofFn inputs) := hHalts
-
-  -- Extract phase1 halting
-  have hPhase1_halts : Halts bu.phase1 (List.ofFn inputs) := by
-    rw [hH_eq] at hHalts'
-    exact Halts.prefix_of_concat_sf hHalts' hPhase1_sf
-
-  -- Extract phase2 halting from H
-  have hSuffix12 := Halts.suffix_of_concat_sf hHalts' hPhase1_sf
-  obtain ⟨sPhase1, _, hsPhase1_eq, cPhase23, hPhase23_steps, hPhase23_halted⟩ := hSuffix12
-
-  -- bu.phase2.concat bu.phase3 halts from sPhase1
-  -- Extract phase2 halting
-  have hPhase2_from := prefix_of_concat_from_zero hPhase23_steps hPhase23_halted hPhase2_sf
-  obtain ⟨cPhase2', hPhase2_steps, hPhase2_halted⟩ := hPhase2_from
-
-  -- bu.phase2 = bu.clearProg.concat (bu.T10.concat (pG2.concat bu.T03))
-  -- We need to extract pG2 halting from this
-  -- After bu.clearProg, registers 0..m-1 are 0, and bu.T10 restores R[0] from R[m+1]
-  -- This sets up the correct state for pG2
-
-  -- Step 1: Extract bu.T10.concat (pG2.concat bu.T03) execution from bu.phase2
-  have hT10rest_sf : (bu.T10.concat (pG2.concat bu.T03)).IsStandardForm :=
-    hT10_sf.concat (hG2_sf.concat hT03_sf)
-  have hClear_sl := clearRegisters_isStraightLine m
-  obtain ⟨sClear, hClear_steps, hClear_p2_halts⟩ :=
-    suffix_of_concat_from_zero hPhase2_steps hPhase2_halted hClear_sf
-  obtain ⟨cT10rest, hT10rest_steps, hT10rest_halted⟩ := hClear_p2_halts
-
-  -- Step 2: Extract pG2.concat bu.T03 execution from bu.T10.concat (pG2.concat bu.T03)
-  have hG2T03_sf : (pG2.concat bu.T03).IsStandardForm := hG2_sf.concat hT03_sf
-  obtain ⟨sT10, hT10_steps, hG2T03_halts⟩ :=
-    suffix_of_concat_from_zero hT10rest_steps hT10rest_halted hT10_sf
-  obtain ⟨cG2T03, hG2T03_steps, hG2T03_halted⟩ := hG2T03_halts
-
-  -- Step 3: Extract pG2 halting from pG2.concat T03
-  have hG2_from_sT10 : ∃ c', Steps pG2 ⟨0, sT10⟩ c' ∧ c'.isHalted pG2 :=
+  -- Extract phase execution chain
+  have hPhase1_halts := Halts.prefix_of_concat_sf hHalts hPhase1_sf
+  obtain ⟨sPhase1, _, hsPhase1_eq, _, hPhase23_steps, hPhase23_halted⟩ :=
+    Halts.suffix_of_concat_sf hHalts hPhase1_sf
+  obtain ⟨_, hPhase2_steps, hPhase2_halted⟩ :=
+    prefix_of_concat_from_zero hPhase23_steps hPhase23_halted hPhase2_sf
+  -- Extract clear → T10 → G2 chain from phase2
+  obtain ⟨sClear, hClear_steps, ⟨_, hT10rest_steps, hT10rest_halted⟩⟩ :=
+    suffix_of_concat_from_zero hPhase2_steps hPhase2_halted (ComposeBUComponents.clearProg_sf' m)
+  obtain ⟨sT10, hT10_steps, ⟨_, hG2T03_steps, hG2T03_halted⟩⟩ :=
+    suffix_of_concat_from_zero hT10rest_steps hT10rest_halted (ComposeBUComponents.T10_sf' m)
+  obtain ⟨cG2', hG2_steps', hG2_halted'⟩ :=
     prefix_of_concat_from_zero hG2T03_steps hG2T03_halted hG2_sf
-
-  obtain ⟨cG2', hG2_steps', hG2_halted'⟩ := hG2_from_sT10
-
-  -- Step 4: Show state agreement
-  have hm_ge_G2 : pG2.maxRegister ≤ m := ComposeBUComponents.m_ge_G2'
-
+  -- Characterize T10 and Clear states
+  obtain ⟨_, hT10_steps', hT10_halted', _, hT10_state'⟩ := single_transfer_halts (m + 1) 0 sClear
+  have hsT10_eq : sT10 = sClear.write 0 (sClear.read (m + 1)) := by
+    have := congrArg Config.state (Steps.halts_unique hT10_steps (Nat.le_refl _) hT10_steps' hT10_halted')
+    simp only [hT10_state'] at this; exact this
+  have hsClear_eq : sClear = straightLineFinalState hClear_sl sPhase1 :=
+    straightLineFinalState_eq_of_halted hClear_sl sPhase1 ⟨bu.clearProg.length, sClear⟩ hClear_steps (Nat.le_refl _)
+  -- Show state agreement for pG2
   have hagreeG2 : ∀ r, r ≤ pG2.maxRegister →
       sT10.read r = (State.fromInputs (List.ofFn inputs)).read r := by
     intro r hr
-    by_cases hr0 : r = 0
-    · -- r = 0: sT10.read 0 = inputs[0] and State.fromInputs gives inputs[0]
-      subst hr0
-      -- Step 1: sT10.read 0 = sClear.read (m + 1) via T10 semantics
-      have hT10_char := single_transfer_halts (m + 1) 0 sClear
-      obtain ⟨cT10', hT10_steps', hT10_halted', _, hT10_state'⟩ := hT10_char
-      have hT10_halted : (⟨bu.T10.length, sT10⟩ : Config).isHalted bu.T10 := Nat.le_refl _
-      have hconfigs_eq := Steps.halts_unique hT10_steps hT10_halted hT10_steps' hT10_halted'
-      have hsT10_eq : sT10 = sClear.write 0 (sClear.read (m + 1)) := by
-        have : sT10 = cT10'.state := congrArg Config.state hconfigs_eq
-        rw [this, hT10_state']
-      have hsT10_r0 : sT10.read 0 = sClear.read (m + 1) := by
-        rw [hsT10_eq, State.write_read_same]
-
-      -- Step 2: sClear.read (m + 1) = sPhase1.read (m + 1) via clearRegisters_preserves_above
-      have hClear_halted : (⟨bu.clearProg.length, sClear⟩ : Config).isHalted bu.clearProg := Nat.le_refl _
-      have hsClear_eq : sClear = straightLineFinalState hClear_sl sPhase1 :=
-        straightLineFinalState_eq_of_halted hClear_sl sPhase1 ⟨bu.clearProg.length, sClear⟩ hClear_steps hClear_halted
+    rcases Nat.eq_zero_or_pos r with rfl | hr_pos
+    · -- r = 0: trace back through T10 → Clear → Phase1 → T01
+      -- Step 1: sT10.read 0 = sClear.read (m + 1)
+      have hsT10_r0 : sT10.read 0 = sClear.read (m + 1) := by rw [hsT10_eq, State.write_read_same]
+      -- Step 2: sClear.read (m + 1) = sPhase1.read (m + 1)
       have hsClear_preserves : sClear.read (m + 1) = sPhase1.read (m + 1) := by
-        rw [hsClear_eq]
-        exact clearRegisters_preserves_above m sPhase1 (m + 1) (by omega : m < m + 1)
-
-      -- Step 3: sPhase1.read (m + 1) = inputs ⟨0, _⟩
-      have hsPhase1_state : sPhase1 = (Classical.choose hPhase1_halts).state :=
-        hsPhase1_eq hPhase1_halts
-
-      -- Now prove (Classical.choose hPhase1_halts).state.read (m + 1) = inputs ⟨0, _⟩
-      let cPhase1' := Classical.choose hPhase1_halts
-      have hPhase1'_spec := Classical.choose_spec hPhase1_halts
-      have hPhase1'_steps : Steps bu.phase1 (Config.init (List.ofFn inputs)) cPhase1' := hPhase1'_spec.1
-      have hPhase1'_halted : cPhase1'.isHalted bu.phase1 := hPhase1'_spec.2
-
-      have hPhase1_preserves_input : cPhase1'.state.read (m + 1) = inputs ⟨0, by omega⟩ := by
-        -- Get the state after T01
-        have hT01_sl := single_transfer_isStraightLine 0 (m + 1)
-        have hT01_halts := straightLine_halts hT01_sl (List.ofFn inputs)
-        let sT01' := (Classical.choose hT01_halts).state
-
-        -- Use T01 helpers
-        have hT01_state : sT01' = (State.fromInputs (List.ofFn inputs)).write (m + 1)
-            ((State.fromInputs (List.ofFn inputs)).read 0) := T01_state_eq m inputs
-        have hsT01'_m1 : sT01'.read (m + 1) = inputs ⟨0, by omega⟩ := T01_stores_input m inputs
-
-        -- pG1 preserves R[m+1]
-        have hm_ge_G1' : pG1.maxRegister ≤ m := compositionBaseBU_ge_G1 pF pG1 pG2
-        have hagreeG1' : ∀ r, r ≤ pG1.maxRegister →
-            sT01'.read r = (State.fromInputs (List.ofFn inputs)).read r := fun r' hr' =>
-          T01_preserves_below m inputs r' (Nat.le_trans hr' hm_ge_G1')
-        have hagreeG1'' : sT01'.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG1.maxRegister := by
-          intro r' _ hhi
-          exact hagreeG1' r' hhi
-
-        -- Get cG1 execution from agreeing state using helper
-        let eG1 := Halts.executeFromAgreeingState hG1_halts hG1_sf hagreeG1''
-        let cG1' := eG1.config
-        have hG1_steps'' := eG1.steps
-        have hG1_halted'' := eG1.halted
-        have hG1_pc'' := eG1.pc_eq
-
-        -- pG1 preserves R[m+1]
-        have hG1_preserves' : cG1'.state.read (m + 1) = sT01'.read (m + 1) :=
-          eG1.preserves_high_register (m + 1) (by omega : pG1.maxRegister < m + 1)
-
-        -- T02 execution from cG1'.state
-        have hT02_halts'' := single_transfer_halts 0 (m + 2) cG1'.state
-        obtain ⟨cT02', hT02_steps'', hT02_halted'', hT02_pc'', hT02_state''⟩ := hT02_halts''
-
-        -- T02 preserves R[m+1] (it only writes to m+2)
-        have hT02_preserves' : cT02'.state.read (m + 1) = cG1'.state.read (m + 1) := by
-          rw [hT02_state'']
-          exact State.write_read_diff _ _ _ _ (by omega : m + 1 ≠ m + 2)
-
-        -- Chain G1 and T02 using chain_concat
-        have ⟨hG1T02_steps', hG1T02_halted'⟩ :=
-          Steps.chain_concat hG1_steps'' hG1_halted'' hG1_pc'' hT02_steps'' hT02_halted''
-
-        -- The final config of bu.phase1 from Config.init
-        have hT01_steps' := (Classical.choose_spec hT01_halts).1
-        have hT01_halted' := (Classical.choose_spec hT01_halts).2
-        have hT01_pc' : (Classical.choose hT01_halts).pc = bu.T01.length := by
-          have hpc' := hT01_sf.halts_at_length (List.ofFn inputs) _ hT01_steps' hT01_halted'
-          simp only [List.length_singleton] at hpc' ⊢; exact hpc'
-        -- Chain bu.T01 and G1.concat T02 using chain_concat
-        have hT01_G1T02 := Steps.chain_concat hT01_steps' hT01_halted' hT01_pc' hG1T02_steps' hG1T02_halted'
-        have hPhase1_final_steps' : Steps bu.phase1 (Config.init (List.ofFn inputs))
-            ⟨(cT02'.pc + pG1.length) + bu.T01.length, cT02'.state⟩ := hT01_G1T02.1
-        have hPhase1_final_halted' : (⟨(cT02'.pc + pG1.length) + bu.T01.length, cT02'.state⟩ : Config).isHalted bu.phase1 :=
-          hT01_G1T02.2
-
-        -- By uniqueness, cPhase1'.state = cT02'.state
-        have hPhase1_state_eq' : cPhase1'.state = cT02'.state := by
-          have heq := Steps.halts_unique hPhase1'_steps hPhase1'_halted hPhase1_final_steps' hPhase1_final_halted'
-          rw [heq]
-
-        -- Combine all the equalities
-        rw [hPhase1_state_eq', hT02_preserves', hG1_preserves', hsT01'_m1]
-
-      -- Step 4: (State.fromInputs (List.ofFn inputs)).read 0 = inputs ⟨0, _⟩
+        rw [hsClear_eq]; exact clearRegisters_preserves_above m sPhase1 (m + 1) (by omega)
+      -- Step 3: sPhase1.read (m + 1) = cPhase1'.state.read (m + 1)
+      have hsPhase1_state : sPhase1 = (Classical.choose hPhase1_halts).state := hsPhase1_eq hPhase1_halts
+      -- Step 4: Phase1 preserves R[m+1] = inputs[0] via T01 → G1 → T02 chain
+      have hPhase1_preserves_input : (Classical.choose hPhase1_halts).state.read (m + 1) = inputs ⟨0, by omega⟩ := by
+        have ⟨hP1_steps, hP1_halted⟩ := Classical.choose_spec hPhase1_halts
+        have hT01_halts := straightLine_halts (single_transfer_isStraightLine 0 (m + 1)) (List.ofFn inputs)
+        let sT01 := (Classical.choose hT01_halts).state
+        have hm_ge_G1 : pG1.maxRegister ≤ m := compositionBaseBU_ge_G1 pF pG1 pG2
+        have hagreeG1 : sT01.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG1.maxRegister :=
+          fun _ _ hhi => T01_preserves_below m inputs _ (Nat.le_trans hhi hm_ge_G1)
+        let eG1 := Halts.executeFromAgreeingState hG1_halts hG1_sf hagreeG1
+        obtain ⟨_, hT02_steps, hT02_halted, _, hT02_state⟩ := single_transfer_halts 0 (m + 2) eG1.config.state
+        have hT01_spec := Classical.choose_spec hT01_halts
+        have hT01_pc := (ComposeBUComponents.T01_sf' m).halts_at_length _ _ hT01_spec.1 hT01_spec.2
+        have ⟨hG1T02_steps, hG1T02_halted⟩ := Steps.chain_concat eG1.steps eG1.halted eG1.pc_eq hT02_steps hT02_halted
+        have ⟨hP1_steps', hP1_halted'⟩ := Steps.chain_concat hT01_spec.1 hT01_spec.2 hT01_pc hG1T02_steps hG1T02_halted
+        rw [congrArg Config.state (Steps.halts_unique hP1_steps hP1_halted hP1_steps' hP1_halted'),
+          hT02_state, State.write_read_diff _ _ _ _ (by omega : m + 1 ≠ m + 2),
+          eG1.preserves_high_register (m + 1) (Nat.lt_of_le_of_lt hm_ge_G1 (by omega : m < m + 1)),
+          T01_stores_input m inputs]
+      -- Step 5: RHS simplification
       have hRHS : (State.fromInputs (List.ofFn inputs)).read 0 = inputs ⟨0, by omega⟩ := by
-        simp only [State.fromInputs, State.read]
-        rfl
-
-      -- Combine: sT10.read 0 = sClear.read (m+1) = sPhase1.read (m+1) = inputs[0] = RHS
+        simp only [State.fromInputs, State.read]; rfl
       rw [hsT10_r0, hsClear_preserves, hsPhase1_state, hPhase1_preserves_input, ← hRHS]
-    · -- r > 0: clearProg cleared R[r] to 0, T10 only writes R[0]
-      have hr_pos : 0 < r := Nat.pos_of_ne_zero hr0
-      have hinputs_len : (List.ofFn inputs).length = 1 := by simp
-      simp only [State.fromInputs, State.read]
-      have hgetD_zero : (List.ofFn inputs).getD r 0 = 0 := by
-        simp only [List.getD_eq_getElem?_getD]
-        have hout : r ≥ (List.ofFn inputs).length := by simp; exact hr_pos
-        rw [List.getElem?_eq_none hout]
-        rfl
-      rw [hgetD_zero]
-      -- Now prove sT10.read r = 0
-      have hT10_char := single_transfer_halts (m + 1) 0 sClear
-      obtain ⟨cT10', hT10_steps', hT10_halted', _, hT10_state'⟩ := hT10_char
-      have hT10_halted : (⟨bu.T10.length, sT10⟩ : Config).isHalted bu.T10 :=
-        Nat.le_refl _
-      have hconfigs_eq := Steps.halts_unique hT10_steps hT10_halted hT10_steps' hT10_halted'
-      have hsT10_eq : sT10 = sClear.write 0 (sClear.read (m + 1)) := by
-        have : sT10 = cT10'.state := congrArg Config.state hconfigs_eq
-        rw [this, hT10_state']
-      have hT10_preserves_r : sT10 r = sClear r := by
-        rw [hsT10_eq]; exact State.write_read_diff _ _ _ _ hr0
-      have hClear_halted : (⟨bu.clearProg.length, sClear⟩ : Config).isHalted bu.clearProg := Nat.le_refl _
-      have hsClear_eq : sClear = straightLineFinalState hClear_sl sPhase1 :=
-        straightLineFinalState_eq_of_halted hClear_sl sPhase1 ⟨bu.clearProg.length, sClear⟩ hClear_steps hClear_halted
-      have hClear_zeros_r : sClear r = 0 := by
-        rw [hsClear_eq]
-        exact clearRegisters_zeros m sPhase1 r (Nat.le_trans hr hm_ge_G2)
-      rw [hT10_preserves_r, hClear_zeros_r]
-
-  have hG2_halts' : Halts pG2 (List.ofFn inputs) :=
-    Halts.of_agreeing_state hG2_steps' hG2_halted' hagreeG2
-  exact (hG2_spec inputs).1.mp hG2_halts'
+    · -- r > 0: Clear zeroed it, T10 preserved it
+      have hRHS_zero : (State.fromInputs (List.ofFn inputs)).read r = 0 := by
+        simp only [State.fromInputs, State.read, List.getD_eq_getElem?_getD]
+        rw [List.getElem?_eq_none (by simp; exact hr_pos)]; rfl
+      have hT10_preserves_r : sT10.read r = sClear.read r := by
+        rw [hsT10_eq]; exact State.write_read_diff _ _ _ _ (Nat.ne_of_gt hr_pos)
+      have hClear_zeros_r : sClear.read r = 0 := by
+        rw [hsClear_eq]; exact clearRegisters_zeros m sPhase1 r (Nat.le_trans hr ComposeBUComponents.m_ge_G2')
+      rw [hT10_preserves_r, hClear_zeros_r, hRHS_zero]
+  exact (hG2_spec inputs).1.mp (Halts.of_agreeing_state hG2_steps' hG2_halted' hagreeG2)
 
 set_option maxHeartbeats 600000 in
 /-- Extract f domain from composed program halting, given g1 and g2 are defined.
