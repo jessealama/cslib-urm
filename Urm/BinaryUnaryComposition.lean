@@ -202,18 +202,15 @@ theorem compositionBaseBU_ge_1 (pF pG1 pG2 : Program) :
 
 theorem compositionBaseBU_ge_F (pF pG1 pG2 : Program) :
     pF.maxRegister ≤ compositionBaseBU pF pG1 pG2 := by
-  simp only [compositionBaseBU]
-  exact Nat.le_trans (Nat.le_max_left _ _) (Nat.le_max_right _ _)
+  simp only [compositionBaseBU, le_max_iff]; omega
 
 theorem compositionBaseBU_ge_G1 (pF pG1 pG2 : Program) :
     pG1.maxRegister ≤ compositionBaseBU pF pG1 pG2 := by
-  simp only [compositionBaseBU]
-  exact Nat.le_trans (Nat.le_trans (Nat.le_max_left _ _) (Nat.le_max_right _ _)) (Nat.le_max_right _ _)
+  simp only [compositionBaseBU, le_max_iff]; omega
 
 theorem compositionBaseBU_ge_G2 (pF pG1 pG2 : Program) :
     pG2.maxRegister ≤ compositionBaseBU pF pG1 pG2 := by
-  simp only [compositionBaseBU]
-  exact Nat.le_trans (Nat.le_trans (Nat.le_max_right _ _) (Nat.le_max_right _ _)) (Nat.le_max_right _ _)
+  simp only [compositionBaseBU, le_max_iff]; omega
 
 /-! ## Main Composition Theorem -/
 
@@ -282,33 +279,27 @@ theorem T01_agreeOn_for_subprogram (m : ℕ) (inputs : Fin 1 → ℕ) (maxReg : 
   intro hT01_sl hT01_halts r hr
   exact T01_preserves_below m inputs r (Nat.le_trans hr h)
 
-/-- For any halting proof of T01, the result state agrees with initial inputs on registers ≤ m.
-This version works with any `hT01_halts` obtained from different sources (suffix extraction, etc.). -/
+/-- Any halting config for T01 equals the canonical one from straightLine_halts. -/
+theorem T01_config_unique (m : ℕ) (inputs : Fin 1 → ℕ)
+    (hT01_halts : Halts [Instr.T 0 (m + 1)] (List.ofFn inputs)) :
+    Classical.choose hT01_halts =
+    Classical.choose (straightLine_halts (single_transfer_isStraightLine 0 (m + 1)) (List.ofFn inputs)) := by
+  have hspec := Classical.choose_spec hT01_halts
+  have hspec' := Classical.choose_spec (straightLine_halts (single_transfer_isStraightLine 0 (m + 1)) (List.ofFn inputs))
+  exact Steps.halts_unique hspec.1 hspec.2 hspec'.1 hspec'.2
+
+/-- For any halting proof of T01, the result state agrees with initial inputs on registers ≤ m. -/
 theorem T01_preserves_below_any (m : ℕ) (inputs : Fin 1 → ℕ)
     (hT01_halts : Halts [Instr.T 0 (m + 1)] (List.ofFn inputs))
     (r : ℕ) (hr : r ≤ m) :
     (Classical.choose hT01_halts).state.read r = (State.fromInputs (List.ofFn inputs)).read r := by
-  -- Bridge to the canonical halting proof via uniqueness
-  have hT01_sl := single_transfer_isStraightLine 0 (m + 1)
-  have hT01_halts' := straightLine_halts hT01_sl (List.ofFn inputs)
-  have hspec := Classical.choose_spec hT01_halts
-  have hspec' := Classical.choose_spec hT01_halts'
-  have huniq := Steps.halts_unique hspec.1 hspec.2 hspec'.1 hspec'.2
-  rw [huniq]
-  exact T01_preserves_below m inputs r hr
+  rw [T01_config_unique]; exact T01_preserves_below m inputs r hr
 
-/-- For any halting proof of T01, register m+1 contains the input value.
-This version works with any `hT01_halts` obtained from different sources. -/
+/-- For any halting proof of T01, register m+1 contains the input value. -/
 theorem T01_stores_input_any (m : ℕ) (inputs : Fin 1 → ℕ)
     (hT01_halts : Halts [Instr.T 0 (m + 1)] (List.ofFn inputs)) :
     (Classical.choose hT01_halts).state.read (m + 1) = inputs ⟨0, by omega⟩ := by
-  have hT01_sl := single_transfer_isStraightLine 0 (m + 1)
-  have hT01_halts' := straightLine_halts hT01_sl (List.ofFn inputs)
-  have hspec := Classical.choose_spec hT01_halts
-  have hspec' := Classical.choose_spec hT01_halts'
-  have huniq := Steps.halts_unique hspec.1 hspec.2 hspec'.1 hspec'.2
-  rw [huniq]
-  exact T01_stores_input m inputs
+  rw [T01_config_unique]; exact T01_stores_input m inputs
 
 /-- Helper: the composed program is in standard form if all components are. -/
 theorem composeBU_isStandardForm {pF pG1 pG2 : Program}
@@ -657,7 +648,7 @@ theorem comp_binary_unary_halts_imp_g2_dom
         -- By uniqueness, cPhase1'.state = cT02'.state
         have hPhase1_state_eq' : cPhase1'.state = cT02'.state := by
           have heq := Steps.halts_unique hPhase1'_steps hPhase1'_halted hPhase1_final_steps' hPhase1_final_halted'
-          simp only [heq]
+          rw [heq]
 
         -- Combine all the equalities
         rw [hPhase1_state_eq', hT02_preserves', hG1_preserves', hsT01'_m1]
@@ -841,7 +832,7 @@ theorem comp_binary_unary_halts_imp_f_dom
 
   have hPhase1_state_eq : cPhase1'.state = cT02'.state := by
     have heq := Steps.halts_unique hPhase1'_steps hPhase1'_halted hPhase1_final_steps hPhase1_final_halted
-    simp only [heq]
+    rw [heq]
 
   -- hsPhase1_m1 and hsPhase1_v1 now use hoisted definitions
   have hsPhase1_m1 : sPhase1.read (m + 1) = inputs ⟨0, by omega⟩ := by
@@ -2070,10 +2061,8 @@ theorem comp_binary_unary_result
       -- After Tsetup: R[2..m] = 0 (from clear, preserved by Tsetup)
       have hcTsetup_zeros : ∀ r, 2 ≤ r → r ≤ m → cTsetup.state.read r = 0 := by
         intro r hr2 hrm
-        rw [hTsetup_state]
-        rw [State.write_read_diff _ r 1 _ (by omega)]
-        rw [State.write_read_diff _ r 0 _ (by omega)]
-        exact hClear2_zeros r hrm
+        rw [hTsetup_state, State.write_read_diff _ r 1 _ (by omega),
+            State.write_read_diff _ r 0 _ (by omega), hClear2_zeros r hrm]
 
       -- m ≥ 1 follows from the definition of compositionBaseBU which uses max 1 (...)
       -- This ensures R[m+1] ≠ R[1], avoiding collision with binary input register
@@ -2081,20 +2070,14 @@ theorem comp_binary_unary_result
 
       -- After Tsetup: R[m+1] = x, R[m+2] = v1, R[m+3] = v2 (preserved)
       have hcTsetup_m1 : cTsetup.state.read (m + 1) = x := by
-        rw [hTsetup_state]
-        rw [State.write_read_diff _ (m + 1) 1 _ (by omega)]
-        rw [State.write_read_diff _ (m + 1) 0 _ (by omega)]
-        exact hClear2_m1
+        rw [hTsetup_state, State.write_read_diff _ (m + 1) 1 _ (by omega),
+            State.write_read_diff _ (m + 1) 0 _ (by omega), hClear2_m1]
       have hcTsetup_m2 : cTsetup.state.read (m + 2) = v1 := by
-        rw [hTsetup_state]
-        rw [State.write_read_diff _ (m + 2) 1 _ (by omega)]
-        rw [State.write_read_diff _ (m + 2) 0 _ (by omega)]
-        exact hClear2_m2
+        rw [hTsetup_state, State.write_read_diff _ (m + 2) 1 _ (by omega),
+            State.write_read_diff _ (m + 2) 0 _ (by omega), hClear2_m2]
       have hcTsetup_m3 : cTsetup.state.read (m + 3) = v2 := by
-        rw [hTsetup_state]
-        rw [State.write_read_diff _ (m + 3) 1 _ (by omega)]
-        rw [State.write_read_diff _ (m + 3) 0 _ (by omega)]
-        exact hClear2_m3
+        rw [hTsetup_state, State.write_read_diff _ (m + 3) 1 _ (by omega),
+            State.write_read_diff _ (m + 3) 0 _ (by omega), hClear2_m3]
 
       -- Build phase3 prefix: clearProg → Tsetup
       have hClearTsetup_steps : Steps (clearProg.concat (Tsetup.concat pF)) ⟨0, cT03.state⟩
