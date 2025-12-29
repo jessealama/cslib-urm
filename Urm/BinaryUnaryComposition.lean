@@ -124,6 +124,21 @@ theorem straightLineFinalState_eq_of_halted {p : Program} (hsl : p.isStraightLin
   have hspec := straightLineFinalState_spec hsl s
   exact Steps.halts_unique hsteps hhalted hspec.1 hspec.2.1 ▸ rfl
 
+/-- Execution result for clearRegisters: halts, zeros registers 0..maxReg, preserves above. -/
+theorem clearRegisters_exec (maxReg : ℕ) (s : State) :
+    ∃ c, Steps (Program.clearRegisters maxReg) ⟨0, s⟩ c ∧
+         c.isHalted (Program.clearRegisters maxReg) ∧
+         c.pc = (Program.clearRegisters maxReg).length ∧
+         (∀ r, r ≤ maxReg → c.state.read r = 0) ∧
+         (∀ r, maxReg < r → c.state.read r = s.read r) := by
+  have hsl := clearRegisters_isStraightLine maxReg
+  have hhalts := straightLine_halts_from_state hsl s
+  obtain ⟨c, hsteps, hhalted, hpc⟩ := hhalts
+  have hstate_eq := straightLineFinalState_eq_of_halted hsl s c hsteps hhalted
+  refine ⟨c, hsteps, hhalted, hpc, ?_, ?_⟩
+  · intro r hr; rw [hstate_eq]; exact clearRegisters_zeros maxReg s r hr
+  · intro r hr; rw [hstate_eq]; exact clearRegisters_preserves_above maxReg s r hr
+
 /-! ## Binary-Unary Composition Construction -/
 
 /-- The base register for safe storage in binary-unary composition.
@@ -908,25 +923,12 @@ theorem comp_binary_unary_halts_imp_f_dom
   have hagreeF : ∀ r, r ≤ pF.maxRegister →
       sTsetup.read r = (State.fromInputs (List.ofFn fInput)).read r := by
     intro r hr
-    -- First, characterize sTsetup using Tsetup's semantics
+    -- Characterize sTsetup using Tsetup's semantics via double_transfer_halts
     have hTsetup_exec : ∃ c, Steps Tsetup ⟨0, sClear'⟩ c ∧ c.isHalted Tsetup ∧ c.pc = 2 ∧
         c.state = (sClear'.write 0 (sClear'.read (m + 2))).write 1 (sClear'.read (m + 3)) := by
-      have h1 := single_transfer_step (m + 2) 0 sClear'
-      let s1 := sClear'.write 0 (sClear'.read (m + 2))
-      have h2' : Step Tsetup ⟨1, s1⟩ ⟨2, s1.write 1 (s1.read (m + 3))⟩ := by
-        apply Step.trans
-        simp [Program.getInstr, Tsetup]
-      have hsteps : Steps Tsetup ⟨0, sClear'⟩ ⟨2, s1.write 1 (s1.read (m + 3))⟩ := by
-        have h1' : Step Tsetup ⟨0, sClear'⟩ ⟨1, s1⟩ := by
-          apply Step.trans
-          simp [Program.getInstr, Tsetup]
-        exact Relation.ReflTransGen.head h1' (Relation.ReflTransGen.single h2')
-      have hhalted : (⟨2, s1.write 1 (s1.read (m + 3))⟩ : Config).isHalted Tsetup := by
-        simp [Config.isHalted, Tsetup]
-      have hs1_read : s1.read (m + 3) = sClear'.read (m + 3) := by
-        simp only [s1, State.write_read_diff _ _ _ _ (by omega : m + 3 ≠ 0)]
-      refine ⟨⟨2, s1.write 1 (s1.read (m + 3))⟩, hsteps, hhalted, rfl, ?_⟩
-      rw [hs1_read]
+      obtain ⟨c, hsteps, hhalted, hpc, hstate⟩ := double_transfer_halts (m + 2) 0 (m + 3) 1 sClear'
+      refine ⟨c, hsteps, hhalted, hpc, ?_⟩
+      simp only [hstate, State.write_read_diff _ _ _ _ (by omega : m + 3 ≠ 0)]
     obtain ⟨cTsetup', hTsetup_steps', hTsetup_halted', _, hTsetup_state'⟩ := hTsetup_exec
 
     have hsTsetup_halted : (⟨Tsetup.length, sTsetup⟩ : Config).isHalted Tsetup := Nat.le_refl _
@@ -1471,59 +1473,19 @@ theorem comp_binary_unary_dom_imp_halts
 
     -- Step 2: Tsetup halts from cClear.state and sets R[0] = v1, R[1] = v2
     -- Tsetup = [T (m+2) 0, T (m+3) 1]
-    -- We'll chain two single transfers
-
-    -- First transfer: T (m+2) 0
-    have hT1_halts := single_transfer_halts (m + 2) 0 cClear.state
-    obtain ⟨cT1, hT1_steps, hT1_halted, hT1_pc, hT1_state⟩ := hT1_halts
-
-    -- Second transfer: T (m+3) 1
-    have hT2_halts := single_transfer_halts (m + 3) 1 cT1.state
-    obtain ⟨cT2, hT2_steps, hT2_halted, hT2_pc, hT2_state⟩ := hT2_halts
-
-    -- Chain them to get Tsetup execution
-    -- Tsetup = [T (m+2) 0, T (m+3) 1]
-    -- We execute the two instructions directly
-    have hTsetup_steps : Steps Tsetup ⟨0, cClear.state⟩ ⟨2, cT2.state⟩ := by
-      -- First step: T (m+2) 0
-      have hstep1 : Step Tsetup ⟨0, cClear.state⟩ ⟨1, cClear.state.write 0 (cClear.state.read (m + 2))⟩ := by
-        apply Step.trans
-        simp only [Program.getInstr, Tsetup, List.getElem?_cons_zero]
-      -- Second step: T (m+3) 1 (from cT1.state)
-      have hstep2 : Step Tsetup ⟨1, cT1.state⟩ ⟨2, cT1.state.write 1 (cT1.state.read (m + 3))⟩ := by
-        apply Step.trans
-        simp only [Program.getInstr, Tsetup, List.getElem?_cons_succ, List.getElem?_cons_zero]
-      -- The final state matches cT2.state
-      have hstate2_match : cT1.state.write 1 (cT1.state.read (m + 3)) = cT2.state := hT2_state.symm
-      rw [hstate2_match] at hstep2
-      -- hstep1 goes to cT1.state by hT1_state
-      have hstate1_match : cClear.state.write 0 (cClear.state.read (m + 2)) = cT1.state := hT1_state.symm
-      rw [hstate1_match] at hstep1
-      exact Relation.ReflTransGen.head hstep1 (Relation.ReflTransGen.single hstep2)
-    have hTsetup_halted : (⟨2, cT2.state⟩ : Config).isHalted Tsetup := by
-      simp only [Config.isHalted, Tsetup, List.length_cons, List.length_nil]
-      omega
-    have hTsetup_pc : (⟨2, cT2.state⟩ : Config).pc = Tsetup.length := by
-      simp only [Tsetup, List.length_cons, List.length_nil]
-
-    -- Use the final config as cTsetup
-    let cTsetup := (⟨2, cT2.state⟩ : Config)
+    obtain ⟨cTsetup, hTsetup_steps, hTsetup_halted, hTsetup_pc, hTsetup_state⟩ :=
+      double_transfer_halts (m + 2) 0 (m + 3) 1 cClear.state
+    -- Simplify the state formula (m+3 ≠ 0)
+    have hTsetup_state' : cTsetup.state =
+        (cClear.state.write 0 (cClear.state.read (m + 2))).write 1 (cClear.state.read (m + 3)) := by
+      simp only [hTsetup_state, State.write_read_diff _ _ _ _ (by omega : m + 3 ≠ 0)]
 
     -- After Tsetup: R[0] = v1, R[1] = v2
     have hTsetup_r0 : cTsetup.state.read 0 = v1 := by
-      -- cTsetup.state = cT2.state = cT1.state.write 1 (cT1.state.read (m+3))
-      -- cT1.state = cClear.state.write 0 (cClear.state.read (m+2))
-      -- cT2.state.read 0 = cT1.state.read 0 (since T2 only writes to 1)
-      -- cT1.state.read 0 = cClear.state.read (m+2) = v1
-      show cT2.state.read 0 = v1
-      rw [hT2_state, State.write_read_diff _ _ _ _ (by omega : 0 ≠ 1)]
-      rw [hT1_state, State.write_read_same, hClear_preserves_v1]
+      rw [hTsetup_state', State.write_read_diff _ _ _ _ (by omega : 0 ≠ 1),
+          State.write_read_same, hClear_preserves_v1]
     have hTsetup_r1 : cTsetup.state.read 1 = v2 := by
-      show cT2.state.read 1 = v2
-      rw [hT2_state, State.write_read_same]
-      -- cT1.state.read (m+3) = cClear.state.read (m+3) (since T1 only writes to 0)
-      rw [hT1_state, State.write_read_diff _ _ _ _ (by omega : m + 3 ≠ 0)]
-      exact hClear_preserves_v2
+      rw [hTsetup_state', State.write_read_same, hClear_preserves_v2]
 
     -- Step 3: pF halts from cTsetup.state because it agrees with fInput
     have hm_ge_F : pF.maxRegister ≤ m := compositionBaseBU_ge_F pF pG1 pG2
@@ -1543,11 +1505,8 @@ theorem comp_binary_unary_dom_imp_halts
         · -- r > 1: cTsetup.state.read r = 0 (from clearProg)
           --        fromInputs.read r = 0 (only 2 inputs)
           have hTsetup_preserves_r : cTsetup.state.read r = cClear.state.read r := by
-            -- cTsetup.state = cT2.state = cT1.state.write 1 (cT1.state.read (m+3))
-            -- cT1.state = cClear.state.write 0 (cClear.state.read (m+2))
-            show cT2.state.read r = cClear.state.read r
-            rw [hT2_state, State.write_read_diff _ _ _ _ (by omega : r ≠ 1)]
-            rw [hT1_state, State.write_read_diff _ _ _ _ (by omega : r ≠ 0)]
+            rw [hTsetup_state', State.write_read_diff _ _ _ _ (by omega : r ≠ 1),
+                State.write_read_diff _ _ _ _ (by omega : r ≠ 0)]
           have hClear_zeros_r : cClear.state.read r = 0 := by
             rw [hClear_state_eq]
             exact clearRegisters_zeros m s r (by omega : r ≤ m)
@@ -1572,7 +1531,7 @@ theorem comp_binary_unary_dom_imp_halts
       have hTsetup_prefix := Steps.concat_left_prefix (p2 := pF) hTsetup_steps hTsetup_halted
       have hF_steps' := Steps.concat_right (p1 := Tsetup) hF_steps hF_halted
       have hstart_eq : (⟨0 + Tsetup.length, cTsetup.state⟩ : Config) = ⟨cTsetup.pc, cTsetup.state⟩ := by
-        simp only [Nat.zero_add, cTsetup, Tsetup, List.length_cons, List.length_nil]
+        simp only [Nat.zero_add, Tsetup, List.length_cons, List.length_nil, hTsetup_pc]
       rw [hstart_eq] at hF_steps'
       exact Relation.ReflTransGen.trans hTsetup_prefix hF_steps'
     have hTsetupF_halted : (⟨cF.pc + Tsetup.length, cF.state⟩ : Config).isHalted (Tsetup.concat pF) := by
@@ -2222,50 +2181,17 @@ theorem comp_binary_unary_result
         intro s
         exact single_transfer_halts 0 (m + 3) s
 
-      -- Tsetup: two transfers [T (m+2) 0, T (m+3) 1]
-      -- First transfer: R[0] := R[m+2]
-      -- Second transfer: R[1] := R[m+3]
+      -- Tsetup execution using double_transfer_halts
       have hTsetup_exec : ∀ s : State,
           ∃ c, Steps Tsetup ⟨0, s⟩ c ∧ c.isHalted Tsetup ∧ c.pc = 2 ∧
                c.state = (s.write 0 (s.read (m + 2))).write 1 (s.read (m + 3)) := by
         intro s
-        -- First transfer
-        have h1 := single_transfer_step (m + 2) 0 s
-        let s1 := s.write 0 (s.read (m + 2))
-        -- Second transfer
-        have h2 := single_transfer_step (m + 3) 1 s1
-        -- The second step needs adjustment for Tsetup context
-        have h2' : Step Tsetup ⟨1, s1⟩ ⟨2, s1.write 1 (s1.read (m + 3))⟩ := by
-          apply Step.trans
-          simp [Program.getInstr, Tsetup]
-        -- Combine steps
-        have hsteps : Steps Tsetup ⟨0, s⟩ ⟨2, s1.write 1 (s1.read (m + 3))⟩ := by
-          have h1' : Step Tsetup ⟨0, s⟩ ⟨1, s1⟩ := by
-            apply Step.trans
-            simp [Program.getInstr, Tsetup]
-          exact Relation.ReflTransGen.head h1' (Relation.ReflTransGen.single h2')
-        have hhalted : (⟨2, s1.write 1 (s1.read (m + 3))⟩ : Config).isHalted Tsetup := by
-          simp [Config.isHalted, Tsetup]
-        -- Simplify s1.read (m + 3) = s.read (m + 3) since we only wrote to position 0
-        have hs1_read : s1.read (m + 3) = s.read (m + 3) := by
-          simp only [s1, State.write_read_diff _ _ _ _ (by omega : m + 3 ≠ 0)]
-        refine ⟨⟨2, s1.write 1 (s1.read (m + 3))⟩, hsteps, hhalted, rfl, ?_⟩
-        rw [hs1_read]
+        obtain ⟨c, hsteps, hhalted, hpc, hstate⟩ := double_transfer_halts (m + 2) 0 (m + 3) 1 s
+        refine ⟨c, hsteps, hhalted, hpc, ?_⟩
+        simp only [hstate, State.write_read_diff _ _ _ _ (by omega : m + 3 ≠ 0)]
 
-      -- === CLEAR PROGRAM EXECUTIONS ===
-      -- clearProg halts from any state
-      have hClear_exec : ∀ s : State,
-          ∃ c, Steps clearProg ⟨0, s⟩ c ∧ c.isHalted clearProg ∧
-               c.pc = clearProg.length ∧
-               (∀ r, r ≤ m → c.state.read r = 0) ∧
-               (∀ r, m < r → c.state.read r = s.read r) := by
-        intro s
-        have hClear_halts := straightLine_halts_from_state hClear_sl s
-        obtain ⟨c, hsteps, hhalted, hpc⟩ := hClear_halts
-        have hstate_eq := straightLineFinalState_eq_of_halted hClear_sl s c hsteps hhalted
-        refine ⟨c, hsteps, hhalted, hpc, ?_, ?_⟩
-        · intro r hr; rw [hstate_eq]; exact clearRegisters_zeros m s r hr
-        · intro r hr; rw [hstate_eq]; exact clearRegisters_preserves_above m s r hr
+      -- clearProg execution helper
+      let hClear_exec := fun s => clearRegisters_exec m s
 
       -- === REMAINING TRACE CONSTRUCTION ===
       -- Build the full trace: T01 → G1 → T02 → clearProg → T10 → G2 → T03 → clearProg → Tsetup
