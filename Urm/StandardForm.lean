@@ -425,11 +425,7 @@ theorem Steps.simulate_toStandardForm_halts {p : Program} {c c' : Config}
       have hcfg_eq : c_mid = c₂_mid := by ext <;> [exact hpc_mid; simp only [hstate_mid]]
       subst hcfg_eq
       obtain ⟨c₂', hsteps₂', hhalted₂', hstate_eq⟩ := ih
-      use c₂'
-      constructor
-      · -- Combine: c → c₂_mid → ... → c₂'
-        exact Steps.trans hsteps₂_mid hsteps₂'
-      · exact ⟨hhalted₂', hstate_eq⟩
+      exact ⟨c₂', Steps.trans hsteps₂_mid hsteps₂', hhalted₂', hstate_eq⟩
     · -- c_mid is already halted in original, c₂_mid halted in standard form
       -- Since c_mid is halted and hrest goes from c_mid to c' (also halted),
       -- by determinism, c_mid = c'. So c'.state = c_mid.state = c₂_mid.state
@@ -563,10 +559,7 @@ theorem Steps.simulate_from_toStandardForm_halts {p : Program} {c c' : Config}
       have hcfg_eq : c₂_mid = c_mid := by ext <;> [exact hpc_mid; simp only [hstate_mid]]
       subst hcfg_eq
       obtain ⟨c₂', hsteps₂', hhalted₂', hstate_eq⟩ := ih
-      use c₂'
-      constructor
-      · exact Steps.trans hsteps₂_mid hsteps₂'
-      · exact ⟨hhalted₂', hstate_eq⟩
+      exact ⟨c₂', Steps.trans hsteps₂_mid hsteps₂', hhalted₂', hstate_eq⟩
     · -- c₂_mid is halted in original, c_mid halted in standard form
       rename_i c_mid
       have hc_mid_eq_c' : c_mid = c' := Steps.halts_unique (Steps.refl _) hhalted_mid hrest hhalted

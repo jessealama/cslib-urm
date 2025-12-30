@@ -213,23 +213,14 @@ variable {p : Program}
 /-- StepsN 0 is identity. -/
 theorem zero_iff {c c' : Config} : StepsN p 0 c c' ↔ c = c' := by
   constructor
-  · intro h
-    cases h
-    rfl
-  · intro h
-    subst h
-    exact zero c
+  · intro h; cases h; rfl
+  · intro h; subst h; exact zero c
 
 /-- StepsN 1 is a single step. -/
 theorem one_iff {c c' : Config} : StepsN p 1 c c' ↔ Step p c c' := by
   constructor
-  · intro h
-    cases h with
-    | succ hstep hrest =>
-      cases hrest
-      exact hstep
-  · intro h
-    exact succ h (zero c')
+  · intro h; cases h with | succ hstep hrest => cases hrest; exact hstep
+  · intro h; exact succ h (zero c')
 
 /-- StepsN implies Steps. -/
 theorem toSteps {n : ℕ} {c c' : Config} (h : StepsN p n c c') : Steps p c c' := by
