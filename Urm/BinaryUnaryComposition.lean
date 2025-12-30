@@ -531,7 +531,7 @@ This is the most complex part of the halts→dom direction because we must track
 theorem comp_binary_unary_halts_imp_f_dom
     {f : (Fin 2 → ℕ) → Part ℕ} {g1 g2 : (Fin 1 → ℕ) → Part ℕ}
     {pF pG1 pG2 : Program}
-    (hF_sf : pF.IsStandardForm) (hG1_sf : pG1.IsStandardForm) (hG2_sf : pG2.IsStandardForm)
+    (hG1_sf : pG1.IsStandardForm) (hG2_sf : pG2.IsStandardForm)
     (hF_spec : ∀ inputs : Fin 2 → ℕ,
       (Halts pF (List.ofFn inputs) ↔ (f inputs).Dom) ∧
       ∀ (hH : Halts pF (List.ofFn inputs)) (hD : (f inputs).Dom),
@@ -702,7 +702,7 @@ Takes programs and their specs as explicit parameters. -/
 theorem comp_binary_unary_halts_imp_dom
     {f : (Fin 2 → ℕ) → Part ℕ} {g1 g2 : (Fin 1 → ℕ) → Part ℕ}
     {pF pG1 pG2 : Program}
-    (hF_sf : pF.IsStandardForm) (hG1_sf : pG1.IsStandardForm) (hG2_sf : pG2.IsStandardForm)
+    (hG1_sf : pG1.IsStandardForm) (hG2_sf : pG2.IsStandardForm)
     (hF_spec : ∀ inputs : Fin 2 → ℕ,
       (Halts pF (List.ofFn inputs) ↔ (f inputs).Dom) ∧
       ∀ (hH : Halts pF (List.ofFn inputs)) (hD : (f inputs).Dom),
@@ -751,7 +751,7 @@ theorem comp_binary_unary_halts_imp_dom
       (f fun i => match i with
         | ⟨0, _⟩ => (g1 inputs).get h1
         | ⟨1, _⟩ => (g2 inputs).get h2).Dom :=
-    fun h1 h2 => comp_binary_unary_halts_imp_f_dom hF_sf hG1_sf hG2_sf hF_spec hG1_spec hG2_spec inputs hHalts h1 h2
+    fun h1 h2 => comp_binary_unary_halts_imp_f_dom hG1_sf hG2_sf hF_spec hG1_spec hG2_spec inputs hHalts h1 h2
 
   exact ⟨hg1_dom, hg2_dom, hf_dom⟩
 
@@ -1432,7 +1432,7 @@ theorem URMComputableSF.comp_binary_unary
       constructor
       · -- Forward: H halts → composed function is defined
         intro hHalts
-        exact comp_binary_unary_halts_imp_dom hF_sf hG1_sf hG2_sf hF_spec hG1_spec hG2_spec inputs hHalts
+        exact comp_binary_unary_halts_imp_dom hG1_sf hG2_sf hF_spec hG1_spec hG2_spec inputs hHalts
       · -- Backward: composed function is defined → H halts
         intro hDom
         exact comp_binary_unary_dom_imp_halts hF_sf hG1_sf hG2_sf hF_spec hG1_spec hG2_spec inputs hDom
