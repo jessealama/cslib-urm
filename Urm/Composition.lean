@@ -45,7 +45,57 @@ namespace Program
 def clearRegisters (maxReg : ℕ) : Program :=
   (List.range (maxReg + 1)).map Instr.Z
 
+/-- Copy `count` consecutive registers from srcStart to dstStart.
+    copyRegisterRange 3 10 4 produces [T 3 10, T 4 11, T 5 12, T 6 13] -/
+def copyRegisterRange (srcStart dstStart count : ℕ) : Program :=
+  (List.range count).map fun i => Instr.T (srcStart + i) (dstStart + i)
+
+/-- Transfer saved results to input registers for running F.
+    transferResultsToInputs 10 3 produces [T 10 0, T 11 1, T 12 2] -/
+def transferResultsToInputs (resultStart arityF : ℕ) : Program :=
+  (List.range arityF).map fun i => Instr.T (resultStart + i) i
+
 end Program
+
+/-! ## copyRegisterRange Properties -/
+
+theorem copyRegisterRange_length (srcStart dstStart count : ℕ) :
+    (Program.copyRegisterRange srcStart dstStart count).length = count := by
+  simp [Program.copyRegisterRange]
+
+theorem copyRegisterRange_zero (srcStart dstStart : ℕ) :
+    Program.copyRegisterRange srcStart dstStart 0 = [] := by
+  simp [Program.copyRegisterRange]
+
+theorem copyRegisterRange_isStraightLine (srcStart dstStart count : ℕ) :
+    (Program.copyRegisterRange srcStart dstStart count).isStraightLine = true := by
+  simp only [Program.copyRegisterRange, Program.isStraightLine, List.all_map, List.all_eq_true]
+  intro i _
+  simp [Instr.isNonJumping]
+
+theorem copyRegisterRange_isStandardForm (srcStart dstStart count : ℕ) :
+    (Program.copyRegisterRange srcStart dstStart count).IsStandardForm :=
+  straightLine_isStandardForm (copyRegisterRange_isStraightLine srcStart dstStart count)
+
+/-! ## transferResultsToInputs Properties -/
+
+theorem transferResultsToInputs_length (resultStart arityF : ℕ) :
+    (Program.transferResultsToInputs resultStart arityF).length = arityF := by
+  simp [Program.transferResultsToInputs]
+
+theorem transferResultsToInputs_zero (resultStart : ℕ) :
+    Program.transferResultsToInputs resultStart 0 = [] := by
+  simp [Program.transferResultsToInputs]
+
+theorem transferResultsToInputs_isStraightLine (resultStart arityF : ℕ) :
+    (Program.transferResultsToInputs resultStart arityF).isStraightLine = true := by
+  simp only [Program.transferResultsToInputs, Program.isStraightLine, List.all_map, List.all_eq_true]
+  intro i _
+  simp [Instr.isNonJumping]
+
+theorem transferResultsToInputs_isStandardForm (resultStart arityF : ℕ) :
+    (Program.transferResultsToInputs resultStart arityF).IsStandardForm :=
+  straightLine_isStandardForm (transferResultsToInputs_isStraightLine resultStart arityF)
 
 /-! ## Register Isolation Lemmas -/
 
@@ -475,6 +525,24 @@ theorem straightLineFinalState_spec {p : Program} (hsl : p.isStraightLine = true
     let c := Classical.choose (straightLine_halts_from_state hsl s)
     Steps p ⟨0, s⟩ c ∧ c.isHalted p ∧ c.pc = p.length :=
   Classical.choose_spec (straightLine_halts_from_state hsl s)
+
+/-! ## Halts lemmas for copyRegisterRange and transferResultsToInputs -/
+
+theorem copyRegisterRange_halts (srcStart dstStart count : ℕ) (s : State) :
+    ∃ c, Steps (Program.copyRegisterRange srcStart dstStart count) ⟨0, s⟩ c ∧
+         c.isHalted (Program.copyRegisterRange srcStart dstStart count) ∧
+         c.pc = count := by
+  have hsl := copyRegisterRange_isStraightLine srcStart dstStart count
+  obtain ⟨c, hsteps, hhalted, hpc⟩ := straightLine_halts_from_state hsl s
+  exact ⟨c, hsteps, hhalted, by rw [hpc, copyRegisterRange_length]⟩
+
+theorem transferResultsToInputs_halts (resultStart arityF : ℕ) (s : State) :
+    ∃ c, Steps (Program.transferResultsToInputs resultStart arityF) ⟨0, s⟩ c ∧
+         c.isHalted (Program.transferResultsToInputs resultStart arityF) ∧
+         c.pc = arityF := by
+  have hsl := transferResultsToInputs_isStraightLine resultStart arityF
+  obtain ⟨c, hsteps, hhalted, hpc⟩ := straightLine_halts_from_state hsl s
+  exact ⟨c, hsteps, hhalted, by rw [hpc, transferResultsToInputs_length]⟩
 
 /-- In a straight-line program, we can characterize the state at any intermediate pc.
 This gives us the configuration after executing instructions 0..pc-1. -/
