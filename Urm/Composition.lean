@@ -544,6 +544,46 @@ theorem transferResultsToInputs_halts (resultStart arityF : ℕ) (s : State) :
   obtain ⟨c, hsteps, hhalted, hpc⟩ := straightLine_halts_from_state hsl s
   exact ⟨c, hsteps, hhalted, by rw [hpc, transferResultsToInputs_length]⟩
 
+/-! ## Register Write Tracking for copyRegisterRange and transferResultsToInputs -/
+
+/-- Each instruction in copyRegisterRange writes to a register in [dstStart, dstStart + count). -/
+theorem copyRegisterRange_writesTo (srcStart dstStart count : ℕ)
+    (instr : Instr) (hinstr : instr ∈ Program.copyRegisterRange srcStart dstStart count) :
+    ∃ i < count, instr.writesTo = some (dstStart + i) := by
+  simp only [Program.copyRegisterRange, List.mem_map, List.mem_range] at hinstr
+  obtain ⟨i, hi, hinstr_eq⟩ := hinstr
+  use i, hi
+  simp [← hinstr_eq, Instr.writesTo]
+
+/-- copyRegisterRange only writes to registers in [dstStart, dstStart + count). -/
+theorem copyRegisterRange_preserves_outside (srcStart dstStart count : ℕ)
+    (r : ℕ) (hr : r < dstStart ∨ r ≥ dstStart + count) :
+    ∀ instr, instr ∈ Program.copyRegisterRange srcStart dstStart count → instr.writesTo ≠ some r := by
+  intro instr hinstr
+  obtain ⟨i, hi, hwrites⟩ := copyRegisterRange_writesTo srcStart dstStart count instr hinstr
+  rw [hwrites]
+  simp only [ne_eq, Option.some.injEq]
+  omega
+
+/-- Each instruction in transferResultsToInputs writes to a register in [0, arityF). -/
+theorem transferResultsToInputs_writesTo (resultStart arityF : ℕ)
+    (instr : Instr) (hinstr : instr ∈ Program.transferResultsToInputs resultStart arityF) :
+    ∃ i < arityF, instr.writesTo = some i := by
+  simp only [Program.transferResultsToInputs, List.mem_map, List.mem_range] at hinstr
+  obtain ⟨i, hi, hinstr_eq⟩ := hinstr
+  use i, hi
+  simp [← hinstr_eq, Instr.writesTo]
+
+/-- transferResultsToInputs only writes to registers in [0, arityF). -/
+theorem transferResultsToInputs_preserves_outside (resultStart arityF : ℕ)
+    (r : ℕ) (hr : r ≥ arityF) :
+    ∀ instr, instr ∈ Program.transferResultsToInputs resultStart arityF → instr.writesTo ≠ some r := by
+  intro instr hinstr
+  obtain ⟨i, hi, hwrites⟩ := transferResultsToInputs_writesTo resultStart arityF instr hinstr
+  rw [hwrites]
+  simp only [ne_eq, Option.some.injEq]
+  omega
+
 /-- In a straight-line program, we can characterize the state at any intermediate pc.
 This gives us the configuration after executing instructions 0..pc-1. -/
 theorem straightLine_state_at_pc {p : Program} (hsl : p.isStraightLine = true)
@@ -631,6 +671,79 @@ theorem Steps.straightLine_preserves {p : Program} {c c' : Config} {r : ℕ}
     apply hr
     simp only [Program.getInstr] at hinstr
     exact List.mem_of_getElem? hinstr
+
+/-- After executing instruction k (which is T src dst) in a straight-line program,
+register dst contains the value that was in src at that point. -/
+theorem straightLine_transfer_after_exec {p : Program} (hsl : p.isStraightLine = true)
+    (s : State) (k src dst : ℕ) (hk : k < p.length) (hwrite : p[k] = Instr.T src dst)
+    (c_k : Config) (hsteps_k : Steps p ⟨0, s⟩ c_k) (hpc_k : c_k.pc = k) :
+    ∃ c, Steps p ⟨0, s⟩ c ∧ c.pc = k + 1 ∧ c.state.read dst = c_k.state.read src := by
+  have hinstr : p.getInstr k = some (Instr.T src dst) := by
+    simp only [Program.getInstr, List.getElem?_eq_getElem hk, hwrite]
+  have hinstr' : p.getInstr c_k.pc = some (Instr.T src dst) := by rw [hpc_k]; exact hinstr
+  let c_next : Config := ⟨c_k.pc + 1, c_k.state.write dst (c_k.state.read src)⟩
+  have hstep : Step p c_k c_next := Step.trans hinstr'
+  have hpc_next : c_next.pc = k + 1 := by simp only [c_next, hpc_k]
+  refine ⟨c_next, Relation.ReflTransGen.tail hsteps_k hstep, hpc_next, ?_⟩
+  simp only [c_next, State.write_read_same]
+
+/-- In a straight-line program with T instructions, track what gets written to a register.
+When instruction at index k is T src dst, and no later instruction writes to dst,
+the final state has dst = (state before k).read src. -/
+theorem straightLine_transfer_result {p : Program} (hsl : p.isStraightLine = true)
+    (s : State) (k src dst : ℕ) (hk : k < p.length)
+    (hwrite : p[k] = Instr.T src dst)
+    (hnowrite : ∀ j (hj : j < p.length), k < j → (p[j]'hj).writesTo ≠ some dst) :
+    ∃ s_before : State,
+      (∃ c, Steps p ⟨0, s⟩ c ∧ c.pc = k ∧ c.state = s_before) ∧
+      (straightLineFinalState hsl s).read dst = s_before.read src := by
+  obtain ⟨c_k, hsteps_k, hpc_k⟩ := straightLine_state_at_pc hsl s k (Nat.le_of_lt hk)
+  use c_k.state
+  constructor
+  · exact ⟨c_k, hsteps_k, hpc_k, rfl⟩
+  · have ⟨hsteps_final, hhalted, _⟩ := straightLineFinalState_spec hsl s
+    obtain ⟨c_after_k, hsteps_to_after_k, hpc_after_k, hval⟩ :=
+      straightLine_transfer_after_exec hsl s k src dst hk hwrite c_k hsteps_k hpc_k
+    let final := Classical.choose (straightLine_halts_from_state hsl s)
+    have hsteps_suffix : Steps p c_after_k final :=
+      Steps.deterministic_continuation hsteps_to_after_k hsteps_final hhalted
+    show (Classical.choose (straightLine_halts_from_state hsl s)).state.read dst = c_k.state.read src
+    -- Show that the suffix execution preserves dst
+    suffices h : ∀ (a b : Config), a.pc > k → Steps p a b → b.isHalted p →
+        b.state.read dst = a.state.read dst by
+      have hpc_gt : c_after_k.pc > k := by omega
+      rw [h c_after_k final hpc_gt hsteps_suffix hhalted, hval]
+    intro a b hpc_gt hsteps hhalted_b
+    induction hsteps using Relation.ReflTransGen.head_induction_on with
+    | refl => rfl
+    | @head a' c' hstep hrest ih =>
+      have hc'_pc_gt : c'.pc > k := by
+        cases hstep with
+        | zero h => simp only []; omega
+        | succ h => simp only []; omega
+        | trans h => simp only []; omega
+        | jump_eq h heq' =>
+          exfalso
+          simp only [Program.isStraightLine, List.all_eq_true] at hsl
+          have ha'_pc_lt : a'.pc < p.length := by
+            by_contra hc; simp only [not_lt] at hc
+            exact Step.halted_no_step hc (Step.jump_eq h heq')
+          simp only [Program.getInstr] at h
+          have hmem := List.getElem?_eq_some_iff.mp h
+          have hinstr_sl := hsl _ (hmem.2 ▸ List.getElem_mem ha'_pc_lt)
+          simp only [Instr.isNonJumping] at hinstr_sl
+          exact Bool.false_ne_true hinstr_sl
+        | jump_ne h _ => simp only []; omega
+      rw [ih hc'_pc_gt]
+      apply Step.straightLine_preserves hsl hstep
+      intro instr hinstr
+      have ha'_pc_lt : a'.pc < p.length := by
+        by_contra hc; simp only [not_lt] at hc
+        exact Step.halted_no_step hc hstep
+      simp only [Program.getInstr] at hinstr
+      have heq' : p[a'.pc] = instr := (List.getElem?_eq_some_iff.mp hinstr).2
+      rw [← heq']
+      exact hnowrite a'.pc ha'_pc_lt hpc_gt
 
 /-! ## Continuation Lemmas for Sequential Execution -/
 
