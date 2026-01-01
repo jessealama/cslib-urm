@@ -4,7 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jesse Alama
 -/
 
-import Urm.Composition
+import Urm.Composition.Core
 import Urm.Shift
 
 /-! # Unary-Unary Composition

@@ -4,7 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jesse Alama
 -/
 
-import Urm.CompositionHelpers
+import Urm.Composition.Helpers
 
 /-! # Binary-Unary Composition
 
@@ -32,24 +32,6 @@ The proof follows the user's sketch based on Cutland's approach:
 -/
 
 namespace Urm
-
-/-! ## Single Transfer Instruction Execution -/
-
-/-- A single Transfer instruction takes exactly one step and halts. -/
-theorem single_transfer_step (src dst : ℕ) (s : State) :
-    Step [Instr.T src dst] ⟨0, s⟩ ⟨1, s.write dst (s.read src)⟩ := by
-  apply Step.trans
-  simp [Program.getInstr]
-
-/-- A single Transfer instruction halts at pc = 1 with the copied value. -/
-theorem single_transfer_halts (src dst : ℕ) (s : State) :
-    ∃ c', Steps [Instr.T src dst] ⟨0, s⟩ c' ∧
-          c'.isHalted [Instr.T src dst] ∧
-          c'.pc = 1 ∧
-          c'.state = s.write dst (s.read src) := by
-  refine ⟨⟨1, s.write dst (s.read src)⟩, ?_, ?_, rfl, rfl⟩
-  · exact Relation.ReflTransGen.single (single_transfer_step src dst s)
-  · simp [Config.isHalted]
 
 /-! ## clearRegisters Effect on State -/
 
@@ -114,30 +96,6 @@ theorem clearRegisters_preserves_above (maxReg : ℕ) (s : State) (r : ℕ) (hr 
   subst hinstr_eq
   simp only [Instr.writesTo, ne_eq, Option.some.injEq]
   omega
-
-/-- For a straight-line program, if c is the halted configuration from state s,
-then c.state equals straightLineFinalState. This is a common pattern for
-proving state equality after straight-line execution. -/
-theorem straightLineFinalState_eq_of_halted {p : Program} (hsl : p.isStraightLine = true) (s : State)
-    (c : Config) (hsteps : Steps p ⟨0, s⟩ c) (hhalted : c.isHalted p) :
-    c.state = straightLineFinalState hsl s := by
-  have hspec := straightLineFinalState_spec hsl s
-  exact Steps.halts_unique hsteps hhalted hspec.1 hspec.2.1 ▸ rfl
-
-/-- Execution result for clearRegisters: halts, zeros registers 0..maxReg, preserves above. -/
-theorem clearRegisters_exec (maxReg : ℕ) (s : State) :
-    ∃ c, Steps (Program.clearRegisters maxReg) ⟨0, s⟩ c ∧
-         c.isHalted (Program.clearRegisters maxReg) ∧
-         c.pc = (Program.clearRegisters maxReg).length ∧
-         (∀ r, r ≤ maxReg → c.state.read r = 0) ∧
-         (∀ r, maxReg < r → c.state.read r = s.read r) := by
-  have hsl := clearRegisters_isStraightLine maxReg
-  have hhalts := straightLine_halts_from_state hsl s
-  obtain ⟨c, hsteps, hhalted, hpc⟩ := hhalts
-  have hstate_eq := straightLineFinalState_eq_of_halted hsl s c hsteps hhalted
-  refine ⟨c, hsteps, hhalted, hpc, ?_, ?_⟩
-  · intro r hr; rw [hstate_eq]; exact clearRegisters_zeros maxReg s r hr
-  · intro r hr; rw [hstate_eq]; exact clearRegisters_preserves_above maxReg s r hr
 
 /-! ## Binary-Unary Composition Construction -/
 
