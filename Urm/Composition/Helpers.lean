@@ -97,16 +97,6 @@ theorem Steps.chain_concat {p1 p2 : Program} {s : State} {c1 c2 : Config}
     simp only [Config.isHalted, Program.concat_length] at h2_halted ⊢
     omega
 
-/-- Variant of chain_concat that returns existence of the final config. -/
-theorem Steps.chain_concat_halts {p1 p2 : Program} {s : State} {c1 : Config}
-    (h1_steps : Steps p1 ⟨0, s⟩ c1) (h1_halted : c1.isHalted p1)
-    (h1_pc : c1.pc = p1.length)
-    (h2_halts : ∃ c2, Steps p2 ⟨0, c1.state⟩ c2 ∧ c2.isHalted p2) :
-    ∃ c, Steps (p1.concat p2) ⟨0, s⟩ c ∧ c.isHalted (p1.concat p2) := by
-  obtain ⟨c2, h2_steps, h2_halted⟩ := h2_halts
-  exact ⟨⟨c2.pc + p1.length, c2.state⟩, (Steps.chain_concat h1_steps h1_halted h1_pc h2_steps h2_halted).1,
-         (Steps.chain_concat h1_steps h1_halted h1_pc h2_steps h2_halted).2⟩
-
 /-- Chain from HaltingExecution: given p1's execution and p2 halts from final state. -/
 theorem HaltingExecution.chain {p1 p2 : Program} {inputs : List ℕ}
     (e1 : HaltingExecution p1 inputs) (hsf1 : p1.IsStandardForm)
@@ -185,47 +175,6 @@ theorem AgreeingExecution.preserves_high_register {p : Program} {inputs : List �
 
 These lemmas handle the common pattern of proving state agreement after
 clear and transfer operations. -/
-
-/-- After clearing registers and a single transfer setting R[0], agreement holds
-for programs with maxRegister ≤ m. -/
-theorem agrees_single_input_after_clear_transfer {m : ℕ} {p : Program} {s : State} {x : ℕ}
-    (hp : p.maxRegister ≤ m)
-    (hs0 : s.read 0 = x)
-    (hs_zeros : ∀ r, 1 ≤ r → r ≤ m → s.read r = 0) :
-    s.agreeOn (State.fromInputs [x]) 0 p.maxRegister := by
-  intro r _ hhi
-  by_cases hr0 : r = 0
-  · rw [hr0, hs0]
-    simp only [State.fromInputs, State.read, List.getD_cons_zero]
-  · have hr_pos : 1 ≤ r := Nat.one_le_iff_ne_zero.mpr hr0
-    have hr_le_m : r ≤ m := Nat.le_trans hhi hp
-    rw [hs_zeros r hr_pos hr_le_m]
-    simp only [State.fromInputs, State.read]
-    have hr_ge : r ≥ [x].length := by simp; omega
-    rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none hr_ge, Option.getD_none]
-
-/-- After clearing registers and two transfers setting R[0] and R[1], agreement holds
-for programs with maxRegister ≤ m. -/
-theorem agrees_two_inputs_after_clear_transfer {m : ℕ} {p : Program} {s : State} {v1 v2 : ℕ}
-    (hp : p.maxRegister ≤ m)
-    (hs0 : s.read 0 = v1)
-    (hs1 : s.read 1 = v2)
-    (hs_zeros : ∀ r, 2 ≤ r → r ≤ m → s.read r = 0) :
-    s.agreeOn (State.fromInputs [v1, v2]) 0 p.maxRegister := by
-  intro r _ hhi
-  by_cases hr0 : r = 0
-  · rw [hr0, hs0]
-    simp only [State.fromInputs, State.read, List.getD_cons_zero]
-  · by_cases hr1 : r = 1
-    · rw [hr1, hs1]
-      simp only [State.fromInputs, State.read, List.getD]
-      simp only [List.getElem?_cons_succ, List.getElem?_cons_zero, Option.getD_some]
-    · have hr_ge_2 : 2 ≤ r := by omega
-      have hr_le_m : r ≤ m := Nat.le_trans hhi hp
-      rw [hs_zeros r hr_ge_2 hr_le_m]
-      simp only [State.fromInputs, State.read]
-      have hr_ge : r ≥ [v1, v2].length := by simp; omega
-      rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none hr_ge, Option.getD_none]
 
 /-- General case: after clearing registers and setting R[0..n-1] to match inputs,
 agreement holds for programs with maxRegister ≤ m.
@@ -317,11 +266,6 @@ theorem single_transfer_isStandardForm (src dst : ℕ) :
     Program.IsStandardForm [Instr.T src dst] :=
   straightLine_isStandardForm (single_transfer_isStraightLine' src dst)
 
-/-- Double transfer is standard form. -/
-theorem double_transfer_isStandardForm (s1 d1 s2 d2 : ℕ) :
-    Program.IsStandardForm [Instr.T s1 d1, Instr.T s2 d2] :=
-  straightLine_isStandardForm (double_transfer_isStraightLine' s1 d1 s2 d2)
-
 /-! ## SingleTransferResult Structure
 
 Bundles single transfer execution with all commonly-needed properties to avoid
@@ -373,23 +317,6 @@ theorem SingleTransferResult.halts_exists {src dst : ℕ} {s : State}
     ∃ c, Steps [Instr.T src dst] ⟨0, s⟩ c ∧ c.isHalted [Instr.T src dst] :=
   ⟨tr.config, tr.steps, tr.halted⟩
 
-/-- Execute a double transfer and get the final state. -/
-theorem double_transfer_halts (s1 d1 s2 d2 : ℕ) (s : State) :
-    ∃ c, Steps [Instr.T s1 d1, Instr.T s2 d2] ⟨0, s⟩ c ∧
-         c.isHalted [Instr.T s1 d1, Instr.T s2 d2] ∧
-         c.pc = 2 ∧
-         c.state = (s.write d1 (s.read s1)).write d2 ((s.write d1 (s.read s1)).read s2) := by
-  let s1' := s.write d1 (s.read s1)
-  have hstep1 : Step [Instr.T s1 d1, Instr.T s2 d2] ⟨0, s⟩ ⟨1, s1'⟩ := by
-    apply Step.trans
-    simp [Program.getInstr]
-  have hstep2 : Step [Instr.T s1 d1, Instr.T s2 d2] ⟨1, s1'⟩ ⟨2, s1'.write d2 (s1'.read s2)⟩ := by
-    apply Step.trans
-    simp [Program.getInstr]
-  refine ⟨⟨2, s1'.write d2 (s1'.read s2)⟩, ?_, ?_, rfl, rfl⟩
-  · exact Relation.ReflTransGen.head hstep1 (Relation.ReflTransGen.single hstep2)
-  · simp [Config.isHalted]
-
 /-! ## Clear Program Properties -/
 
 /-- clearRegisters is the same as clearRegistersFrom 0 (maxReg + 1). -/
@@ -406,11 +333,6 @@ theorem clearRegisters_isStraightLine' (maxReg : ℕ) :
   simp only [Program.clearRegisters, Program.isStraightLine, List.all_map, List.all_eq_true]
   intro i _
   simp [Instr.isNonJumping]
-
-/-- clearRegisters is standard form. -/
-theorem clearRegisters_isStandardForm' (maxReg : ℕ) :
-    Program.IsStandardForm (Program.clearRegisters maxReg) :=
-  straightLine_isStandardForm (clearRegisters_isStraightLine' maxReg)
 
 /-- clearRegisters preserves registers above maxReg. -/
 theorem clearRegisters_preserves_above' (maxReg : ℕ) (s : State) (r : ℕ) (hr : maxReg < r) :
@@ -461,47 +383,6 @@ theorem clearRegisters_zeros' (maxReg : ℕ) (s : State) (r : ℕ) (hr : r ≤ m
   rw [hstate_eq]
   have hr_range : 0 ≤ r ∧ r < 0 + (maxReg + 1) := ⟨Nat.zero_le r, by omega⟩
   exact clearRegistersFrom_zeros 0 (maxReg + 1) s r hr_range
-
-/-- Clear followed by transfer(s) from high registers sets up state correctly.
-This is the key setup lemma for composition. -/
-theorem clear_and_setup_single {m x : ℕ} {s : State}
-    (hs_high : s.read (m + 1) = x) :
-    ∃ s' : State,
-      (∃ c, Steps (Program.clearRegisters m) ⟨0, s⟩ c ∧
-            c.isHalted (Program.clearRegisters m) ∧
-            Steps [Instr.T (m + 1) 0] ⟨0, c.state⟩ ⟨1, s'⟩) ∧
-      s'.read 0 = x ∧
-      (∀ r, 1 ≤ r → r ≤ m → s'.read r = 0) ∧
-      s'.read (m + 1) = x := by
-  -- Clear halts
-  have hClear_sl := clearRegisters_isStraightLine' m
-  have hClear_halts := straightLine_halts_from_state hClear_sl s
-  obtain ⟨cClear, hClear_steps, hClear_halted, _⟩ := hClear_halts
-  -- Clear preserves R[m+1]
-  have hClear_state_eq : cClear.state = straightLineFinalState hClear_sl s := by
-    have hspec := straightLineFinalState_spec hClear_sl s
-    exact Steps.halts_unique hClear_steps hClear_halted hspec.1 hspec.2.1 ▸ rfl
-  have hClear_preserves : cClear.state.read (m + 1) = s.read (m + 1) := by
-    rw [hClear_state_eq]
-    exact clearRegisters_preserves_above' m s (m + 1) (by omega)
-  -- Transfer sets R[0]
-  let s' := cClear.state.write 0 (cClear.state.read (m + 1))
-  have hT_step : Step [Instr.T (m + 1) 0] ⟨0, cClear.state⟩ ⟨1, s'⟩ := by
-    apply Step.trans
-    simp [Program.getInstr]
-  refine ⟨s', ⟨cClear, hClear_steps, hClear_halted, Relation.ReflTransGen.single hT_step⟩, ?_, ?_, ?_⟩
-  · -- s'.read 0 = x
-    simp only [s', State.write_read_same, hClear_preserves, hs_high]
-  · -- ∀ r, 1 ≤ r → r ≤ m → s'.read r = 0
-    intro r hr1 hrm
-    simp only [s']
-    rw [State.write_read_diff _ _ _ _ (by omega : r ≠ 0)]
-    rw [hClear_state_eq]
-    exact clearRegisters_zeros' m s r hrm
-  · -- s'.read (m + 1) = x
-    simp only [s']
-    rw [State.write_read_diff _ _ _ _ (by omega : m + 1 ≠ 0)]
-    rw [hClear_preserves, hs_high]
 
 /-! ## Single Transfer Instruction Execution -/
 

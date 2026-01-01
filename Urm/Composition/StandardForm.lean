@@ -70,17 +70,6 @@ theorem finalPhase_isStraightLine {m n base : ℕ} {pF : Program}
   apply Program.isStraightLine_concat (transferResultsToInputs_isStraightLine (base + n + 1) m)
   exact hF_sl
 
-/-- composeGeneral produces a straight-line program when all inputs are straight-line. -/
-theorem composeGeneral_isStraightLine {m n : ℕ} {pF : Program} {pGs : Fin m → Program}
-    (hF_sl : pF.isStraightLine = true)
-    (hGs_sl : ∀ i, (pGs i).isStraightLine = true) :
-    (Program.composeGeneral m n pF pGs).isStraightLine = true := by
-  simp only [Program.composeGeneral]
-  apply Program.isStraightLine_concat
-    (copyRegisterRange_isStraightLine 0 (compositionBase m n pF pGs + 1) n)
-  apply Program.isStraightLine_concat (allGPhases_isStraightLine hGs_sl)
-  exact finalPhase_isStraightLine hF_sl
-
 /-- Helper: gPhase is standard form when pG is standard form. -/
 theorem gPhase_isStandardForm {base n : ℕ} {pG : Program} {i : ℕ}
     (hG : pG.IsStandardForm) :

@@ -63,10 +63,6 @@ theorem copyRegisterRange_length (srcStart dstStart count : ℕ) :
     (Program.copyRegisterRange srcStart dstStart count).length = count := by
   simp [Program.copyRegisterRange]
 
-theorem copyRegisterRange_zero (srcStart dstStart : ℕ) :
-    Program.copyRegisterRange srcStart dstStart 0 = [] := by
-  simp [Program.copyRegisterRange]
-
 theorem copyRegisterRange_isStraightLine (srcStart dstStart count : ℕ) :
     (Program.copyRegisterRange srcStart dstStart count).isStraightLine = true := by
   simp only [Program.copyRegisterRange, Program.isStraightLine, List.all_map, List.all_eq_true]
@@ -83,19 +79,11 @@ theorem transferResultsToInputs_length (resultStart arityF : ℕ) :
     (Program.transferResultsToInputs resultStart arityF).length = arityF := by
   simp [Program.transferResultsToInputs]
 
-theorem transferResultsToInputs_zero (resultStart : ℕ) :
-    Program.transferResultsToInputs resultStart 0 = [] := by
-  simp [Program.transferResultsToInputs]
-
 theorem transferResultsToInputs_isStraightLine (resultStart arityF : ℕ) :
     (Program.transferResultsToInputs resultStart arityF).isStraightLine = true := by
   simp only [Program.transferResultsToInputs, Program.isStraightLine, List.all_map, List.all_eq_true]
   intro i _
   simp [Instr.isNonJumping]
-
-theorem transferResultsToInputs_isStandardForm (resultStart arityF : ℕ) :
-    (Program.transferResultsToInputs resultStart arityF).IsStandardForm :=
-  straightLine_isStandardForm (transferResultsToInputs_isStraightLine resultStart arityF)
 
 /-! ## Register Isolation Lemmas -/
 
@@ -177,62 +165,12 @@ theorem Steps.preserves_high_register {c c' : Config} (hsteps : Steps p c c') (r
     rw [ih]
     exact Step.preserves_high_register hstep r hr
 
-/-- Running a program preserves registers above its maxRegister.
-
-When a program halts, the final state agrees with the initial state on all registers
-that are never accessed by any instruction in the program. -/
-theorem Halts.preserves_high_registers {p : Program} {inputs : List ℕ}
-    (h : Halts p inputs) (r : ℕ) (hr : p.maxRegister < r) :
-    (Classical.choose h).state.read r = (Config.init inputs).state.read r := by
-  have ⟨hsteps, _⟩ := Classical.choose_spec h
-  exact Steps.preserves_high_register hsteps r hr
-
 end RegisterIsolation
 
 /-! ## Agreeing State Lemmas -/
 
-/-- If a state agrees with Config.init on registers 0..maxRegister(p), then
-running p from that state gives the same result as running from Config.init.
-
-This is the key insight: we don't need exactly Config.init, just agreement on
-the registers the program actually uses. -/
-theorem Halts.from_agreeing_state {p : Program} {inputs : List ℕ} {s : State}
-    (h : Halts p inputs)
-    (hagree : ∀ r, r ≤ p.maxRegister → s.read r = (State.fromInputs inputs).read r) :
-    ∃ c, Steps p ⟨0, s⟩ c ∧ c.isHalted p ∧ c.state.output = Result p inputs h := by
-  -- Get the halting config from Config.init
-  let c_final := Classical.choose h
-  have hspec := Classical.choose_spec h
-  have hsteps : Steps p (Config.init inputs) c_final := hspec.1
-  have hhalted : c_final.isHalted p := hspec.2
-  -- Convert hagree to State.agreeOn form
-  have hagree' : s.agreeOn (State.fromInputs inputs) 0 p.maxRegister := by
-    intro r _ hhi
-    exact hagree r hhi
-  -- Use Steps.agreeOn to get parallel execution from s
-  have hpc_eq : (Config.init inputs).pc = (⟨0, s⟩ : Config).pc := rfl
-  obtain ⟨c', hsteps', hpc', hagree''⟩ := Steps.agreeOn hsteps hpc_eq (State.agreeOn_symm hagree')
-  use c'
-  refine ⟨hsteps', ?_, ?_⟩
-  · -- c' is halted: same PC as c_final which is halted
-    simp only [Config.isHalted] at hhalted ⊢
-    omega
-  · -- Output agrees: both read from register 0 which is ≤ maxRegister
-    simp only [State.output, Result]
-    -- c'.state and c_final.state agree on [0, maxRegister]
-    -- Register 0 is in this range (0 ≤ 0 ≤ maxRegister for any p)
-    have h0 : 0 ≤ p.maxRegister := Nat.zero_le _
-    have hread_eq := hagree'' 0 (Nat.le_refl 0) h0
-    -- hread_eq : c_final.state.read 0 = c'.state.read 0
-    -- Goal: c'.state 0 = (Classical.choose h).state 0
-    -- c_final = Classical.choose h, and read 0 = (· 0)
-    simp only [State.read] at hread_eq
-    exact hread_eq.symm
-
-/-- Reverse of from_agreeing_state: if p halts from a state s that agrees with
-Config.init inputs on relevant registers, then Halts p inputs.
-
-This is the key lemma for extracting halting from execution traces. -/
+/-- If p halts from a state s that agrees with Config.init inputs on relevant registers,
+then Halts p inputs. This is the key lemma for extracting halting from execution traces. -/
 theorem Halts.of_agreeing_state {p : Program} {inputs : List ℕ} {s : State} {c : Config}
     (hsteps : Steps p ⟨0, s⟩ c) (hhalted : c.isHalted p)
     (hagree : ∀ r, r ≤ p.maxRegister → s.read r = (State.fromInputs inputs).read r) :
@@ -261,9 +199,6 @@ def Part.sequence {α : Type*} : {n : ℕ} → (Fin n → Part α) → Part (Fin
   | _ + 1, f => (f 0).bind fun a0 =>
       (Part.sequence (fun i => f i.succ)).map fun rest =>
         Fin.cons a0 rest
-
-theorem Part.sequence_zero {α : Type*} (f : Fin 0 → Part α) :
-    Part.sequence f = Part.some Fin.elim0 := rfl
 
 theorem Part.sequence_succ {α : Type*} {n : ℕ} (f : Fin (n + 1) → Part α) :
     Part.sequence f = (f 0).bind fun a0 =>
@@ -318,13 +253,6 @@ theorem Program.isStraightLine_concat {p1 p2 : Program}
     convert h2 using 2
     funext instr
     cases instr <;> simp [Instr.shiftJumps, Instr.isNonJumping]
-
-/-- Concatenation of straight-line programs is standard form. -/
-theorem straightLine_concat_isStandardForm {p1 p2 : Program}
-    (h1 : p1.isStraightLine = true) (h2 : p2.isStraightLine = true) :
-    (p1.concat p2).IsStandardForm := by
-  apply straightLine_isStandardForm
-  exact Program.isStraightLine_concat h1 h2
 
 /-- Concatenation of standard form programs is standard form.
 
@@ -448,29 +376,6 @@ theorem Halts.prefix_of_concat_sf {p1 p2 : Program} {inputs : List ℕ}
     -- Chain: a → d in p1, then d →* c'' in p1
     exact ⟨c'', Relation.ReflTransGen.head hstep_p1 hsteps_dc'', hhalted_c''⟩
 
-/-- If p1.concat p2 halts and p1 is standard form, we can recover the intermediate state
-after p1 halts (at pc = p1.length). -/
-theorem Halts.concat_sf_intermediate_state {p1 p2 : Program} {inputs : List ℕ}
-    (hH : Halts (p1.concat p2) inputs)
-    (h1 : p1.IsStandardForm) :
-    ∃ s : State, Steps p1 (Config.init inputs) ⟨p1.length, s⟩ ∧
-                 (⟨p1.length, s⟩ : Config).isHalted p1 := by
-  have hP1 := Halts.prefix_of_concat_sf hH h1
-  have hspec := Classical.choose_spec hP1
-  have hpc := h1.halts_at_length inputs (Classical.choose hP1) hspec.1 hspec.2
-  use (Classical.choose hP1).state
-  constructor
-  · -- Need to show Steps p1 (Config.init inputs) ⟨p1.length, c.state⟩
-    -- We have hspec.1 : Steps p1 (Config.init inputs) c and hpc : c.pc = p1.length
-    have heq : Classical.choose hP1 = ⟨p1.length, (Classical.choose hP1).state⟩ := by
-      ext
-      · exact hpc
-      · rfl
-    rw [heq] at hspec
-    exact hspec.1
-  · simp only [Config.isHalted]
-    exact Nat.le_refl _
-
 /-- Generalized prefix extraction: if p1.concat p2 halts starting from ⟨0, s⟩ and p1 is standard form,
 then p1 halts from ⟨0, s⟩.
 
@@ -526,11 +431,6 @@ theorem prefix_of_concat_from_zero {p1 p2 : Program} {s : State} {c : Config}
     obtain ⟨c'', hsteps_dc'', hhalted_c''⟩ := ih hhalted' hd_pc_le
     exact ⟨c'', Relation.ReflTransGen.head hstep_p1 hsteps_dc'', hhalted_c''⟩
 
-/-- Length of clearRegisters. -/
-theorem clearRegisters_length (maxReg : ℕ) :
-    (Program.clearRegisters maxReg).length = maxReg + 1 := by
-  simp [Program.clearRegisters]
-
 /-- clearRegisters produces a straight-line program. -/
 theorem clearRegisters_isStraightLine (maxReg : ℕ) :
     (Program.clearRegisters maxReg).isStraightLine = true := by
@@ -540,24 +440,6 @@ theorem clearRegisters_isStraightLine (maxReg : ℕ) :
   | succ k ih =>
     simp only [List.range_succ, List.all_append, ih, List.all_cons, List.all_nil,
       Function.comp_apply, Instr.isNonJumping, Bool.and_self]
-
-/-! ## Halts lemmas for copyRegisterRange and transferResultsToInputs -/
-
-theorem copyRegisterRange_halts (srcStart dstStart count : ℕ) (s : State) :
-    ∃ c, Steps (Program.copyRegisterRange srcStart dstStart count) ⟨0, s⟩ c ∧
-         c.isHalted (Program.copyRegisterRange srcStart dstStart count) ∧
-         c.pc = count := by
-  have hsl := copyRegisterRange_isStraightLine srcStart dstStart count
-  obtain ⟨c, hsteps, hhalted, hpc⟩ := straightLine_halts_from_state hsl s
-  exact ⟨c, hsteps, hhalted, by rw [hpc, copyRegisterRange_length]⟩
-
-theorem transferResultsToInputs_halts (resultStart arityF : ℕ) (s : State) :
-    ∃ c, Steps (Program.transferResultsToInputs resultStart arityF) ⟨0, s⟩ c ∧
-         c.isHalted (Program.transferResultsToInputs resultStart arityF) ∧
-         c.pc = arityF := by
-  have hsl := transferResultsToInputs_isStraightLine resultStart arityF
-  obtain ⟨c, hsteps, hhalted, hpc⟩ := straightLine_halts_from_state hsl s
-  exact ⟨c, hsteps, hhalted, by rw [hpc, transferResultsToInputs_length]⟩
 
 /-! ## Register Write Tracking for copyRegisterRange and transferResultsToInputs -/
 
@@ -977,26 +859,6 @@ theorem Halts.concat_continuation {inputs : List ℕ}
   simp only [Config.isHalted, Program.concat, List.length_append, Program.shiftJumps,
              List.length_map, Config.isHalted] at hhalted2 ⊢
   omega
-
-/-- If p1 halts (as a standard form program) and p2 is straight-line, then p1.concat p2 halts.
-
-This is a convenient corollary of `concat_continuation` for the common case where
-the second program is straight-line (transfers, clears, etc.). Standard form ensures
-p1 halts by falling through (pc = p1.length). -/
-theorem Halts.concat_straightLine {p1 p2 : Program} {inputs : List ℕ}
-    (h1 : Halts p1 inputs)
-    (h1_sf : p1.IsStandardForm)
-    (h2_sl : p2.isStraightLine = true) :
-    Halts (p1.concat p2) inputs := by
-  -- Standard form ensures p1 halted by falling through
-  have h1_pc : (Classical.choose h1).pc = p1.length := by
-    have hspec := Classical.choose_spec h1
-    exact h1_sf.halts_at_length inputs (Classical.choose h1) hspec.1 hspec.2
-  -- Straight-line p2 halts from any state
-  have h2 : ∃ c, Steps p2 ⟨0, (Classical.choose h1).state⟩ c ∧ c.isHalted p2 := by
-    obtain ⟨c, hsteps, hhalted, _⟩ := straightLine_halts_from_state h2_sl (Classical.choose h1).state
-    exact ⟨c, hsteps, hhalted⟩
-  exact Halts.concat_continuation h1 h1_pc h2
 
 end Continuation
 
