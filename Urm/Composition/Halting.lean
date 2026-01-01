@@ -432,16 +432,16 @@ theorem allGPhases_suffix_preserves_earlier_results
     (hsteps : Steps (allGPhases_suffix m n base pGs start) ⟨0, s⟩ c')
     (hhalted : c'.isHalted (allGPhases_suffix m n base pGs start)) :
     c'.state.read (base + n + 1 + k) = s.read (base + n + 1 + k) := by
-  -- Induction on the number of phases in suffix
-  induction m generalizing start s c' with
-  | zero =>
+  -- Recursion on m - start (decreasing as start increases toward m)
+  match m with
+  | 0 =>
     simp only [allGPhases_suffix, List.finRange_zero, List.drop_nil, List.foldl_nil] at hsteps hhalted
     have hc'_eq : c' = ⟨0, s⟩ := by
       have h : Steps [] ⟨0, s⟩ ⟨0, s⟩ := Relation.ReflTransGen.refl
       have hh : (⟨0, s⟩ : Config).isHalted [] := by simp [Config.isHalted]
       exact Steps.halts_unique hsteps hhalted h hh
     rw [hc'_eq]
-  | succ m' ih =>
+  | Nat.succ m' =>
     by_cases hEmpty : start ≥ m' + 1
     · -- Suffix is empty
       have hSuffix_empty : allGPhases_suffix (m' + 1) n base pGs start = [] := by
@@ -467,7 +467,7 @@ theorem allGPhases_suffix_preserves_earlier_results
         rw [hDrop, List.foldl_cons]
         rw [foldl_concat_eq_acc_concat]
         simp only [concat_nil_left, List.getElem_finRange]
-        congr 2 <;> simp [Fin.ext_iff]
+        congr 2
 
       rw [hSuffix_decomp] at hsteps hhalted
       have hGPhase_sf := gPhase_isStandardForm (n := n) (base := base) (i := start) (hpGs_sf ⟨start, hEmpty⟩)
@@ -506,15 +506,7 @@ theorem allGPhases_suffix_preserves_earlier_results
 
       rw [hc'_eq_cRest, hRest_preserves, hFirst_preserves]
 termination_by m - start
-decreasing_by
-  all_goals
-    simp_wf
-    -- Goal after simp_wf: m' - start < m - start✝
-    -- In the succ m' case of induction on m, we have m = m' + 1 and start✝ = start
-    -- From hEmpty: ¬(start ≥ m' + 1) we get start < m' + 1
-    have hstart_lt : start < m' + 1 := by push_neg at hEmpty; exact hEmpty
-    -- TODO: Fix termination proof - grind finds contradiction but can't close goal
-    sorry
+decreasing_by simp_wf; omega
 
 set_option maxHeartbeats 400000 in
 /-- After saveInputs ++ allGPhases halts, R[base+n+1+i] contains the result of g_i.
@@ -587,7 +579,7 @@ theorem allGPhases_saves_result
     rw [hTake, List.foldl_append, List.foldl_cons, List.foldl_nil]
     rw [foldl_concat_eq_acc_concat]
     simp only [List.getElem_finRange]
-    congr 1 <;> simp [Fin.ext_iff]
+    congr 1
 
   have hSavePrefixI_sf := hSave_sf.concat (allGPhases_prefix_isStandardForm (n := n) (base := base) hGs_sf i.val)
   have hGPhase_i_sf := gPhase_isStandardForm (base := base) (n := n) (i := i.val) (hGs_sf i)
