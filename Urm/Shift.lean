@@ -468,20 +468,6 @@ theorem Steps.shift_inv {p : Program} {c₀ c : Config} (offset : ℕ)
     · exact he_eq
     · exact Relation.ReflTransGen.head hd_step he_steps
 
-/-- If the shifted program halts from a shifted initial state, the original halts. -/
-theorem Halts.of_shift {p : Program} {inputs : List ℕ} (offset : ℕ)
-    (h : ∃ c, Steps (p.shiftRegisters offset)
-                    ((Config.init inputs).shift offset) c ∧
-              c.isHalted (p.shiftRegisters offset)) :
-    Halts p inputs := by
-  obtain ⟨c, hsteps, hhalted⟩ := h
-  obtain ⟨d, hd_eq, hd_steps⟩ := Steps.shift_inv offset hsteps
-  use d
-  constructor
-  · exact hd_steps
-  · rw [← Config.isHalted_shift, ← hd_eq]
-    exact hhalted
-
 /-! ## Register Independence
 
 For composition, we need to show that program execution only depends on registers
@@ -491,9 +477,6 @@ produce the same execution. -/
 /-- Two states agree on registers in `[lo, hi]`. -/
 def State.agreeOn (σ₁ σ₂ : State) (lo hi : ℕ) : Prop :=
   ∀ r, lo ≤ r → r ≤ hi → σ₁.read r = σ₂.read r
-
-theorem State.agreeOn_refl (σ : State) (lo hi : ℕ) : σ.agreeOn σ lo hi := by
-  intro r _ _; rfl
 
 theorem State.agreeOn_symm {σ₁ σ₂ : State} {lo hi : ℕ}
     (h : σ₁.agreeOn σ₂ lo hi) : σ₂.agreeOn σ₁ lo hi := by
@@ -507,11 +490,6 @@ theorem State.agreeOn_write_same {σ₁ σ₂ : State} {lo hi n : ℕ} {v : ℕ}
   by_cases hr : r = n
   · simp [hr]
   · simp [write_read_diff _ _ _ _ hr, h r hlo hhi]
-
-/-- If states agree on a range and we read from that range, we get the same value. -/
-theorem State.agreeOn_read {σ₁ σ₂ : State} {lo hi r : ℕ}
-    (h : σ₁.agreeOn σ₂ lo hi) (hlo : lo ≤ r) (hhi : r ≤ hi) :
-    σ₁.read r = σ₂.read r := h r hlo hhi
 
 /-- Helper for foldl max: value in accumulator is preserved. -/
 private theorem foldl_max_ge_init (p : List Instr) (init : ℕ) :

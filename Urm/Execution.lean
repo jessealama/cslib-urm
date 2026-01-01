@@ -77,10 +77,6 @@ theorem halted_no_step {c c' : Config} (hhalted : c.isHalted p) : ¬Step p c c' 
   intro hstep
   cases hstep <;> simp_all [Config.isHalted, Program.getInstr]
 
-/-- If a configuration can step, it is not halted. -/
-theorem not_halted_of_step {c c' : Config} (h : Step p c c') : ¬c.isHalted p :=
-  fun hhalted => halted_no_step hhalted h
-
 end Step
 
 namespace Steps
@@ -167,12 +163,6 @@ namespace Halts
 
 variable {p : Program}
 
-/-- If a program steps to a halted configuration, it halts. -/
-theorem of_steps_to_halted {inputs : List ℕ} {c : Config}
-    (hsteps : Steps p (Config.init inputs) c) (hhalted : c.isHalted p) :
-    Halts p inputs :=
-  ⟨c, hsteps, hhalted⟩
-
 /-- The empty program halts immediately on any input. -/
 theorem empty_halts (inputs : List ℕ) : Halts [] inputs := by
   refine ⟨Config.init inputs, Steps.refl _, ?_⟩
@@ -190,15 +180,6 @@ noncomputable def Result (inputs : List ℕ) (h : Halts p inputs) : ℕ :=
 noncomputable def eval (inputs : List ℕ) : Part ℕ :=
   ⟨Halts p inputs, fun h => Result p inputs h⟩
 
-namespace eval
-
-variable {p : Program}
-
-/-- `eval` is defined iff the program halts. -/
-theorem dom_iff_halts (inputs : List ℕ) : (eval p inputs).Dom ↔ Halts p inputs := Iff.rfl
-
-end eval
-
 /-- Number of steps to reach a configuration (if it exists). -/
 inductive StepsN : ℕ → Config → Config → Prop where
   | zero (c : Config) : StepsN 0 c c
@@ -209,18 +190,6 @@ inductive StepsN : ℕ → Config → Config → Prop where
 namespace StepsN
 
 variable {p : Program}
-
-/-- StepsN 0 is identity. -/
-theorem zero_iff {c c' : Config} : StepsN p 0 c c' ↔ c = c' := by
-  constructor
-  · intro h; cases h; rfl
-  · intro h; subst h; exact zero c
-
-/-- StepsN 1 is a single step. -/
-theorem one_iff {c c' : Config} : StepsN p 1 c c' ↔ Step p c c' := by
-  constructor
-  · intro h; cases h with | succ hstep hrest => cases hrest; exact hstep
-  · intro h; exact succ h (zero c')
 
 /-- StepsN implies Steps. -/
 theorem toSteps {n : ℕ} {c c' : Config} (h : StepsN p n c c') : Steps p c c' := by
@@ -243,21 +212,5 @@ end StepsN
 /-- A program halts in n steps if it reaches a halted configuration in exactly n steps. -/
 def HaltsIn (n : ℕ) (inputs : List ℕ) : Prop :=
   ∃ c, StepsN p n (Config.init inputs) c ∧ c.isHalted p
-
-namespace HaltsIn
-
-variable {p : Program}
-
-/-- If a program halts in n steps, it halts. -/
-theorem toHalts {n : ℕ} {inputs : List ℕ} (h : HaltsIn p n inputs) : Halts p inputs := by
-  obtain ⟨c, hsteps, hhalted⟩ := h
-  exact ⟨c, hsteps.toSteps, hhalted⟩
-
-/-- The empty program halts in 0 steps. -/
-theorem empty_halts_in_zero (inputs : List ℕ) : HaltsIn [] 0 inputs := by
-  refine ⟨Config.init inputs, StepsN.zero _, ?_⟩
-  simp [Config.isHalted, Config.init]
-
-end HaltsIn
 
 end Urm

@@ -61,19 +61,6 @@ theorem Program.shiftJumps_of_isStraightLine {p : Program} (h : p.isStraightLine
     simp only [Program.isStraightLine, List.all_cons, Bool.and_eq_true] at h
     rw [Instr.shiftJumps_of_isNonJumping h.1 offset, ih h.2]
 
-/-- Stepping through a non-jumping instruction increases pc by 1. -/
-theorem Step.nonJumping_pc_inc {p : Program} {c c' : Config} {instr : Instr}
-    (hstep : Step p c c')
-    (hinstr : p.getInstr c.pc = some instr)
-    (hnonjump : instr.isNonJumping = true) :
-    c'.pc = c.pc + 1 := by
-  cases hstep with
-  | zero h => simp_all [Program.getInstr]
-  | succ h => simp_all [Program.getInstr]
-  | trans h => simp_all [Program.getInstr]
-  | jump_eq h _ => simp_all [Instr.isNonJumping, Program.getInstr]
-  | jump_ne h _ => simp_all [Instr.isNonJumping, Program.getInstr]
-
 /-- A straight-line program halts on any input (pc always increases until it exceeds length). -/
 theorem straightLine_halts {p : Program} (hsl : p.isStraightLine = true) (inputs : List ℕ) :
     Halts p inputs := by
@@ -342,11 +329,6 @@ theorem clearRegistersFrom_isStraightLine (start count : ℕ) :
       simp [Instr.isNonJumping]
     · simp [Instr.isNonJumping]
 
-/-- clearRegistersFrom halts on any input. -/
-theorem clearRegistersFrom_halts (start count : ℕ) (inputs : List ℕ) :
-    Halts (clearRegistersFrom start count) inputs :=
-  straightLine_halts (clearRegistersFrom_isStraightLine start count) inputs
-
 end Program
 
 /-! ## Execution Semantics for clearRegistersFrom -/
@@ -465,10 +447,5 @@ theorem clearRegistersFrom_preserves (start count : ℕ) (s : State) (r : ℕ)
   cases hr with
   | inl h => omega
   | inr h => omega
-
-/-- After clearRegistersFrom, R[0] is preserved (when start > 0). -/
-theorem clearRegistersFrom_preserves_zero (start count : ℕ) (s : State) (hstart : 0 < start) :
-    (straightLineFinalState (Program.clearRegistersFrom_isStraightLine start count) s).read 0 = s.read 0 :=
-  clearRegistersFrom_preserves start count s 0 (Or.inl hstart)
 
 end Urm

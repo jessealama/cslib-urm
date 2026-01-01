@@ -49,18 +49,6 @@ theorem shiftJumps_zero (p : Program) : p.shiftJumps 0 = p := by
     simp only [List.map_cons]
     cases hd <;> simp [Instr.shiftJumps, ih]
 
-/-- Shifting jumps is additive: shifting by a then b equals shifting by (a + b). -/
-theorem shiftJumps_add (p : Program) (a b : ℕ) :
-    (p.shiftJumps a).shiftJumps b = p.shiftJumps (a + b) := by
-  simp only [shiftJumps, List.map_map]
-  congr 1
-  funext instr
-  cases instr with
-  | Z n => simp [Instr.shiftJumps]
-  | S n => simp [Instr.shiftJumps]
-  | T m n => simp [Instr.shiftJumps]
-  | J m n q => simp [Instr.shiftJumps]; omega
-
 /-- Concatenate two programs, adjusting the second program's jump targets.
 
 When concatenating `p1 ++ p2`, jumps within `p2` must be shifted by `p1.length`
@@ -246,20 +234,5 @@ theorem Halts.concat_left_lift (h : Halts p1 inputs) :
   exact Steps.concat_left_prefix hsteps hhalted
 
 end ConcatLemmas
-
-/-! ## Straight-Line Bridge Lemmas -/
-
-/-- For straight-line p2, concat equals simple append.
-This is because shiftJumps is a no-op when there are no jumps. -/
-theorem Program.concat_eq_append_of_isStraightLine (p1 p2 : Program) (h : p2.isStraightLine = true) :
-    p1.concat p2 = p1 ++ p2 := by
-  simp only [concat, Program.shiftJumps_of_isStraightLine h]
-
-/-- For straight-line programs, concat equals simple append.
-This is a convenience variant when both programs are straight-line. -/
-theorem Program.concat_eq_append_of_both_isStraightLine (p1 p2 : Program)
-    (_h1 : p1.isStraightLine = true) (h2 : p2.isStraightLine = true) :
-    p1.concat p2 = p1 ++ p2 :=
-  concat_eq_append_of_isStraightLine p1 p2 h2
 
 end Urm

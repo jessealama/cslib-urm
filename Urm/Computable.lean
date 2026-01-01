@@ -43,15 +43,6 @@ def URMComputable (n : ℕ) (f : (Fin n → ℕ) → Part ℕ) : Prop :=
     ∀ (hHalts : Halts p inputList) (hDom : (f inputs).Dom),
       Result p inputList hHalts = (f inputs).get hDom
 
-/-- Alternative formulation: the partial function computed by a program equals `f`. -/
-def URMComputable' (n : ℕ) (f : (Fin n → ℕ) → Part ℕ) : Prop :=
-  ∃ p : Program, ∀ inputs : Fin n → ℕ,
-    eval p (List.ofFn inputs) = f inputs
-
-/-- A total function is URM-computable if its partial version is. -/
-def TotalURMComputable (n : ℕ) (f : (Fin n → ℕ) → ℕ) : Prop :=
-  URMComputable n (fun inputs => Part.some (f inputs))
-
 namespace URMComputable
 
 /-- Helper for single-instruction programs: proves both halting and result. -/
@@ -88,17 +79,6 @@ theorem zero_computable : URMComputable 0 (fun _ => Part.some 0) := by
     have heq := Steps.halts_unique hsteps hhalted (Steps.refl _) h_init_halted
     simp only [Result, heq, State.output, Config.init, State.fromInputs, List.getD, List.ofFn_zero,
       List.getElem?_nil, Part.get_some, Option.getD]
-
-/-- The constant zero function of any arity is URM-computable.
-
-Program: `[Z 0]` - set register 0 to 0 and halt. -/
-theorem const_zero_computable (n : ℕ) : URMComputable n (fun _ => Part.some 0) := by
-  use [Instr.Z 0]
-  intro inputs
-  have h := single_instr_computes (inputs := List.ofFn inputs)
-    (Step.zero (p := [Instr.Z 0]) rfl)
-  refine ⟨by simp [h.1], fun hHalts _ => ?_⟩
-  simp only [h.2 hHalts, State.output, State.write, Function.update_self, Part.get_some]
 
 /-- The successor function `S(x) = x + 1` is URM-computable.
 
