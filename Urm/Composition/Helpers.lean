@@ -62,13 +62,6 @@ theorem HaltingExecution.pc_eq_length {p : Program} {inputs : List ℕ}
     e.config.pc = p.length :=
   hsf.halts_at_length inputs e.config e.steps e.halted
 
-/-- The output of a HaltingExecution equals the Result. -/
-theorem HaltingExecution.output_eq_result {p : Program} {inputs : List ℕ}
-    (e : HaltingExecution p inputs) :
-    e.config.state.output = Result p inputs e.halts := by
-  simp only [Result]
-  rw [e.config_eq]
-
 /-! ## Program Chaining Lemmas
 
 These lemmas simplify the common pattern of chaining executions through
@@ -96,16 +89,6 @@ theorem Steps.chain_concat {p1 p2 : Program} {s : State} {c1 c2 : Config}
   · -- Show the combined config is halted
     simp only [Config.isHalted, Program.concat_length] at h2_halted ⊢
     omega
-
-/-- Chain from HaltingExecution: given p1's execution and p2 halts from final state. -/
-theorem HaltingExecution.chain {p1 p2 : Program} {inputs : List ℕ}
-    (e1 : HaltingExecution p1 inputs) (hsf1 : p1.IsStandardForm)
-    (h2_halts : ∃ c2, Steps p2 ⟨0, e1.config.state⟩ c2 ∧ c2.isHalted p2) :
-    Halts (p1.concat p2) inputs := by
-  obtain ⟨c2, h2_steps, h2_halted⟩ := h2_halts
-  have hpc := e1.pc_eq_length hsf1
-  have ⟨hsteps, hhalted⟩ := Steps.chain_concat e1.steps e1.halted hpc h2_steps h2_halted
-  exact ⟨⟨c2.pc + p1.length, c2.state⟩, hsteps, hhalted⟩
 
 /-! ## Agreeing State Execution
 
@@ -164,12 +147,6 @@ theorem AgreeingExecution.output_eq {p : Program} {inputs : List ℕ} {s : State
     (e : AgreeingExecution p inputs s) (hmax : 0 ≤ p.maxRegister) :
     e.config.state.read 0 = (Classical.choose e.originalHalts).state.read 0 :=
   e.state_agrees 0 (Nat.zero_le 0) hmax
-
-/-- High registers (above p.maxRegister) are preserved from the starting state. -/
-theorem AgreeingExecution.preserves_high_register {p : Program} {inputs : List ℕ} {s : State}
-    (e : AgreeingExecution p inputs s) (r : ℕ) (hr : p.maxRegister < r) :
-    e.config.state.read r = s.read r :=
-  Steps.preserves_high_register e.steps r hr
 
 /-! ## State Agreement Lemmas
 
@@ -251,21 +228,6 @@ theorem AgreeingExecution.result_matches_original {p : Program} {inputs : List �
 
 /-! ## Transfer Instruction Properties -/
 
-/-- Single transfer is a straight-line program. -/
-theorem single_transfer_isStraightLine' (src dst : ℕ) :
-    Program.isStraightLine [Instr.T src dst] = true := by
-  simp [Program.isStraightLine, Instr.isNonJumping]
-
-/-- Double transfer is a straight-line program. -/
-theorem double_transfer_isStraightLine' (s1 d1 s2 d2 : ℕ) :
-    Program.isStraightLine [Instr.T s1 d1, Instr.T s2 d2] = true := by
-  simp [Program.isStraightLine, Instr.isNonJumping]
-
-/-- Single transfer is standard form. -/
-theorem single_transfer_isStandardForm (src dst : ℕ) :
-    Program.IsStandardForm [Instr.T src dst] :=
-  straightLine_isStandardForm (single_transfer_isStraightLine' src dst)
-
 /-! ## SingleTransferResult Structure
 
 Bundles single transfer execution with all commonly-needed properties to avoid
@@ -306,16 +268,6 @@ noncomputable def executeSingleTransfer (src dst : ℕ) (s : State) :
 def SingleTransferResult.config {src dst : ℕ} {s : State}
     (tr : SingleTransferResult src dst s) : Config :=
   ⟨1, tr.finalState⟩
-
-/-- The PC of the final config is 1. -/
-theorem SingleTransferResult.pc_eq {src dst : ℕ} {s : State}
-    (tr : SingleTransferResult src dst s) : tr.config.pc = 1 := rfl
-
-/-- Halting execution exists for single transfer (for compatibility). -/
-theorem SingleTransferResult.halts_exists {src dst : ℕ} {s : State}
-    (tr : SingleTransferResult src dst s) :
-    ∃ c, Steps [Instr.T src dst] ⟨0, s⟩ c ∧ c.isHalted [Instr.T src dst] :=
-  ⟨tr.config, tr.steps, tr.halted⟩
 
 /-! ## Clear Program Properties -/
 

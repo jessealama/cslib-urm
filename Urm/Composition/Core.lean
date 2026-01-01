@@ -28,7 +28,6 @@ lemmas for sequential program execution.
 - `Steps.preserves_high_register`: Execution preserves registers above maxRegister
 - `Part.sequence_dom`: Domain characterization for Part.sequence
 - `straightLine_halts_from_state`: Straight-line programs always halt
-- `Halts.concat_continuation`: Chaining halting programs via concatenation
 
 ## References
 
@@ -68,10 +67,6 @@ theorem copyRegisterRange_isStraightLine (srcStart dstStart count : ℕ) :
   simp only [Program.copyRegisterRange, Program.isStraightLine, List.all_map, List.all_eq_true]
   intro i _
   simp [Instr.isNonJumping]
-
-theorem copyRegisterRange_isStandardForm (srcStart dstStart count : ℕ) :
-    (Program.copyRegisterRange srcStart dstStart count).IsStandardForm :=
-  straightLine_isStandardForm (copyRegisterRange_isStraightLine srcStart dstStart count)
 
 /-! ## transferResultsToInputs Properties -/
 
@@ -821,44 +816,6 @@ theorem Halts.suffix_of_concat_sf {p1 p2 : Program} {inputs : List ℕ}
     rw [← hs1_eq]
     obtain ⟨c, hsteps_p2, hhalted_p2, _⟩ := Steps.of_concat_right h_suffix hH_halted hcH_pc
     exact ⟨c, hsteps_p2, hhalted_p2⟩
-
-/-- If p1 halts (by falling through) and p2 halts when started from p1's final state,
-then p1.concat p2 halts.
-
-This is the key continuation lemma: we can chain halting programs.
-The hypothesis h1_pc ensures p1 halted by falling through (pc = p1.length),
-not by jumping beyond the program. -/
-theorem Halts.concat_continuation {inputs : List ℕ}
-    (h1 : Halts p1 inputs)
-    (h1_pc : (Classical.choose h1).pc = p1.length)
-    (h2 : ∃ c, Steps p2 ⟨0, (Classical.choose h1).state⟩ c ∧ c.isHalted p2) :
-    Halts (p1.concat p2) inputs := by
-  -- Get the halted config from p1
-  obtain ⟨hsteps1, hhalted1⟩ := Classical.choose_spec h1
-  let c1 := Classical.choose h1
-  -- Get the halted config from p2
-  obtain ⟨c2, hsteps2, hhalted2⟩ := h2
-  -- Lift p1's execution to the concatenation
-  have hsteps1' := Steps.concat_left_prefix (p2 := p2) hsteps1 hhalted1
-  -- Now continue from where p1 halted
-  -- After p1 halts: we're at ⟨c1.pc, c1.state⟩ = ⟨p1.length, c1.state⟩
-  -- p2 starts at ⟨0, c1.state⟩, so we need ⟨0 + p1.length, c1.state⟩ = ⟨p1.length, c1.state⟩
-  have hsteps2' := Steps.concat_right (p1 := p1) hsteps2 hhalted2
-  -- The start of p2's lifted execution: ⟨0 + p1.length, c1.state⟩
-  -- This matches where p1 halted: ⟨p1.length, c1.state⟩ (using h1_pc)
-  have hstart_eq : (⟨0 + p1.length, c1.state⟩ : Config) = ⟨c1.pc, c1.state⟩ := by
-    simp only [Nat.zero_add]
-    rw [← h1_pc]
-  -- Rewrite hsteps2' to start from c1
-  rw [hstart_eq] at hsteps2'
-  -- The concatenation is transitive: first do p1's steps, then p2's
-  have hsteps_total := Relation.ReflTransGen.trans hsteps1' hsteps2'
-  -- Final config: c2 shifted
-  refine ⟨⟨c2.pc + p1.length, c2.state⟩, hsteps_total, ?_⟩
-  -- Show the final config is halted in p1.concat p2
-  simp only [Config.isHalted, Program.concat, List.length_append, Program.shiftJumps,
-             List.length_map, Config.isHalted] at hhalted2 ⊢
-  omega
 
 end Continuation
 

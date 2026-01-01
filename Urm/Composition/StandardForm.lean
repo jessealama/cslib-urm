@@ -28,48 +28,6 @@ open Program
 theorem single_T_isStraightLine' (src dst : ℕ) :
     Program.isStraightLine [Instr.T src dst] = true := rfl
 
-/-- gPhase is straight-line when pG is straight-line. -/
-theorem gPhase_isStraightLine {base n : ℕ} {pG : Program} {i : ℕ}
-    (hG_sl : pG.isStraightLine = true) :
-    (gPhase base n pG i).isStraightLine = true := by
-  simp only [gPhase]
-  apply Program.isStraightLine_concat (clearRegisters_isStraightLine base)
-  apply Program.isStraightLine_concat (copyRegisterRange_isStraightLine (base + 1) 0 n)
-  apply Program.isStraightLine_concat hG_sl
-  exact single_T_isStraightLine' 0 (base + n + 1 + i)
-
-/-- Helper: foldl over a list preserves straight-line when the combining function does. -/
-private theorem foldl_preserves_isStraightLine
-    {α : Type*} (l : List α) (f : Program → α → Program)
-    (hf : ∀ acc a, acc.isStraightLine = true → (f acc a).isStraightLine = true)
-    (acc : Program) (hacc : acc.isStraightLine = true) :
-    (l.foldl f acc).isStraightLine = true := by
-  induction l generalizing acc with
-  | nil => exact hacc
-  | cons x xs ih =>
-    simp only [List.foldl_cons]
-    exact ih (f acc x) (hf acc x hacc)
-
-/-- allGPhases is straight-line when all pGs are straight-line. -/
-theorem allGPhases_isStraightLine {m n base : ℕ} {pGs : Fin m → Program}
-    (hGs_sl : ∀ i, (pGs i).isStraightLine = true) :
-    (allGPhases m n base pGs).isStraightLine = true := by
-  simp only [allGPhases]
-  apply foldl_preserves_isStraightLine
-  · intro acc i hacc
-    apply Program.isStraightLine_concat hacc
-    exact gPhase_isStraightLine (hGs_sl i)
-  · rfl
-
-/-- finalPhase is straight-line when pF is straight-line. -/
-theorem finalPhase_isStraightLine {m n base : ℕ} {pF : Program}
-    (hF_sl : pF.isStraightLine = true) :
-    (finalPhase m n base pF).isStraightLine = true := by
-  simp only [finalPhase]
-  apply Program.isStraightLine_concat (clearRegisters_isStraightLine base)
-  apply Program.isStraightLine_concat (transferResultsToInputs_isStraightLine (base + n + 1) m)
-  exact hF_sl
-
 /-- Helper: gPhase is standard form when pG is standard form. -/
 theorem gPhase_isStandardForm {base n : ℕ} {pG : Program} {i : ℕ}
     (hG : pG.IsStandardForm) :
