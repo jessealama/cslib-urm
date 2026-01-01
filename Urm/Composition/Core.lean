@@ -679,7 +679,7 @@ theorem Steps.straightLine_preserves {p : Program} {c c' : Config} {r : ℕ}
 
 /-- After executing instruction k (which is T src dst) in a straight-line program,
 register dst contains the value that was in src at that point. -/
-theorem straightLine_transfer_after_exec {p : Program} (hsl : p.isStraightLine = true)
+theorem straightLine_transfer_after_exec {p : Program} (_hsl : p.isStraightLine = true)
     (s : State) (k src dst : ℕ) (hk : k < p.length) (hwrite : p[k] = Instr.T src dst)
     (c_k : Config) (hsteps_k : Steps p ⟨0, s⟩ c_k) (hpc_k : c_k.pc = k) :
     ∃ c, Steps p ⟨0, s⟩ c ∧ c.pc = k + 1 ∧ c.state.read dst = c_k.state.read src := by
