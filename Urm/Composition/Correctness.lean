@@ -813,8 +813,8 @@ theorem comp_general_result
     let sSaveGPhases := cGPhases.state
     have hSaveGPhases_halted' : ∃ c : Config,
         Steps (saveInputs.concat gPhases) ⟨0, State.fromInputs (List.ofFn inputs)⟩ c ∧
-        c.isHalted (saveInputs.concat gPhases) ∧ c.state = sSaveGPhases := by
-      exact ⟨⟨cGPhases.pc + saveInputs.length, cGPhases.state⟩, hSaveGPhases_steps, hSaveGPhases_halted, rfl⟩
+        c.isHalted (saveInputs.concat gPhases) ∧ c.state = sSaveGPhases :=
+      ⟨⟨cGPhases.pc + saveInputs.length, cGPhases.state⟩, hSaveGPhases_steps, hSaveGPhases_halted, rfl⟩
     have hres := allGPhases_saves_result (pF := pF) hGs_sf hGs_spec inputs hGs_dom ⟨j, hj⟩ sSaveGPhases hSaveGPhases_halted'
     simp only [results]; exact hres
 

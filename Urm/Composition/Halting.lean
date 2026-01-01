@@ -405,14 +405,12 @@ theorem finalPhase_halts_from_results
 
   -- pF halts from sTransfer via agreeing execution
   let epF := Halts.executeFromAgreeingState hpF_halts hpF_sf hagree
-  have hpF_steps' := epF.steps
-  have hpF_halted' := epF.halted
 
   -- Chain: transfer ++ pF
   have hTransfer_pc : (⟨(transferResultsToInputs (base + n + 1) m).length, sTransfer⟩ : Config).pc =
       (transferResultsToInputs (base + n + 1) m).length := rfl
   have ⟨hTransferF_steps, hTransferF_halted⟩ := Steps.chain_concat hTransfer_steps hTransfer_halted
-    hTransfer_pc hpF_steps' hpF_halted'
+    hTransfer_pc epF.steps epF.halted
 
   -- Chain: clear ++ (transfer ++ pF)
   have ⟨hFinal_steps, hFinal_halted⟩ := Steps.chain_concat hClear_steps hClear_halted hClear_pc
