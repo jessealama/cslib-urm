@@ -189,6 +189,67 @@ theorem Halts.preserves_high_registers {p : Program} {inputs : List ℕ}
 
 end RegisterIsolation
 
+/-! ## Agreeing State Lemmas -/
+
+/-- If a state agrees with Config.init on registers 0..maxRegister(p), then
+running p from that state gives the same result as running from Config.init.
+
+This is the key insight: we don't need exactly Config.init, just agreement on
+the registers the program actually uses. -/
+theorem Halts.from_agreeing_state {p : Program} {inputs : List ℕ} {s : State}
+    (h : Halts p inputs)
+    (hagree : ∀ r, r ≤ p.maxRegister → s.read r = (State.fromInputs inputs).read r) :
+    ∃ c, Steps p ⟨0, s⟩ c ∧ c.isHalted p ∧ c.state.output = Result p inputs h := by
+  -- Get the halting config from Config.init
+  let c_final := Classical.choose h
+  have hspec := Classical.choose_spec h
+  have hsteps : Steps p (Config.init inputs) c_final := hspec.1
+  have hhalted : c_final.isHalted p := hspec.2
+  -- Convert hagree to State.agreeOn form
+  have hagree' : s.agreeOn (State.fromInputs inputs) 0 p.maxRegister := by
+    intro r _ hhi
+    exact hagree r hhi
+  -- Use Steps.agreeOn to get parallel execution from s
+  have hpc_eq : (Config.init inputs).pc = (⟨0, s⟩ : Config).pc := rfl
+  obtain ⟨c', hsteps', hpc', hagree''⟩ := Steps.agreeOn hsteps hpc_eq (State.agreeOn_symm hagree')
+  use c'
+  refine ⟨hsteps', ?_, ?_⟩
+  · -- c' is halted: same PC as c_final which is halted
+    simp only [Config.isHalted] at hhalted ⊢
+    omega
+  · -- Output agrees: both read from register 0 which is ≤ maxRegister
+    simp only [State.output, Result]
+    -- c'.state and c_final.state agree on [0, maxRegister]
+    -- Register 0 is in this range (0 ≤ 0 ≤ maxRegister for any p)
+    have h0 : 0 ≤ p.maxRegister := Nat.zero_le _
+    have hread_eq := hagree'' 0 (Nat.le_refl 0) h0
+    -- hread_eq : c_final.state.read 0 = c'.state.read 0
+    -- Goal: c'.state 0 = (Classical.choose h).state 0
+    -- c_final = Classical.choose h, and read 0 = (· 0)
+    simp only [State.read] at hread_eq
+    exact hread_eq.symm
+
+/-- Reverse of from_agreeing_state: if p halts from a state s that agrees with
+Config.init inputs on relevant registers, then Halts p inputs.
+
+This is the key lemma for extracting halting from execution traces. -/
+theorem Halts.of_agreeing_state {p : Program} {inputs : List ℕ} {s : State} {c : Config}
+    (hsteps : Steps p ⟨0, s⟩ c) (hhalted : c.isHalted p)
+    (hagree : ∀ r, r ≤ p.maxRegister → s.read r = (State.fromInputs inputs).read r) :
+    Halts p inputs := by
+  -- Convert hagree to State.agreeOn form
+  have hagree' : s.agreeOn (State.fromInputs inputs) 0 p.maxRegister := by
+    intro r _ hhi
+    exact hagree r hhi
+  -- Use Steps.agreeOn to get parallel execution from Config.init
+  have hpc_eq : (⟨0, s⟩ : Config).pc = (Config.init inputs).pc := rfl
+  obtain ⟨c', hsteps', hpc', _⟩ := Steps.agreeOn hsteps hpc_eq hagree'
+  -- c' has the same pc as c, so it's halted too
+  have hhalted' : c'.isHalted p := by
+    simp only [Config.isHalted] at hhalted ⊢
+    omega
+  exact ⟨c', hsteps', hhalted'⟩
+
 /-! ## Part.sequence for Partial Function Families -/
 
 /-- Sequence a finite family of partial values into a partial function.
@@ -480,57 +541,6 @@ theorem clearRegisters_isStraightLine (maxReg : ℕ) :
     simp only [List.range_succ, List.all_append, ih, List.all_cons, List.all_nil,
       Function.comp_apply, Instr.isNonJumping, Bool.and_self]
 
-/-- Straight-line programs halt from any starting state, not just Config.init.
-This is key for chaining: after running one program, we can run the next
-straight-line segment from whatever state we're in. -/
-theorem straightLine_halts_from_state {p : Program} (hsl : p.isStraightLine = true) (s : State) :
-    ∃ c, Steps p ⟨0, s⟩ c ∧ c.isHalted p ∧ c.pc = p.length := by
-  -- Induction on remaining instructions
-  suffices h : ∀ (c : Config), c.pc ≤ p.length →
-      ∃ c', Steps p c c' ∧ c'.pc = p.length by
-    obtain ⟨c', hsteps, hpc'⟩ := h ⟨0, s⟩ (Nat.zero_le _)
-    exact ⟨c', hsteps, Nat.le_of_eq hpc'.symm, hpc'⟩
-  intro c hpc_le
-  generalize hrem : p.length - c.pc = remaining
-  induction remaining using Nat.strong_induction_on generalizing c with
-  | _ remaining ih =>
-    by_cases hhalted : c.pc ≥ p.length
-    · exact ⟨c, Relation.ReflTransGen.refl, by omega⟩
-    · push_neg at hhalted
-      have hpc_lt : c.pc < p.length := hhalted
-      have hinstr : ∃ instr, p.getInstr c.pc = some instr := by
-        simp only [Program.getInstr]
-        exact ⟨p[c.pc], List.getElem?_eq_getElem hpc_lt⟩
-      obtain ⟨instr, hinstr⟩ := hinstr
-      have hnonjump : instr.isNonJumping = true := by
-        simp only [Program.isStraightLine, List.all_eq_true] at hsl
-        have hmem : instr ∈ p := by
-          simp only [Program.getInstr] at hinstr
-          exact List.getElem?_eq_some_iff.mp hinstr |>.2 ▸ List.getElem_mem hpc_lt
-        exact hsl instr hmem
-      have hstep : ∃ c', Step p c c' ∧ c'.pc = c.pc + 1 := by
-        cases instr with
-        | Z n => exact ⟨⟨c.pc + 1, c.state.write n 0⟩, Step.zero hinstr, rfl⟩
-        | S n => exact ⟨⟨c.pc + 1, c.state.write n (c.state.read n + 1)⟩, Step.succ hinstr, rfl⟩
-        | T m n => exact ⟨⟨c.pc + 1, c.state.write n (c.state.read m)⟩, Step.trans hinstr, rfl⟩
-        | J m n q => simp [Instr.isNonJumping] at hnonjump
-      obtain ⟨c', hstep', hpc'⟩ := hstep
-      have hremaining : p.length - c'.pc < remaining := by omega
-      have hpc'_le : c'.pc ≤ p.length := by omega
-      obtain ⟨c'', hsteps'', hpc''⟩ := ih (p.length - c'.pc) hremaining c' hpc'_le rfl
-      exact ⟨c'', Relation.ReflTransGen.head hstep' hsteps'', hpc''⟩
-
-/-- The final state after running a straight-line program from a given starting state.
-This is the relational-semantics version that replaces the functional `executeStraightLine`. -/
-noncomputable def straightLineFinalState {p : Program} (hsl : p.isStraightLine = true) (s : State) : State :=
-  (Classical.choose (straightLine_halts_from_state hsl s)).state
-
-/-- The final config from straightLineFinalState satisfies the expected properties. -/
-theorem straightLineFinalState_spec {p : Program} (hsl : p.isStraightLine = true) (s : State) :
-    let c := Classical.choose (straightLine_halts_from_state hsl s)
-    Steps p ⟨0, s⟩ c ∧ c.isHalted p ∧ c.pc = p.length :=
-  Classical.choose_spec (straightLine_halts_from_state hsl s)
-
 /-! ## Halts lemmas for copyRegisterRange and transferResultsToInputs -/
 
 theorem copyRegisterRange_halts (srcStart dstStart count : ℕ) (s : State) :
@@ -588,94 +598,6 @@ theorem transferResultsToInputs_preserves_outside (resultStart arityF : ℕ)
   rw [hwrites]
   simp only [ne_eq, Option.some.injEq]
   omega
-
-/-- In a straight-line program, we can characterize the state at any intermediate pc.
-This gives us the configuration after executing instructions 0..pc-1. -/
-theorem straightLine_state_at_pc {p : Program} (hsl : p.isStraightLine = true)
-    (s : State) (targetPc : ℕ) (htarget : targetPc ≤ p.length) :
-    ∃ c, Steps p ⟨0, s⟩ c ∧ c.pc = targetPc := by
-  induction targetPc with
-  | zero => exact ⟨⟨0, s⟩, Relation.ReflTransGen.refl, rfl⟩
-  | succ n ih =>
-    have hn_le : n ≤ p.length := Nat.le_of_succ_le htarget
-    obtain ⟨c_n, hsteps_n, hpc_n⟩ := ih hn_le
-    have hn_lt : n < p.length := Nat.lt_of_succ_le htarget
-    have hinstr : ∃ instr, p.getInstr n = some instr := by
-      simp only [Program.getInstr]
-      exact ⟨p[n], List.getElem?_eq_getElem hn_lt⟩
-    obtain ⟨instr, hinstr⟩ := hinstr
-    have hnonjump : instr.isNonJumping = true := by
-      simp only [Program.isStraightLine, List.all_eq_true] at hsl
-      have hmem : instr ∈ p := by
-        simp only [Program.getInstr] at hinstr
-        exact List.getElem?_eq_some_iff.mp hinstr |>.2 ▸ List.getElem_mem hn_lt
-      exact hsl instr hmem
-    -- Convert hinstr to use c_n.pc
-    have hinstr' : p.getInstr c_n.pc = some instr := by rw [hpc_n]; exact hinstr
-    have hstep : ∃ c', Step p c_n c' ∧ c'.pc = n + 1 := by
-      cases instr with
-      | Z m =>
-        refine ⟨⟨c_n.pc + 1, c_n.state.write m 0⟩, Step.zero hinstr', ?_⟩
-        rw [hpc_n]
-      | S m =>
-        refine ⟨⟨c_n.pc + 1, c_n.state.write m (c_n.state.read m + 1)⟩, Step.succ hinstr', ?_⟩
-        rw [hpc_n]
-      | T m1 m2 =>
-        refine ⟨⟨c_n.pc + 1, c_n.state.write m2 (c_n.state.read m1)⟩, Step.trans hinstr', ?_⟩
-        rw [hpc_n]
-      | J _ _ _ => simp [Instr.isNonJumping] at hnonjump
-    obtain ⟨c', hstep', hpc'⟩ := hstep
-    exact ⟨c', Relation.ReflTransGen.tail hsteps_n hstep', hpc'⟩
-
-/-- A single step in a straight-line program modifies at most one register. -/
-theorem Step.straightLine_preserves {p : Program} {c c' : Config} {r : ℕ}
-    (hsl : p.isStraightLine = true) (hstep : Step p c c')
-    (hr : ∀ instr, p.getInstr c.pc = some instr → instr.writesTo ≠ some r) :
-    c'.state.read r = c.state.read r := by
-  cases hstep with
-  | zero hinstr =>
-    have := hr _ hinstr
-    simp only [Instr.writesTo, ne_eq, Option.some.injEq] at this
-    simp only [State.read, State.write]
-    exact Function.update_of_ne (Ne.symm this) _ _
-  | succ hinstr =>
-    have := hr _ hinstr
-    simp only [Instr.writesTo, ne_eq, Option.some.injEq] at this
-    simp only [State.read, State.write]
-    exact Function.update_of_ne (Ne.symm this) _ _
-  | trans hinstr =>
-    have := hr _ hinstr
-    simp only [Instr.writesTo, ne_eq, Option.some.injEq] at this
-    simp only [State.read, State.write]
-    exact Function.update_of_ne (Ne.symm this) _ _
-  | jump_eq hinstr _ =>
-    -- Jump in a straight-line program is a contradiction
-    simp only [Program.getInstr] at hinstr
-    have ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.mp hinstr
-    have hmem : (Instr.J _ _ _) ∈ p := heq ▸ List.getElem_mem hlt
-    simp only [Program.isStraightLine, List.all_eq_true] at hsl
-    exact absurd (hsl _ hmem) (by simp [Instr.isNonJumping])
-  | jump_ne hinstr _ =>
-    simp only [Program.getInstr] at hinstr
-    have ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.mp hinstr
-    have hmem : (Instr.J _ _ _) ∈ p := heq ▸ List.getElem_mem hlt
-    simp only [Program.isStraightLine, List.all_eq_true] at hsl
-    exact absurd (hsl _ hmem) (by simp [Instr.isNonJumping])
-
-/-- Multi-step execution preserves registers not written by any instruction. -/
-theorem Steps.straightLine_preserves {p : Program} {c c' : Config} {r : ℕ}
-    (hsl : p.isStraightLine = true) (hsteps : Steps p c c')
-    (hr : ∀ instr, instr ∈ p → instr.writesTo ≠ some r) :
-    c'.state.read r = c.state.read r := by
-  induction hsteps using Relation.ReflTransGen.head_induction_on with
-  | refl => rfl
-  | head hstep _ ih =>
-    rw [ih]
-    apply Step.straightLine_preserves hsl hstep
-    intro instr hinstr
-    apply hr
-    simp only [Program.getInstr] at hinstr
-    exact List.mem_of_getElem? hinstr
 
 /-- After executing instruction k (which is T src dst) in a straight-line program,
 register dst contains the value that was in src at that point. -/
