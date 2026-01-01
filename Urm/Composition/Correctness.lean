@@ -663,8 +663,13 @@ theorem comp_general_dom_imp_halts
   -- Saved inputs preserved after gPhases
   have hSaved_after_gPhases : ∀ j : ℕ, (hj : j < n) → sGPhases.read (base + 1 + j) = inputs ⟨j, hj⟩ := by
     intro j hj
-    -- TODO: Need to use allGPhases_prefix_full to convert between allGPhases and allGPhases_prefix
-    sorry
+    have hGPhases_as_prefix := allGPhases_prefix_full m n base pGs
+    rw [← hGPhases_as_prefix] at hGPhases_steps hGPhases_halted
+    have hPreserve := allGPhases_prefix_preserves_saved_inputs m n base pGs
+        hGs_sf hpGs_max hn_le_base m (le_refl m) sSave sGPhases cGPhases
+        hGPhases_steps hGPhases_halted rfl (base + 1 + j) (by omega) (by omega)
+    calc sGPhases.read (base + 1 + j) = sSave.read (base + 1 + j) := hPreserve
+      _ = inputs ⟨j, hj⟩ := hSaved j hj
 
   -- finalPhase halts from sGPhases
   have hpF_max : pF.maxRegister ≤ base := compositionBase_ge_pF_max m n pF pGs
@@ -809,10 +814,7 @@ theorem comp_general_result
     have hSaveGPhases_halted' : ∃ c : Config,
         Steps (saveInputs.concat gPhases) ⟨0, State.fromInputs (List.ofFn inputs)⟩ c ∧
         c.isHalted (saveInputs.concat gPhases) ∧ c.state = sSaveGPhases := by
-      have hSaveGPhases_halted'' : (⟨(saveInputs.concat gPhases).length, sGPhases⟩ : Config).isHalted (saveInputs.concat gPhases) := by
-        simp [Config.isHalted, Program.concat_length]
-      -- TODO: Config equality proof needs fixing
-      sorry
+      exact ⟨⟨cGPhases.pc + saveInputs.length, cGPhases.state⟩, hSaveGPhases_steps, hSaveGPhases_halted, rfl⟩
     have hres := allGPhases_saves_result (pF := pF) hGs_sf hGs_spec inputs hGs_dom ⟨j, hj⟩ sSaveGPhases hSaveGPhases_halted'
     simp only [results]; exact hres
 
@@ -933,13 +935,15 @@ theorem comp_general_result
 
   -- Show cH_built equals the unique halted config
   have hcH_built_halted : cH_built.isHalted ((saveInputs.concat gPhases).concat final) := by
-    -- TODO: Arithmetic simplification needs work
-    sorry
+    simp only [Config.isHalted, Program.concat_length, cH_built, epF.pc_eq]
+    omega
 
   have hH_steps_built : Steps ((saveInputs.concat gPhases).concat final)
       ⟨0, State.fromInputs (List.ofFn inputs)⟩ cH_built := by
-    -- TODO: Arithmetic conversion from hTotal_steps
-    sorry
+    simp only [final, cH_built]
+    convert hTotal_steps using 2
+    simp only [Program.concat_length, epF.pc_eq, finalPhase]
+    omega
 
   have hcH_eq := Steps.halts_unique hH_steps hH_halted hH_steps_built hcH_built_halted
 
