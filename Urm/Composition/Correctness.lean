@@ -42,9 +42,9 @@ theorem comp_general_halts_imp_gi_dom
     {pF : Program} {pGs : Fin m → Program}
     {f : (Fin m → ℕ) → Part ℕ}
     {gs : Fin m → (Fin n → ℕ) → Part ℕ}
-    (hF_sf : pF.IsStandardForm)
+    (_hF_sf : pF.IsStandardForm)
     (hGs_sf : ∀ i, (pGs i).IsStandardForm)
-    (hF_spec : ∀ inputs : Fin m → ℕ,
+    (_hF_spec : ∀ inputs : Fin m → ℕ,
       (Halts pF (List.ofFn inputs) ↔ (f inputs).Dom) ∧
       ∀ (hHalts : Halts pF (List.ofFn inputs)) (hDom : (f inputs).Dom),
         Result pF (List.ofFn inputs) hHalts = (f inputs).get hDom)
@@ -199,7 +199,7 @@ theorem comp_general_halts_imp_gi_dom
         have hr' := hsCopy_copies r hr_lt_n
         simp only [Nat.zero_add] at hr'
         rw [hsCopy_eq, hsCopy_final_eq]
-        convert hr' using 2 <;> omega
+        convert hr' using 2
 
       -- Step 2: sClear.read (base+1+r) = sSavePrefix.read (base+1+r)
       -- clearRegisters preserves registers above base
@@ -651,7 +651,7 @@ theorem comp_general_dom_imp_halts
         Steps (saveInputs.concat gPhases) ⟨0, State.fromInputs (List.ofFn inputs)⟩ c ∧
         c.isHalted (saveInputs.concat gPhases) ∧ c.state = sSaveGPhases := by
       have hSaveGPhases_halted'' : (⟨(saveInputs.concat gPhases).length, sGPhases⟩ : Config).isHalted (saveInputs.concat gPhases) := by
-        simp [Config.isHalted, Program.concat_length, copyRegisterRange_length]
+        simp [Config.isHalted, Program.concat_length]
       have hchain_state_eq : sSaveGPhases = sGPhases := rfl
       refine ⟨⟨(saveInputs.concat gPhases).length, sGPhases⟩, ?_, hSaveGPhases_halted'', rfl⟩
       convert hSaveGPhases_steps using 2
@@ -680,7 +680,7 @@ theorem comp_general_dom_imp_halts
     -- hSaveGPhases_steps goes to { pc := cGPhases.pc + saveInputs.length, state := cGPhases.state }
     -- which equals { pc := gPhases.length + saveInputs.length, state := sGPhases }
     have hpc_eq : cGPhases.pc + saveInputs.length = (saveInputs.concat gPhases).length := by
-      simp only [Program.concat_length, hGPhases_pc, copyRegisterRange_length]
+      simp only [Program.concat_length, hGPhases_pc]
       omega
     have hstate_eq : cGPhases.state = sGPhases := rfl
     have heq : (⟨cGPhases.pc + saveInputs.length, cGPhases.state⟩ : Config) =
@@ -810,7 +810,7 @@ theorem comp_general_result
         Steps (saveInputs.concat gPhases) ⟨0, State.fromInputs (List.ofFn inputs)⟩ c ∧
         c.isHalted (saveInputs.concat gPhases) ∧ c.state = sSaveGPhases := by
       have hSaveGPhases_halted'' : (⟨(saveInputs.concat gPhases).length, sGPhases⟩ : Config).isHalted (saveInputs.concat gPhases) := by
-        simp [Config.isHalted, Program.concat_length, copyRegisterRange_length]
+        simp [Config.isHalted, Program.concat_length]
       -- TODO: Config equality proof needs fixing
       sorry
     have hres := allGPhases_saves_result (pF := pF) hGs_sf hGs_spec inputs hGs_dom ⟨j, hj⟩ sSaveGPhases hSaveGPhases_halted'
@@ -910,7 +910,7 @@ theorem comp_general_result
   have hSaveGPhases_steps' : Steps (saveInputs.concat gPhases) ⟨0, State.fromInputs (List.ofFn inputs)⟩
       ⟨(saveInputs.concat gPhases).length, sGPhases⟩ := by
     have hpc_eq : cGPhases.pc + saveInputs.length = (saveInputs.concat gPhases).length := by
-      simp only [Program.concat_length, hGPhases_pc, copyRegisterRange_length]
+      simp only [Program.concat_length, hGPhases_pc]
       omega
     have hstate_eq : cGPhases.state = sGPhases := rfl
     have heq : (⟨cGPhases.pc + saveInputs.length, cGPhases.state⟩ : Config) =
@@ -957,7 +957,9 @@ theorem comp_general_result
     _ = Result pF (List.ofFn results) hF_halts := rfl
     _ = (f results).get hf_dom := (hF_spec results).2 hF_halts hf_dom
     _ = (compFunction m n f gs inputs).get hDom := by
-        -- TODO: Need to use Part.Dom.bind and Part.sequence_get to connect
-        sorry
+        simp only [compFunction, Part.Dom.bind hSeq_dom]
+        congr 2
+        funext i
+        exact (Part.sequence_get hSeq_dom i).symm
 
 end Urm
