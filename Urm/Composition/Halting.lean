@@ -632,11 +632,43 @@ theorem allGPhases_saves_result
     -- Then prefix(i) preserves saved inputs
     by_cases hi_zero : i.val = 0
     · -- prefix(0) is empty, so sSavePrefixI = cSave.state
-      -- TODO: Proof needs restructuring
-      sorry
+      have hPrefix_empty : allGPhases_prefix m n base pGs i.val = [] := by
+        simp only [hi_zero, allGPhases_prefix, List.take_zero, List.foldl_nil]
+      rw [hPrefix_empty, concat_nil_right] at hSavePrefixI_steps
+      have hSavePrefixI_halted' : (⟨saveInputs.length, sSavePrefixI⟩ : Config).isHalted saveInputs := by
+        simp [Config.isHalted]
+      have huniq := Steps.halts_unique hSavePrefixI_steps hSavePrefixI_halted' hSave_steps' hSave_halted'
+      have hstate_eq' : sSavePrefixI = cSave.state := congrArg Config.state huniq
+      rw [hstate_eq', hSave_state_sSave, hAfterSave]
     · -- prefix(i) is non-empty, use allGPhases_prefix_preserves_saved_inputs
-      -- TODO: The proof needs restructuring after hSavePrefixI_halted fix
-      sorry
+      -- Decompose saveInputs.concat prefix into two parts
+      have hPrefix_i_sf : (allGPhases_prefix m n base pGs i.val).IsStandardForm :=
+        allGPhases_prefix_isStandardForm hGs_sf i.val
+      obtain ⟨sSave', hSave_steps'', ⟨cPrefix, hPrefix_steps, hPrefix_halted⟩⟩ :=
+        suffix_of_concat_from_zero hSavePrefixI_steps (by simp [Config.isHalted]) hSave_sf
+      -- sSave' = sSave by uniqueness (through cSave)
+      have hsSave'_eq : sSave' = sSave := by
+        have hSave_halted'' : (⟨saveInputs.length, sSave'⟩ : Config).isHalted saveInputs := by
+          simp [Config.isHalted]
+        have huniq := Steps.halts_unique hSave_steps'' hSave_halted'' hSave_steps' hSave_halted'
+        have : sSave' = cSave.state := congrArg Config.state huniq
+        rw [this, hSave_state_sSave]
+      -- Use the equality to rewrite prefix_steps
+      conv at hPrefix_steps => rw [hsSave'_eq]
+      -- cPrefix.state = sSavePrefixI by uniqueness
+      have hcPrefix_state : cPrefix.state = sSavePrefixI := by
+        have hPrefix_steps' : Steps (allGPhases_prefix m n base pGs i.val) ⟨0, cSave.state⟩ cPrefix := by
+          rw [hSave_state_sSave]; exact hPrefix_steps
+        have hChain := Steps.chain_concat hSave_steps' hSave_halted' hSave_pc' hPrefix_steps' hPrefix_halted
+        have hSavePrefixI_halted'' : (⟨(saveInputs.concat (allGPhases_prefix m n base pGs i.val)).length, sSavePrefixI⟩ : Config).isHalted
+            (saveInputs.concat (allGPhases_prefix m n base pGs i.val)) := by simp [Config.isHalted]
+        have huniq := Steps.halts_unique hSavePrefixI_steps hSavePrefixI_halted'' hChain.1 hChain.2
+        exact (congrArg Config.state huniq).symm
+      -- Apply prefix preservation lemma
+      have hPrefix_preserves := allGPhases_prefix_preserves_saved_inputs m n base pGs hGs_sf hpGs_max hn_le_base
+        i.val (Nat.le_of_lt i.isLt)
+        sSave cPrefix.state cPrefix hPrefix_steps hPrefix_halted rfl
+      rw [← hcPrefix_state, hPrefix_preserves (base + 1 + k) (by omega) (by omega), hAfterSave]
 
   -- Now apply gPhase_writes_result
   have hGPhase_halts_i := (hGs_spec i inputs).1.mpr (hGs_dom i)
@@ -654,7 +686,29 @@ theorem allGPhases_saves_result
       (i.val + 1) i.val hi_lt sSavePrefix cSuffix hSuffix_steps hSuffix_halted
 
   -- Connect sSavePrefix to cGPhase_i final state
-  -- TODO: Proof needs restructuring after hSavePrefixI_halted changes
-  sorry
+  -- Chain: sSaveGPhases = c.state = cSuffix.state → sSavePrefix → cGPhase_i.state → Result → gs.get
+
+  -- Step 1: sSavePrefix = cGPhase_i.state (by chaining saveInputs++prefix(i) with gPhase(i))
+  have hsSavePrefix_eq_cGPhase : sSavePrefix = cGPhase_i.state := by
+    have hChain := Steps.chain_concat hSavePrefixI_steps (by simp [Config.isHalted]) rfl hGPhase_i_steps hGPhase_i_halted
+    have hSavePrefix_halted' : (⟨((saveInputs.concat (allGPhases_prefix m n base pGs i.val)).concat (gPhase base n (pGs i) i.val)).length, sSavePrefix⟩ : Config).isHalted
+        ((saveInputs.concat (allGPhases_prefix m n base pGs i.val)).concat (gPhase base n (pGs i) i.val)) := by simp [Config.isHalted]
+    have huniq := Steps.halts_unique hSavePrefix_steps hSavePrefix_halted' hChain.1 hChain.2
+    exact congrArg Config.state huniq
+
+  -- Step 2: c.state = cSuffix.state (by chaining saveInputs++prefix(i+1) with suffix)
+  have hc_eq_cSuffix : c.state = cSuffix.state := by
+    -- Use hSavePrefix_eq to rewrite the program
+    rw [hSavePrefix_eq] at hSuffixStart hhalted
+    have hChain := Steps.chain_concat hSavePrefix_steps hSavePrefixI_halted rfl hSuffix_steps hSuffix_halted
+    have huniq := Steps.halts_unique hSuffixStart hhalted hChain.1 hChain.2
+    simp only [huniq]
+
+  -- Step 3: Result = gs.get (from hGs_spec)
+  have hResult_eq : Result (pGs i) (List.ofFn inputs) hGPhase_halts_i = (gs i inputs).get (hGs_dom i) :=
+    (hGs_spec i inputs).2 hGPhase_halts_i (hGs_dom i)
+
+  -- Final chain
+  rw [← hstate_eq, hc_eq_cSuffix, hSuffix_preserves, hsSavePrefix_eq_cGPhase, hGPhase_i_result, hResult_eq]
 
 end Urm
