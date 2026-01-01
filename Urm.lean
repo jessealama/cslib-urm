@@ -7,4 +7,5 @@ import Urm.Computable
 import Urm.Composition
 import Urm.UnaryComposition
 import Urm.BinaryUnaryComposition
+import Urm.GeneralComposition
 import Urm.Examples

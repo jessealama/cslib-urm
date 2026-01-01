@@ -181,6 +181,12 @@ theorem Program.IsStandardForm.halts_at_length {p : Program} (hsf : p.IsStandard
   -- Combine: c.pc = p.length
   exact Nat.le_antisymm hle hhalted
 
+/-- When a standard form program halts from any starting point with pc ≤ length, pc = length. -/
+theorem Program.IsStandardForm.pc_eq_length_of_halted {p : Program} (hsf : p.IsStandardForm)
+    {c c' : Config} (hsteps : Steps p c c') (hpc : c.pc ≤ p.length)
+    (hhalted : c'.isHalted p) : c'.pc = p.length :=
+  Nat.le_antisymm (hsf.pc_le_length hsteps hpc) hhalted
+
 /-! ## Standard Form Normalization
 
 Every program can be converted to an equivalent standard form program by capping

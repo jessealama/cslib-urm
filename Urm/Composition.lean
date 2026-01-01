@@ -465,6 +465,11 @@ theorem prefix_of_concat_from_zero {p1 p2 : Program} {s : State} {c : Config}
     obtain ⟨c'', hsteps_dc'', hhalted_c''⟩ := ih hhalted' hd_pc_le
     exact ⟨c'', Relation.ReflTransGen.head hstep_p1 hsteps_dc'', hhalted_c''⟩
 
+/-- Length of clearRegisters. -/
+theorem clearRegisters_length (maxReg : ℕ) :
+    (Program.clearRegisters maxReg).length = maxReg + 1 := by
+  simp [Program.clearRegisters]
+
 /-- clearRegisters produces a straight-line program. -/
 theorem clearRegisters_isStraightLine (maxReg : ℕ) :
     (Program.clearRegisters maxReg).isStraightLine = true := by
