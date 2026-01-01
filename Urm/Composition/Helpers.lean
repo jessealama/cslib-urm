@@ -49,13 +49,6 @@ noncomputable def Halts.toExecution {p : Program} {inputs : List ℕ} (h : Halts
   steps := (Classical.choose_spec h).1
   halted := (Classical.choose_spec h).2
 
-/-- The config in HaltingExecution equals Classical.choose of the halts proof. -/
-theorem HaltingExecution.config_eq {p : Program} {inputs : List ℕ}
-    (e : HaltingExecution p inputs) :
-    e.config = Classical.choose e.halts :=
-  Steps.halts_unique e.steps e.halted
-    (Classical.choose_spec e.halts).1 (Classical.choose_spec e.halts).2
-
 /-- For standard-form programs, the halted PC equals program length. -/
 theorem HaltingExecution.pc_eq_length {p : Program} {inputs : List ℕ}
     (e : HaltingExecution p inputs) (hsf : p.IsStandardForm) :
