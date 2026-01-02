@@ -83,19 +83,17 @@ theorem transferResultsToInputs_state (resultStart arityF : ℕ) (s : State)
 
 /-! ## Preservation Lemmas for Saved Inputs -/
 
-/-- gPhase preserves registers in R[base+1..base+n]. -/
-theorem gPhase_preserves_saved_inputs (base n : ℕ) (pG : Program) (j : ℕ)
-    (hpG_sf : pG.IsStandardForm) (hpG_max : pG.maxRegister ≤ base) (_hn_le_base : n ≤ base + 1)
+/-- Helper: gPhase preserves any register r > base that isn't the transfer destination. -/
+private theorem gPhase_preserves_register_aux (base n : ℕ) (pG : Program) (j : ℕ)
+    (hpG_sf : pG.IsStandardForm) (hpG_max : pG.maxRegister ≤ base) (hn_le_base : n ≤ base + 1)
     (s s' : State) (c' : Config) (hsteps : Steps (gPhase base n pG j) ⟨0, s⟩ c')
-    (hhalted : c'.isHalted (gPhase base n pG j)) (hstate_eq : c'.state = s') :
-    ∀ r, base + 1 ≤ r → r ≤ base + n → s'.read r = s.read r := by
-  intro r hr_lo hr_hi
-  have hClear_sf := straightLine_isStandardForm (clearRegisters_isStraightLine base)
-  have hCopyRange_sf := straightLine_isStandardForm (copyRegisterRange_isStraightLine (base + 1) 0 n)
+    (hhalted : c'.isHalted (gPhase base n pG j)) (hstate_eq : c'.state = s')
+    (r : ℕ) (hr_above_base : r > base) (hr_not_dst : r ≠ base + n + 1 + j) :
+    s'.read r = s.read r := by
   obtain ⟨sClear, hClear_steps, ⟨_, hRest_steps, hRest_halted⟩⟩ :=
-    suffix_of_concat_from_zero hsteps hhalted hClear_sf
+    suffix_of_concat_from_zero hsteps hhalted (straightLine_isStandardForm (clearRegisters_isStraightLine base))
   obtain ⟨sCopy, hCopy_steps, ⟨_, hPGT_steps, hPGT_halted⟩⟩ :=
-    suffix_of_concat_from_zero hRest_steps hRest_halted hCopyRange_sf
+    suffix_of_concat_from_zero hRest_steps hRest_halted (straightLine_isStandardForm (copyRegisterRange_isStraightLine (base + 1) 0 n))
   obtain ⟨sPG, hPG_steps, ⟨cT, hT_steps, hT_halted⟩⟩ :=
     suffix_of_concat_from_zero hPGT_steps hPGT_halted hpG_sf
   have hClear_preserves : sClear.read r = s.read r := by
@@ -109,7 +107,7 @@ theorem gPhase_preserves_saved_inputs (base n : ℕ) (pG : Program) (j : ℕ)
   have hPG_preserves : sPG.read r = sCopy.read r :=
     Steps.preserves_high_register hPG_steps r (Nat.lt_of_le_of_lt hpG_max (by omega))
   let tr := executeSingleTransfer 0 (base + n + 1 + j) sPG
-  have hT_state : cT.state.read r = sPG.read r := by
+  have hT_preserves : cT.state.read r = sPG.read r := by
     simp only [Steps.halts_unique hT_steps hT_halted tr.steps tr.halted]; exact tr.preserved r (by omega)
   have hPGT := Steps.chain_concat hPG_steps (by simp [Config.isHalted]) rfl hT_steps hT_halted
   have hRest' := Steps.chain_concat hCopy_steps (by simp [Config.isHalted]) rfl hPGT_steps hPGT_halted
@@ -117,7 +115,15 @@ theorem gPhase_preserves_saved_inputs (base n : ℕ) (pG : Program) (j : ℕ)
   simp only [← hstate_eq, Steps.halts_unique hsteps hhalted hGPhase.1 hGPhase.2,
     Steps.halts_unique hRest_steps hRest_halted hRest'.1 hRest'.2,
     Steps.halts_unique hPGT_steps hPGT_halted hPGT.1 hPGT.2,
-    hT_state, hPG_preserves, hCopy_preserves, hClear_preserves]
+    hT_preserves, hPG_preserves, hCopy_preserves, hClear_preserves]
+
+/-- gPhase preserves registers in R[base+1..base+n]. -/
+theorem gPhase_preserves_saved_inputs (base n : ℕ) (pG : Program) (j : ℕ)
+    (hpG_sf : pG.IsStandardForm) (hpG_max : pG.maxRegister ≤ base) (hn_le_base : n ≤ base + 1)
+    (s s' : State) (c' : Config) (hsteps : Steps (gPhase base n pG j) ⟨0, s⟩ c')
+    (hhalted : c'.isHalted (gPhase base n pG j)) (hstate_eq : c'.state = s') :
+    ∀ r, base + 1 ≤ r → r ≤ base + n → s'.read r = s.read r := fun r hr_lo hr_hi =>
+  gPhase_preserves_register_aux base n pG j hpG_sf hpG_max hn_le_base s s' c' hsteps hhalted hstate_eq r (by omega) (by omega)
 
 /-- allGPhases_prefix preserves registers in R[base+1..base+n]. -/
 theorem allGPhases_prefix_preserves_saved_inputs (m n base : ℕ) (pGs : Fin m → Program)
@@ -171,39 +177,11 @@ theorem saveInputs_state (base n : ℕ) (_hn_le_base : n ≤ base + 1) (inputs :
 
 /-- gPhase preserves result registers R[base+n+1+k] for k ≠ j. -/
 theorem gPhase_preserves_other_results (base n : ℕ) (pG : Program) (j k : ℕ)
-    (hpG_sf : pG.IsStandardForm) (hpG_max : pG.maxRegister ≤ base) (_hn_le_base : n ≤ base + 1)
+    (hpG_sf : pG.IsStandardForm) (hpG_max : pG.maxRegister ≤ base) (hn_le_base : n ≤ base + 1)
     (hjk : j ≠ k) (s s' : State) (c' : Config) (hsteps : Steps (gPhase base n pG j) ⟨0, s⟩ c')
     (hhalted : c'.isHalted (gPhase base n pG j)) (hstate_eq : c'.state = s') :
-    s'.read (base + n + 1 + k) = s.read (base + n + 1 + k) := by
-  have hClear_sf := straightLine_isStandardForm (clearRegisters_isStraightLine base)
-  have hCopyRange_sf := straightLine_isStandardForm (copyRegisterRange_isStraightLine (base + 1) 0 n)
-  obtain ⟨sClear, hClear_steps, ⟨_, hRest_steps, hRest_halted⟩⟩ :=
-    suffix_of_concat_from_zero hsteps hhalted hClear_sf
-  obtain ⟨sCopy, hCopy_steps, ⟨_, hPGT_steps, hPGT_halted⟩⟩ :=
-    suffix_of_concat_from_zero hRest_steps hRest_halted hCopyRange_sf
-  obtain ⟨sPG, hPG_steps, ⟨cT, hT_steps, hT_halted⟩⟩ :=
-    suffix_of_concat_from_zero hPGT_steps hPGT_halted hpG_sf
-  let r := base + n + 1 + k
-  have hClear_preserves : sClear.read r = s.read r := by
-    rw [show sClear = _ from straightLineFinalState_eq_of_halted (clearRegisters_isStraightLine base) s
-      ⟨_, sClear⟩ hClear_steps (by simp [Config.isHalted])]
-    exact clearRegisters_preserves_above' base s r (by omega)
-  have hCopy_preserves : sCopy.read r = sClear.read r := by
-    rw [show sCopy = _ from straightLineFinalState_eq_of_halted (copyRegisterRange_isStraightLine (base + 1) 0 n)
-      sClear ⟨_, sCopy⟩ hCopy_steps (by simp [Config.isHalted])]
-    exact copyRegisterRange_preserves (base + 1) 0 n sClear r (Or.inr (by omega))
-  have hPG_preserves : sPG.read r = sCopy.read r :=
-    Steps.preserves_high_register hPG_steps r (Nat.lt_of_le_of_lt hpG_max (by omega))
-  let tr := executeSingleTransfer 0 (base + n + 1 + j) sPG
-  have hT_preserves : cT.state.read r = sPG.read r := by
-    simp only [Steps.halts_unique hT_steps hT_halted tr.steps tr.halted]; exact tr.preserved r (by omega)
-  have hPGT := Steps.chain_concat hPG_steps (by simp [Config.isHalted]) rfl hT_steps hT_halted
-  have hCopyPGT := Steps.chain_concat hCopy_steps (by simp [Config.isHalted]) rfl hPGT_steps hPGT_halted
-  have hClearRest := Steps.chain_concat hClear_steps (by simp [Config.isHalted]) rfl hRest_steps hRest_halted
-  have hc'_state_eq : c'.state.read r = cT.state.read r := by
-    simp only [Steps.halts_unique hsteps hhalted hClearRest.1 hClearRest.2,
-      Steps.halts_unique hRest_steps hRest_halted hCopyPGT.1 hCopyPGT.2,
-      Steps.halts_unique hPGT_steps hPGT_halted hPGT.1 hPGT.2]
-  rw [← hstate_eq, hc'_state_eq, hT_preserves, hPG_preserves, hCopy_preserves, hClear_preserves]
+    s'.read (base + n + 1 + k) = s.read (base + n + 1 + k) :=
+  gPhase_preserves_register_aux base n pG j hpG_sf hpG_max hn_le_base s s' c' hsteps hhalted hstate_eq
+    (base + n + 1 + k) (by omega) (by omega)
 
 end Urm
