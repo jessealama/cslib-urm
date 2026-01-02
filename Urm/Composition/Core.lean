@@ -159,18 +159,10 @@ theorem Halts.of_agreeing_state {p : Program} {inputs : List ℕ} {s : State} {c
     (hsteps : Steps p ⟨0, s⟩ c) (hhalted : c.isHalted p)
     (hagree : ∀ r, r ≤ p.maxRegister → s.read r = (State.fromInputs inputs).read r) :
     Halts p inputs := by
-  -- Convert hagree to State.agreeOn form
-  have hagree' : s.agreeOn (State.fromInputs inputs) 0 p.maxRegister := by
-    intro r _ hhi
-    exact hagree r hhi
-  -- Use Steps.agreeOn to get parallel execution from Config.init
+  have hagree' : s.agreeOn (State.fromInputs inputs) 0 p.maxRegister := fun r _ hhi => hagree r hhi
   have hpc_eq : (⟨0, s⟩ : Config).pc = (Config.init inputs).pc := rfl
   obtain ⟨c', hsteps', hpc', _⟩ := Steps.agreeOn hsteps hpc_eq hagree'
-  -- c' has the same pc as c, so it's halted too
-  have hhalted' : c'.isHalted p := by
-    simp only [Config.isHalted] at hhalted ⊢
-    omega
-  exact ⟨c', hsteps', hhalted'⟩
+  exact ⟨c', hsteps', by simp only [Config.isHalted] at hhalted ⊢; omega⟩
 
 /-! ## Part.sequence for Partial Function Families -/
 
@@ -228,15 +220,10 @@ theorem Part.sequence_get {α : Type*} {n : ℕ} {f : Fin n → Part α}
 theorem Program.isStraightLine_concat {p1 p2 : Program}
     (h1 : p1.isStraightLine = true) (h2 : p2.isStraightLine = true) :
     (p1.concat p2).isStraightLine = true := by
-  simp only [Program.concat, Program.isStraightLine, List.all_append]
-  simp only [Program.isStraightLine] at h1 h2
+  simp only [Program.concat, Program.isStraightLine, List.all_append, Program.shiftJumps,
+    List.all_map] at h1 h2 ⊢
   rw [Bool.and_eq_true]
-  constructor
-  · exact h1
-  · simp only [Program.shiftJumps, List.all_map]
-    convert h2 using 2
-    funext instr
-    cases instr <;> simp [Instr.shiftJumps, Instr.isNonJumping]
+  exact ⟨h1, by convert h2 using 2; funext instr; cases instr <;> simp [Instr.shiftJumps, Instr.isNonJumping]⟩
 
 /-- Concatenation of standard form programs is standard form.
 
