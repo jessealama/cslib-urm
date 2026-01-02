@@ -242,13 +242,7 @@ end Program
 
 /-! ## Step Correspondence -/
 
-/-- Core theorem: If program P steps from c to c', then P.shiftRegisters(offset)
-steps from c.shift(offset) to c'.shift(offset).
-
-The key insight is that:
-- Register reads at n become reads at n + offset
-- Register writes at n become writes at n + offset
-- Jump targets stay the same (only register indices shift, not PCs) -/
+/-- If P steps c→c', then P.shiftRegisters steps shifted(c)→shifted(c'). -/
 theorem Step.shift {p : Program} {c c' : Config} (offset : ℕ)
     (hstep : Step p c c') :
     Step (p.shiftRegisters offset) (c.shift offset) (c'.shift offset) := by
@@ -256,63 +250,37 @@ theorem Step.shift {p : Program} {c c' : Config} (offset : ℕ)
   | zero hinstr =>
     rename_i n
     have h : (p.shiftRegisters offset).getInstr c.pc = some (Instr.Z (n + offset)) := by
-      rw [Program.getInstr_shiftRegisters, hinstr]
-      rfl
-    -- c' = ⟨c.pc + 1, c.state.write n 0⟩
-    -- c'.shift offset = ⟨c.pc + 1, (c.state.write n 0).shift offset⟩
-    --                 = ⟨c.pc + 1, (c.state.shift offset).write (n + offset) 0⟩
-    show Step (p.shiftRegisters offset) (c.shift offset)
-              ⟨c.pc + 1, (c.state.write n 0).shift offset⟩
-    rw [← State.shift_write]
-    exact Step.zero h
+      rw [Program.getInstr_shiftRegisters, hinstr]; rfl
+    show Step _ _ ⟨c.pc + 1, (c.state.write n 0).shift offset⟩
+    rw [← State.shift_write]; exact Step.zero h
   | succ hinstr =>
     rename_i n
     have h : (p.shiftRegisters offset).getInstr c.pc = some (Instr.S (n + offset)) := by
-      rw [Program.getInstr_shiftRegisters, hinstr]
-      rfl
-    show Step (p.shiftRegisters offset) (c.shift offset)
-              ⟨c.pc + 1, (c.state.write n (c.state.read n + 1)).shift offset⟩
-    rw [← State.shift_write]
-    have heq : c.state.read n = (c.state.shift offset).read (n + offset) := by
-      simp only [State.shift_read (hr := Nat.le_add_left offset n), Nat.add_sub_cancel]
-    rw [heq]
+      rw [Program.getInstr_shiftRegisters, hinstr]; rfl
+    show Step _ _ ⟨c.pc + 1, (c.state.write n (c.state.read n + 1)).shift offset⟩
+    rw [← State.shift_write, show c.state.read n = (c.state.shift offset).read (n + offset) by
+      simp only [State.shift_read (hr := Nat.le_add_left offset n), Nat.add_sub_cancel]]
     exact Step.succ h
   | trans hinstr =>
     rename_i m n
     have h : (p.shiftRegisters offset).getInstr c.pc = some (Instr.T (m + offset) (n + offset)) := by
-      rw [Program.getInstr_shiftRegisters, hinstr]
-      rfl
-    show Step (p.shiftRegisters offset) (c.shift offset)
-              ⟨c.pc + 1, (c.state.write n (c.state.read m)).shift offset⟩
-    rw [← State.shift_write]
-    have heq : c.state.read m = (c.state.shift offset).read (m + offset) := by
-      simp only [State.shift_read (hr := Nat.le_add_left offset m), Nat.add_sub_cancel]
-    rw [heq]
+      rw [Program.getInstr_shiftRegisters, hinstr]; rfl
+    show Step _ _ ⟨c.pc + 1, (c.state.write n (c.state.read m)).shift offset⟩
+    rw [← State.shift_write, show c.state.read m = (c.state.shift offset).read (m + offset) by
+      simp only [State.shift_read (hr := Nat.le_add_left offset m), Nat.add_sub_cancel]]
     exact Step.trans h
   | jump_eq hinstr hcmp =>
     rename_i m n q
-    have h : (p.shiftRegisters offset).getInstr c.pc =
-             some (Instr.J (m + offset) (n + offset) q) := by
-      rw [Program.getInstr_shiftRegisters, hinstr]
-      rfl
-    have hcmp' : (c.state.shift offset).read (m + offset) =
-                 (c.state.shift offset).read (n + offset) := by
-      simp only [State.shift_read (hr := Nat.le_add_left offset m),
-                 State.shift_read (hr := Nat.le_add_left offset n), Nat.add_sub_cancel]
-      exact hcmp
-    exact Step.jump_eq h hcmp'
+    have h : (p.shiftRegisters offset).getInstr c.pc = some (Instr.J (m + offset) (n + offset) q) := by
+      rw [Program.getInstr_shiftRegisters, hinstr]; rfl
+    exact Step.jump_eq h (by simp only [Config.shift_state, State.shift_read (hr := Nat.le_add_left offset m),
+      State.shift_read (hr := Nat.le_add_left offset n), Nat.add_sub_cancel]; exact hcmp)
   | jump_ne hinstr hcmp =>
     rename_i m n q
-    have h : (p.shiftRegisters offset).getInstr c.pc =
-             some (Instr.J (m + offset) (n + offset) q) := by
-      rw [Program.getInstr_shiftRegisters, hinstr]
-      rfl
-    have hcmp' : (c.state.shift offset).read (m + offset) ≠
-                 (c.state.shift offset).read (n + offset) := by
-      simp only [State.shift_read (hr := Nat.le_add_left offset m),
-                 State.shift_read (hr := Nat.le_add_left offset n), Nat.add_sub_cancel]
-      exact hcmp
-    exact Step.jump_ne h hcmp'
+    have h : (p.shiftRegisters offset).getInstr c.pc = some (Instr.J (m + offset) (n + offset) q) := by
+      rw [Program.getInstr_shiftRegisters, hinstr]; rfl
+    exact Step.jump_ne h (by simp only [Config.shift_state, State.shift_read (hr := Nat.le_add_left offset m),
+      State.shift_read (hr := Nat.le_add_left offset n), Nat.add_sub_cancel]; exact hcmp)
 
 /-- Multi-step version: if P goes from c to c' in multiple steps,
 then P.shiftRegisters goes from shifted(c) to shifted(c'). -/
@@ -327,160 +295,78 @@ theorem Steps.shift {p : Program} {c c' : Config} (offset : ℕ)
 /-! ## Halting Equivalence -/
 
 /-- If the original program halts, the shifted program halts. -/
-theorem Halts.shift {p : Program} {inputs : List ℕ} (offset : ℕ)
-    (h : Halts p inputs) :
-    ∃ c, Steps (p.shiftRegisters offset)
-              ((Config.init inputs).shift offset) c ∧
+theorem Halts.shift {p : Program} {inputs : List ℕ} (offset : ℕ) (h : Halts p inputs) :
+    ∃ c, Steps (p.shiftRegisters offset) ((Config.init inputs).shift offset) c ∧
          c.isHalted (p.shiftRegisters offset) := by
   obtain ⟨c, hsteps, hhalted⟩ := h
-  use c.shift offset
-  constructor
-  · exact Steps.shift offset hsteps
-  · rw [Config.isHalted_shift]
-    exact hhalted
+  exact ⟨c.shift offset, Steps.shift offset hsteps, (Config.isHalted_shift ..).mpr hhalted⟩
 
-/-- Key invariant: A step in the shifted program from a shifted config produces a shifted config.
-More precisely, the result is exactly the shift of what the original program would produce. -/
+/-- Key invariant: A step in the shifted program from a shifted config produces a shifted config. -/
 theorem Step.shift_inv {p : Program} {c : Config} {c' : Config} (offset : ℕ)
     (hstep : Step (p.shiftRegisters offset) (c.shift offset) c') :
     ∃ d, c' = d.shift offset ∧ Step p c d := by
-  -- The shifted program's instruction at PC is a shifted instruction
-  -- We case split on what instruction it is
   cases hinstr : p.getInstr c.pc with
   | none =>
-    -- If no instruction, the program can't step - contradiction
     have h : (p.shiftRegisters offset).getInstr (c.shift offset).pc = none := by
       simp only [Config.shift_pc, Program.getInstr_shiftRegisters, hinstr]; rfl
-    -- All Step cases require the instruction to be `some`, which contradicts `h`
     cases hstep <;> simp_all
   | some instr =>
-    -- There's an instruction; it becomes instr.shiftRegisters offset in the shifted program
     have hshift_instr : (p.shiftRegisters offset).getInstr (c.shift offset).pc =
                         some (instr.shiftRegisters offset) := by
       simp only [Config.shift_pc, Program.getInstr_shiftRegisters, hinstr]; rfl
-    -- Case on the instruction type
     cases instr with
     | Z n =>
       simp only [Instr.shiftRegisters] at hshift_instr
-      -- The step must be zero with register n + offset
       cases hstep with
       | zero h' =>
-        -- h' : ... = some (Instr.Z n'), hshift_instr : ... = some (Instr.Z (n + offset))
-        -- By transitivity, n' = n + offset
         rw [hshift_instr] at h'; cases h'
-        use ⟨c.pc + 1, c.state.write n 0⟩
-        constructor
-        · simp only [Config.shift]
-          rw [← State.shift_write]
-        · exact Step.zero hinstr
-      | succ h' => rw [hshift_instr] at h'; cases h'
-      | trans h' => rw [hshift_instr] at h'; cases h'
-      | jump_eq h' _ => rw [hshift_instr] at h'; cases h'
-      | jump_ne h' _ => rw [hshift_instr] at h'; cases h'
+        exact ⟨⟨c.pc + 1, c.state.write n 0⟩, by simp [Config.shift, ← State.shift_write], Step.zero hinstr⟩
+      | succ h' | trans h' | jump_eq h' _ | jump_ne h' _ => rw [hshift_instr] at h'; cases h'
     | S n =>
       simp only [Instr.shiftRegisters] at hshift_instr
       cases hstep with
       | succ h' =>
         rw [hshift_instr] at h'; cases h'
-        use ⟨c.pc + 1, c.state.write n (c.state.read n + 1)⟩
-        constructor
-        · simp only [Config.shift]
-          rw [← State.shift_write]
-          congr 1
-          simp only [State.shift_read (hr := Nat.le_add_left offset n), Nat.add_sub_cancel]
-        · exact Step.succ hinstr
-      | zero h' => rw [hshift_instr] at h'; cases h'
-      | trans h' => rw [hshift_instr] at h'; cases h'
-      | jump_eq h' _ => rw [hshift_instr] at h'; cases h'
-      | jump_ne h' _ => rw [hshift_instr] at h'; cases h'
+        refine ⟨⟨c.pc + 1, c.state.write n (c.state.read n + 1)⟩, ?_, Step.succ hinstr⟩
+        simp only [Config.shift, ← State.shift_write, State.shift_read (hr := Nat.le_add_left offset n), Nat.add_sub_cancel]
+      | zero h' | trans h' | jump_eq h' _ | jump_ne h' _ => rw [hshift_instr] at h'; cases h'
     | T m n =>
       simp only [Instr.shiftRegisters] at hshift_instr
       cases hstep with
       | trans h' =>
         rw [hshift_instr] at h'; cases h'
-        use ⟨c.pc + 1, c.state.write n (c.state.read m)⟩
-        constructor
-        · simp only [Config.shift]
-          rw [← State.shift_write]
-          congr 1
-          simp only [State.shift_read (hr := Nat.le_add_left offset m), Nat.add_sub_cancel]
-        · exact Step.trans hinstr
-      | zero h' => rw [hshift_instr] at h'; cases h'
-      | succ h' => rw [hshift_instr] at h'; cases h'
-      | jump_eq h' _ => rw [hshift_instr] at h'; cases h'
-      | jump_ne h' _ => rw [hshift_instr] at h'; cases h'
+        refine ⟨⟨c.pc + 1, c.state.write n (c.state.read m)⟩, ?_, Step.trans hinstr⟩
+        simp only [Config.shift, ← State.shift_write, State.shift_read (hr := Nat.le_add_left offset m), Nat.add_sub_cancel]
+      | zero h' | succ h' | jump_eq h' _ | jump_ne h' _ => rw [hshift_instr] at h'; cases h'
     | J m n q =>
       simp only [Instr.shiftRegisters] at hshift_instr
       cases hstep with
       | jump_eq h' hcmp =>
-        -- Extract that the instruction matches
         rw [hshift_instr] at h'; cases h'
-        -- The comparison in shifted uses shifted reads, convert to original
         have hcmp_orig : c.state.read m = c.state.read n := by
           simp only [Config.shift_state, State.shift_read (hr := Nat.le_add_left offset m),
-                     State.shift_read (hr := Nat.le_add_left offset n),
-                     Nat.add_sub_cancel] at hcmp
-          exact hcmp
-        use ⟨q, c.state⟩
-        constructor
-        · simp only [Config.shift]
-        · exact Step.jump_eq hinstr hcmp_orig
+                     State.shift_read (hr := Nat.le_add_left offset n), Nat.add_sub_cancel] at hcmp; exact hcmp
+        exact ⟨⟨q, c.state⟩, by simp [Config.shift], Step.jump_eq hinstr hcmp_orig⟩
       | jump_ne h' hne =>
         rw [hshift_instr] at h'; cases h'
         have hne_orig : c.state.read m ≠ c.state.read n := by
           simp only [Config.shift_state, State.shift_read (hr := Nat.le_add_left offset m),
-                     State.shift_read (hr := Nat.le_add_left offset n),
-                     Nat.add_sub_cancel] at hne
-          exact hne
-        use ⟨c.pc + 1, c.state⟩
-        constructor
-        · simp only [Config.shift]
-        · exact Step.jump_ne hinstr hne_orig
-      | zero h' => rw [hshift_instr] at h'; cases h'
-      | succ h' => rw [hshift_instr] at h'; cases h'
-      | trans h' => rw [hshift_instr] at h'; cases h'
+                     State.shift_read (hr := Nat.le_add_left offset n), Nat.add_sub_cancel] at hne; exact hne
+        exact ⟨⟨c.pc + 1, c.state⟩, by simp [Config.shift], Step.jump_ne hinstr hne_orig⟩
+      | zero h' | succ h' | trans h' => rw [hshift_instr] at h'; cases h'
 
 /-- Invariant extended to multi-step: configs reachable from shifted initial are shifted. -/
 theorem Steps.shift_inv {p : Program} {c₀ c : Config} (offset : ℕ)
     (hsteps : Steps (p.shiftRegisters offset) (c₀.shift offset) c) :
     ∃ d, c = d.shift offset ∧ Steps p c₀ d := by
-  -- Use a generalized induction
   generalize hc₀' : c₀.shift offset = c₀' at hsteps
   induction hsteps using Relation.ReflTransGen.head_induction_on generalizing c₀ with
-  | refl =>
-    use c₀
-    constructor
-    · exact hc₀'.symm
-    · exact Relation.ReflTransGen.refl
-  | head hstep hrest ih =>
-    -- hstep : Step (p.shiftRegisters offset) c₀' c_mid
-    -- hrest : Steps (p.shiftRegisters offset) c_mid c
-    -- hc₀' : c₀.shift offset = c₀'
+  | refl => exact ⟨c₀, hc₀'.symm, Relation.ReflTransGen.refl⟩
+  | head hstep _ ih =>
     subst hc₀'
-    -- Now hstep : Step (p.shiftRegisters offset) (c₀.shift offset) c_mid
     obtain ⟨d, hd_eq, hd_step⟩ := Step.shift_inv offset hstep
-    -- d is the unshifted version of c_mid, c_mid = d.shift offset
-    -- hd_step : Step p c₀ d
-    -- Now apply ih with c₀ := d (implicit, inferred from hd_eq.symm)
     obtain ⟨e, he_eq, he_steps⟩ := ih hd_eq.symm
-    use e
-    constructor
-    · exact he_eq
-    · exact Relation.ReflTransGen.head hd_step he_steps
-
-/-- If the shifted program halts from a shifted initial state, the original halts. -/
-theorem Halts.of_shift {p : Program} {inputs : List ℕ} (offset : ℕ)
-    (h : ∃ c, Steps (p.shiftRegisters offset)
-                    ((Config.init inputs).shift offset) c ∧
-              c.isHalted (p.shiftRegisters offset)) :
-    Halts p inputs := by
-  obtain ⟨c, hsteps, hhalted⟩ := h
-  obtain ⟨d, hd_eq, hd_steps⟩ := Steps.shift_inv offset hsteps
-  use d
-  constructor
-  · exact hd_steps
-  · rw [← Config.isHalted_shift, ← hd_eq]
-    exact hhalted
+    exact ⟨e, he_eq, Relation.ReflTransGen.head hd_step he_steps⟩
 
 /-! ## Register Independence
 
@@ -491,9 +377,6 @@ produce the same execution. -/
 /-- Two states agree on registers in `[lo, hi]`. -/
 def State.agreeOn (σ₁ σ₂ : State) (lo hi : ℕ) : Prop :=
   ∀ r, lo ≤ r → r ≤ hi → σ₁.read r = σ₂.read r
-
-theorem State.agreeOn_refl (σ : State) (lo hi : ℕ) : σ.agreeOn σ lo hi := by
-  intro r _ _; rfl
 
 theorem State.agreeOn_symm {σ₁ σ₂ : State} {lo hi : ℕ}
     (h : σ₁.agreeOn σ₂ lo hi) : σ₂.agreeOn σ₁ lo hi := by
@@ -507,11 +390,6 @@ theorem State.agreeOn_write_same {σ₁ σ₂ : State} {lo hi n : ℕ} {v : ℕ}
   by_cases hr : r = n
   · simp [hr]
   · simp [write_read_diff _ _ _ _ hr, h r hlo hhi]
-
-/-- If states agree on a range and we read from that range, we get the same value. -/
-theorem State.agreeOn_read {σ₁ σ₂ : State} {lo hi r : ℕ}
-    (h : σ₁.agreeOn σ₂ lo hi) (hlo : lo ≤ r) (hhi : r ≤ hi) :
-    σ₁.read r = σ₂.read r := h r hlo hhi
 
 /-- Helper for foldl max: value in accumulator is preserved. -/
 private theorem foldl_max_ge_init (p : List Instr) (init : ℕ) :
@@ -556,70 +434,30 @@ theorem Step.agreeOn {p : Program} {c₁ c₁' c₂ : Config}
            c₁'.state.agreeOn c₂'.state 0 p.maxRegister := by
   cases hstep with
   | zero hinstr =>
-    rename_i n
-    -- The instruction is at c₁.pc = c₂.pc, so c₂ can take the same step
     rw [hpc] at hinstr
-    use ⟨c₂.pc + 1, c₂.state.write n 0⟩
-    refine ⟨Step.zero hinstr, ?_, ?_⟩
-    · simp [hpc]
-    · apply State.agreeOn_write_same hagree
+    exact ⟨⟨c₂.pc + 1, c₂.state.write _ 0⟩, Step.zero hinstr, by simp [hpc], State.agreeOn_write_same hagree⟩
   | succ hinstr =>
-    rename_i n
-    rw [hpc] at hinstr
-    -- c₁ and c₂ read the same value from register n (since it's ≤ maxRegister)
-    have hmax : n ≤ p.maxRegister := by
-      have hinstr' : p.getInstr c₂.pc = some (Instr.S n) := hinstr
-      have := Program.getInstr_maxRegister hinstr'
-      simp [Instr.maxRegister] at this
-      exact this
-    have hread : c₁.state.read n = c₂.state.read n := hagree n (Nat.zero_le n) hmax
-    use ⟨c₂.pc + 1, c₂.state.write n (c₂.state.read n + 1)⟩
-    refine ⟨Step.succ hinstr, ?_, ?_⟩
-    · simp [hpc]
-    · rw [hread]
-      apply State.agreeOn_write_same hagree
+    rename_i n; rw [hpc] at hinstr
+    have hmax : n ≤ p.maxRegister := by simpa [Instr.maxRegister] using Program.getInstr_maxRegister hinstr
+    have hread := hagree n (Nat.zero_le n) hmax
+    exact ⟨⟨c₂.pc + 1, c₂.state.write n (c₂.state.read n + 1)⟩, Step.succ hinstr, by simp [hpc],
+           by rw [hread]; exact State.agreeOn_write_same hagree⟩
   | trans hinstr =>
-    rename_i m n
-    rw [hpc] at hinstr
-    have hmax : m ≤ p.maxRegister ∧ n ≤ p.maxRegister := by
-      have hinstr' : p.getInstr c₂.pc = some (Instr.T m n) := hinstr
-      have := Program.getInstr_maxRegister hinstr'
-      simp [Instr.maxRegister] at this
-      constructor <;> omega
-    have hread : c₁.state.read m = c₂.state.read m := hagree m (Nat.zero_le m) hmax.1
-    use ⟨c₂.pc + 1, c₂.state.write n (c₂.state.read m)⟩
-    refine ⟨Step.trans hinstr, ?_, ?_⟩
-    · simp [hpc]
-    · rw [hread]
-      apply State.agreeOn_write_same hagree
+    rename_i m n; rw [hpc] at hinstr
+    have hmax := by simpa [Instr.maxRegister] using Program.getInstr_maxRegister hinstr
+    have hread := hagree m (Nat.zero_le m) (by omega : m ≤ p.maxRegister)
+    exact ⟨⟨c₂.pc + 1, c₂.state.write n (c₂.state.read m)⟩, Step.trans hinstr, by simp [hpc],
+           by rw [hread]; exact State.agreeOn_write_same hagree⟩
   | jump_eq hinstr hcmp =>
-    rename_i m n q
-    rw [hpc] at hinstr
-    have hmax : m ≤ p.maxRegister ∧ n ≤ p.maxRegister := by
-      have hinstr' : p.getInstr c₂.pc = some (Instr.J m n q) := hinstr
-      have := Program.getInstr_maxRegister hinstr'
-      simp [Instr.maxRegister] at this
-      constructor <;> omega
-    have hreadm : c₁.state.read m = c₂.state.read m := hagree m (Nat.zero_le m) hmax.1
-    have hreadn : c₁.state.read n = c₂.state.read n := hagree n (Nat.zero_le n) hmax.2
-    have hcmp' : c₂.state.read m = c₂.state.read n := by rw [← hreadm, ← hreadn]; exact hcmp
-    use ⟨q, c₂.state⟩
-    refine ⟨Step.jump_eq hinstr hcmp', rfl, hagree⟩
+    rename_i m n q; rw [hpc] at hinstr
+    have hmax := by simpa [Instr.maxRegister] using Program.getInstr_maxRegister hinstr
+    have hreadm := hagree m (Nat.zero_le m) (by omega); have hreadn := hagree n (Nat.zero_le n) (by omega)
+    exact ⟨⟨q, c₂.state⟩, Step.jump_eq hinstr (by rw [← hreadm, ← hreadn]; exact hcmp), rfl, hagree⟩
   | jump_ne hinstr hcmp =>
-    rename_i m n q
-    rw [hpc] at hinstr
-    have hmax : m ≤ p.maxRegister ∧ n ≤ p.maxRegister := by
-      have hinstr' : p.getInstr c₂.pc = some (Instr.J m n q) := hinstr
-      have := Program.getInstr_maxRegister hinstr'
-      simp [Instr.maxRegister] at this
-      constructor <;> omega
-    have hreadm : c₁.state.read m = c₂.state.read m := hagree m (Nat.zero_le m) hmax.1
-    have hreadn : c₁.state.read n = c₂.state.read n := hagree n (Nat.zero_le n) hmax.2
-    have hcmp' : c₂.state.read m ≠ c₂.state.read n := by
-      rw [← hreadm, ← hreadn]; exact hcmp
-    use ⟨c₂.pc + 1, c₂.state⟩
-    refine ⟨Step.jump_ne hinstr hcmp', ?_, hagree⟩
-    simp [hpc]
+    rename_i m n q; rw [hpc] at hinstr
+    have hmax := by simpa [Instr.maxRegister] using Program.getInstr_maxRegister hinstr
+    have hreadm := hagree m (Nat.zero_le m) (by omega); have hreadn := hagree n (Nat.zero_le n) (by omega)
+    exact ⟨⟨c₂.pc + 1, c₂.state⟩, Step.jump_ne hinstr (by rw [← hreadm, ← hreadn]; exact hcmp), by simp [hpc], hagree⟩
 
 /-- Multi-step agreement: if configs agree, multi-step produces agreeing configs. -/
 theorem Steps.agreeOn {p : Program} {c₁ c₁' c₂ : Config}
@@ -639,38 +477,23 @@ theorem Steps.agreeOn {p : Program} {c₁ c₁' c₂ : Config}
 /-- A shifted program only uses registers in [offset, offset + maxRegister]. -/
 theorem Program.shiftRegisters_uses_range {p : Program} {offset i : ℕ} {instr : Instr}
     (h : (p.shiftRegisters offset).getInstr i = some instr) :
-    ∀ r, (r ∈ instr.readsFrom ∨ instr.writesTo = some r) →
-         offset ≤ r ∧ r ≤ offset + p.maxRegister := by
+    ∀ r, (r ∈ instr.readsFrom ∨ instr.writesTo = some r) → offset ≤ r ∧ r ≤ offset + p.maxRegister := by
   intro r hr
   simp only [shiftRegisters, getInstr, List.getElem?_map] at h
   cases hp : p[i]? with
   | none => simp [hp] at h
   | some orig_instr =>
     simp [hp] at h
-    have hmem : orig_instr ∈ p := List.mem_of_getElem? hp
-    have horig_max : orig_instr.maxRegister ≤ p.maxRegister := foldl_max_ge_elem _ _ _ hmem
+    have horig_max : orig_instr.maxRegister ≤ p.maxRegister := foldl_max_ge_elem _ _ _ (List.mem_of_getElem? hp)
     cases orig_instr with
-    | Z n =>
-      simp [Instr.shiftRegisters] at h; subst h
-      simp [Instr.readsFrom, Instr.writesTo] at hr
-      subst hr
-      simp [Instr.maxRegister] at horig_max
-      omega
-    | S n =>
-      simp [Instr.shiftRegisters] at h; subst h
-      simp [Instr.readsFrom, Instr.writesTo] at hr
-      simp [Instr.maxRegister] at horig_max
-      rcases hr with rfl | rfl <;> omega
-    | T m n =>
-      simp [Instr.shiftRegisters] at h; subst h
-      simp [Instr.readsFrom, Instr.writesTo] at hr
-      simp [Instr.maxRegister] at horig_max
-      rcases hr with rfl | rfl | rfl <;> omega
-    | J m n q =>
-      simp [Instr.shiftRegisters] at h; subst h
-      simp [Instr.readsFrom, Instr.writesTo] at hr
-      simp [Instr.maxRegister] at horig_max
-      rcases hr with rfl | rfl <;> omega
+    | Z n => simp [Instr.shiftRegisters] at h; subst h; simp [Instr.readsFrom, Instr.writesTo] at hr; subst hr
+             simp [Instr.maxRegister] at horig_max; omega
+    | S n => simp [Instr.shiftRegisters] at h; subst h; simp [Instr.readsFrom, Instr.writesTo] at hr
+             simp [Instr.maxRegister] at horig_max; rcases hr with rfl | rfl <;> omega
+    | T m n => simp [Instr.shiftRegisters] at h; subst h; simp [Instr.readsFrom, Instr.writesTo] at hr
+               simp [Instr.maxRegister] at horig_max; rcases hr with rfl | rfl | rfl <;> omega
+    | J m n q => simp [Instr.shiftRegisters] at h; subst h; simp [Instr.readsFrom, Instr.writesTo] at hr
+                 simp [Instr.maxRegister] at horig_max; rcases hr with rfl | rfl <;> omega
 
 /-- For shifted programs, agreement on [offset, offset + original maxRegister] suffices. -/
 theorem Step.agreeOn_shifted {p : Program} {offset : ℕ} {c₁ c₁' c₂ : Config}
@@ -681,61 +504,35 @@ theorem Step.agreeOn_shifted {p : Program} {offset : ℕ} {c₁ c₁' c₂ : Con
            c₁'.state.agreeOn c₂'.state offset (offset + p.maxRegister) := by
   cases hstep with
   | zero hinstr =>
-    rename_i n
-    rw [hpc] at hinstr
-    have ⟨hlo, hhi⟩ := Program.shiftRegisters_uses_range hinstr n
-                        (Or.inr rfl : n ∈ (Instr.Z n).readsFrom ∨ (Instr.Z n).writesTo = some n)
-    use ⟨c₂.pc + 1, c₂.state.write n 0⟩
-    refine ⟨Step.zero hinstr, ?_, ?_⟩
-    · simp [hpc]
-    · apply State.agreeOn_write_same hagree
+    rename_i n; rw [hpc] at hinstr
+    have ⟨_, _⟩ := Program.shiftRegisters_uses_range hinstr n (Or.inr rfl)
+    exact ⟨⟨c₂.pc + 1, c₂.state.write n 0⟩, Step.zero hinstr, by simp [hpc], State.agreeOn_write_same hagree⟩
   | succ hinstr =>
-    rename_i n
-    rw [hpc] at hinstr
-    have ⟨hlo, hhi⟩ := Program.shiftRegisters_uses_range hinstr n
-                        (Or.inl (List.mem_singleton.mpr rfl) : n ∈ (Instr.S n).readsFrom ∨ _)
-    have hread : c₁.state.read n = c₂.state.read n := hagree n hlo hhi
-    use ⟨c₂.pc + 1, c₂.state.write n (c₂.state.read n + 1)⟩
-    refine ⟨Step.succ hinstr, ?_, ?_⟩
-    · simp [hpc]
-    · rw [hread]; apply State.agreeOn_write_same hagree
+    rename_i n; rw [hpc] at hinstr
+    have ⟨hlo, hhi⟩ := Program.shiftRegisters_uses_range hinstr n (Or.inl (List.mem_singleton.mpr rfl))
+    have hread := hagree n hlo hhi
+    exact ⟨⟨c₂.pc + 1, c₂.state.write n (c₂.state.read n + 1)⟩, Step.succ hinstr, by simp [hpc],
+           by rw [hread]; exact State.agreeOn_write_same hagree⟩
   | trans hinstr =>
-    rename_i m n
-    rw [hpc] at hinstr
-    have ⟨hlo_m, hhi_m⟩ := Program.shiftRegisters_uses_range hinstr m
-                            (Or.inl (List.Mem.head []) : m ∈ (Instr.T m n).readsFrom ∨ _)
-    have hread : c₁.state.read m = c₂.state.read m := hagree m hlo_m hhi_m
-    use ⟨c₂.pc + 1, c₂.state.write n (c₂.state.read m)⟩
-    refine ⟨Step.trans hinstr, ?_, ?_⟩
-    · simp [hpc]
-    · rw [hread]; apply State.agreeOn_write_same hagree
+    rename_i m n; rw [hpc] at hinstr
+    have ⟨hlo, hhi⟩ := Program.shiftRegisters_uses_range hinstr m (Or.inl (List.Mem.head []))
+    have hread := hagree m hlo hhi
+    exact ⟨⟨c₂.pc + 1, c₂.state.write n (c₂.state.read m)⟩, Step.trans hinstr, by simp [hpc],
+           by rw [hread]; exact State.agreeOn_write_same hagree⟩
   | jump_eq hinstr hcmp =>
-    rename_i m n q
-    rw [hpc] at hinstr
-    have ⟨hlo_m, hhi_m⟩ := Program.shiftRegisters_uses_range hinstr m
-                            (Or.inl (List.Mem.head [n]) : m ∈ (Instr.J m n q).readsFrom ∨ _)
+    rename_i m n q; rw [hpc] at hinstr
+    have ⟨hlo_m, hhi_m⟩ := Program.shiftRegisters_uses_range hinstr m (Or.inl (List.Mem.head [n]))
     have ⟨hlo_n, hhi_n⟩ := Program.shiftRegisters_uses_range hinstr n
-                            (Or.inl (List.mem_cons_of_mem m (List.mem_singleton.mpr rfl)) :
-                             n ∈ (Instr.J m n q).readsFrom ∨ _)
-    have hreadm : c₁.state.read m = c₂.state.read m := hagree m hlo_m hhi_m
-    have hreadn : c₁.state.read n = c₂.state.read n := hagree n hlo_n hhi_n
-    have hcmp' : c₂.state.read m = c₂.state.read n := by rw [← hreadm, ← hreadn]; exact hcmp
-    use ⟨q, c₂.state⟩
-    refine ⟨Step.jump_eq hinstr hcmp', rfl, hagree⟩
+                            (Or.inl (List.mem_cons_of_mem m (List.mem_singleton.mpr rfl)))
+    have hreadm := hagree m hlo_m hhi_m; have hreadn := hagree n hlo_n hhi_n
+    exact ⟨⟨q, c₂.state⟩, Step.jump_eq hinstr (by rw [← hreadm, ← hreadn]; exact hcmp), rfl, hagree⟩
   | jump_ne hinstr hne =>
-    rename_i m n q
-    rw [hpc] at hinstr
-    have ⟨hlo_m, hhi_m⟩ := Program.shiftRegisters_uses_range hinstr m
-                            (Or.inl (List.Mem.head [n]) : m ∈ (Instr.J m n q).readsFrom ∨ _)
+    rename_i m n q; rw [hpc] at hinstr
+    have ⟨hlo_m, hhi_m⟩ := Program.shiftRegisters_uses_range hinstr m (Or.inl (List.Mem.head [n]))
     have ⟨hlo_n, hhi_n⟩ := Program.shiftRegisters_uses_range hinstr n
-                            (Or.inl (List.mem_cons_of_mem m (List.mem_singleton.mpr rfl)) :
-                             n ∈ (Instr.J m n q).readsFrom ∨ _)
-    have hreadm : c₁.state.read m = c₂.state.read m := hagree m hlo_m hhi_m
-    have hreadn : c₁.state.read n = c₂.state.read n := hagree n hlo_n hhi_n
-    have hne' : c₂.state.read m ≠ c₂.state.read n := by rw [← hreadm, ← hreadn]; exact hne
-    use ⟨c₂.pc + 1, c₂.state⟩
-    refine ⟨Step.jump_ne hinstr hne', ?_, hagree⟩
-    simp [hpc]
+                            (Or.inl (List.mem_cons_of_mem m (List.mem_singleton.mpr rfl)))
+    have hreadm := hagree m hlo_m hhi_m; have hreadn := hagree n hlo_n hhi_n
+    exact ⟨⟨c₂.pc + 1, c₂.state⟩, Step.jump_ne hinstr (by rw [← hreadm, ← hreadn]; exact hne), by simp [hpc], hagree⟩
 
 /-- Multi-step version for shifted programs. -/
 theorem Steps.agreeOn_shifted {p : Program} {offset : ℕ} {c₁ c₁' c₂ : Config}
@@ -752,10 +549,7 @@ theorem Steps.agreeOn_shifted {p : Program} {offset : ℕ} {c₁ c₁' c₂ : Co
     exact ⟨c₂', Relation.ReflTransGen.head hstep₂ hsteps₂, hpc', hagree'⟩
 
 /-- Key lemma for composition: run a shifted program from an arbitrary state
-that agrees with the shifted initial state on the program's registers.
-
-This allows us to run multiple shifted programs on disjoint register ranges
-starting from a shared state. -/
+that agrees with the shifted initial state on the program's registers. -/
 theorem Halts.shift_from_state {p : Program} {inputs : List ℕ} {σ : State}
     (offset : ℕ)
     (h : Halts p inputs)
@@ -763,67 +557,27 @@ theorem Halts.shift_from_state {p : Program} {inputs : List ℕ} {σ : State}
     ∃ c, Steps (p.shiftRegisters offset) ⟨0, σ⟩ c ∧
          c.isHalted (p.shiftRegisters offset) ∧
          c.state.read offset = Result p inputs h := by
-  -- Get the halting config from the shifted initial state
   obtain ⟨c_shift, hsteps_shift, hhalted_shift⟩ := Halts.shift offset h
-  -- Show σ agrees with the shifted initial state on [offset, offset + maxRegister]
-  have hagree' : σ.agreeOn ((State.fromInputs inputs).shift offset) offset
-                           (offset + p.maxRegister) := by
+  have hagree' : σ.agreeOn ((State.fromInputs inputs).shift offset) offset (offset + p.maxRegister) := by
     intro r hlo hhi
-    have hr_off : r - offset ≤ p.maxRegister := by omega
-    have hread_eq := hagree (r - offset) hr_off
-    have heq : r - offset + offset = r := by omega
-    simp only [State.read] at hread_eq
-    rw [heq] at hread_eq
-    simp only [State.read, State.shift, hlo, ↓reduceIte, State.fromInputs, List.getD]
-    exact hread_eq
-  -- Use Steps.agreeOn_shifted to get execution from σ
-  -- Note: (Config.init inputs).shift offset = ⟨0, (State.fromInputs inputs).shift offset⟩
+    have hread_eq := hagree (r - offset) (by omega)
+    simp only [State.read] at hread_eq; rw [show r - offset + offset = r by omega] at hread_eq
+    simp only [State.read, State.shift, hlo, ↓reduceIte, State.fromInputs, List.getD, hread_eq]
   have hpc : ((Config.init inputs).shift offset).pc = (⟨0, σ⟩ : Config).pc := rfl
-  obtain ⟨c, hsteps, hpc', hagree''⟩ :=
-    Steps.agreeOn_shifted hsteps_shift hpc (State.agreeOn_symm hagree')
-  use c
-  refine ⟨hsteps, ?_, ?_⟩
-  · -- Halted status: c.isHalted (p.shiftRegisters offset)
-    -- We know c_shift.isHalted (p.shiftRegisters offset) and c_shift.pc = c.pc
-    simp only [Config.isHalted, Program.shiftRegisters_length] at hhalted_shift ⊢
-    omega
-  · -- Result at offset
-    -- c.state agrees with c_shift.state on [offset, offset + maxRegister]
-    -- Result is at register offset, which is in this range
-    have hread_agree := hagree'' offset (Nat.le_refl offset) (Nat.le_add_right offset p.maxRegister)
-    rw [← hread_agree]
-    -- Goal: c_shift.state.read offset = Result p inputs h
-    -- Use Steps.shift_inv to get the original halting config
-    obtain ⟨d, hd_eq, hd_steps⟩ := Steps.shift_inv offset hsteps_shift
-    -- d is the original halting config, c_shift = d.shift offset
-    -- c_shift.state.read offset = d.state.read 0
-    have hread_shift : c_shift.state.read offset = d.state.read 0 := by
-      simp only [hd_eq, Config.shift_state, State.shift_read (hr := Nat.le_refl offset)]
-      simp
-    rw [hread_shift]
-    -- d is halted and reachable from Config.init inputs
-    have hd_halted : d.isHalted p := by
-      rw [← Config.isHalted_shift d p offset, ← hd_eq]
-      exact hhalted_shift
-    -- Now we need: d.state.read 0 = Result p inputs h
-    -- Both d and (Classical.choose h) are halting configs reachable from same start
-    -- By determinism, they must be equal
-    have hd_halts : Halts p inputs := ⟨d, hd_steps, hd_halted⟩
-    -- The result is defined as (Classical.choose h).state.output
-    -- We show d = Classical.choose h using determinism
-    have hd_eq_choose : d = Classical.choose h := by
-      have hch := Classical.choose_spec h
-      have hch_steps := hch.1
-      have hch_halted := hch.2
-      -- d is reachable from init, choose is halted and reachable from init
-      -- By deterministic_continuation, (Classical.choose h) is reachable from d
-      have h1 := Steps.deterministic_continuation hd_steps hch_steps hch_halted
-      -- But d is halted, so no steps are possible from d
-      -- Thus Steps p d (Classical.choose h) must be refl, so d = Classical.choose h
-      cases h1 using Relation.ReflTransGen.head_induction_on with
-      | refl => rfl
-      | head hstep _ => exact absurd hstep (Step.halted_no_step hd_halted)
-    rw [hd_eq_choose]
-    rfl
+  obtain ⟨c, hsteps, hpc', hagree''⟩ := Steps.agreeOn_shifted hsteps_shift hpc (State.agreeOn_symm hagree')
+  refine ⟨c, hsteps, by simp only [Config.isHalted, Program.shiftRegisters_length] at hhalted_shift ⊢; omega, ?_⟩
+  have hread_agree := hagree'' offset (Nat.le_refl offset) (Nat.le_add_right offset p.maxRegister)
+  rw [← hread_agree]
+  obtain ⟨d, hd_eq, hd_steps⟩ := Steps.shift_inv offset hsteps_shift
+  have hread_shift : c_shift.state.read offset = d.state.read 0 := by
+    simp only [hd_eq, Config.shift_state, State.shift_read (hr := Nat.le_refl offset)]; simp
+  rw [hread_shift]
+  have hd_halted : d.isHalted p := by rw [← Config.isHalted_shift d p offset, ← hd_eq]; exact hhalted_shift
+  have hd_eq_choose : d = Classical.choose h := by
+    have hch := Classical.choose_spec h
+    cases Steps.deterministic_continuation hd_steps hch.1 hch.2 using Relation.ReflTransGen.head_induction_on with
+    | refl => rfl
+    | head hstep _ => exact absurd hstep (Step.halted_no_step hd_halted)
+  rw [hd_eq_choose]; rfl
 
 end Urm

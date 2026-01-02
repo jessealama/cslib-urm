@@ -100,7 +100,7 @@ theorem init_halts_when_equal (m : ℕ) :
     simp only [hfinal, State.output, State.write, Function.update_self, h_r2]
   refine ⟨⟨6, final_state⟩, ?_, ?_, h_output⟩
   · exact Relation.ReflTransGen.head step1 (Relation.ReflTransGen.single step2)
-  · simp [Config.isHalted, P]
+  · simp [P]
 
 /-- Helper: the loop state after k iterations. R[0]=m, R[1]=n+k, R[2]=k -/
 private def loopState (m n k : ℕ) : State := fun i =>
@@ -133,9 +133,8 @@ private theorem loop_incr_steps (m n k : ℕ) :
     simp only [σ1, State.read, State.write, Function.update_of_ne (by decide : (2 : ℕ) ≠ 1)]
     rfl
   let σ2 := σ1.write 2 (k + 1)
-  have step2 : Step P ⟨2, σ1⟩ ⟨3, σ2⟩ := by
-    have heq : σ2 = σ1.write 2 (σ1.read 2 + 1) := by simp only [σ2, h_r2_1]
-    rw [heq]; exact Step.succ h_instr2
+  have hσ2_eq' : σ2 = σ1.write 2 (σ1.read 2 + 1) := by simp only [σ2, h_r2_1]
+  have step2 : Step P ⟨2, σ1⟩ ⟨3, σ2⟩ := hσ2_eq' ▸ Step.succ h_instr2
   have hσ2_eq : σ2 = stateAfterIncr m n k := by
     funext i; simp only [σ2, σ1, σ0, State.write, loopState, stateAfterIncr, Function.update]
     match i with
@@ -175,7 +174,7 @@ theorem loop_exit_step (m n k : ℕ) (heq : n + k + 1 = m) :
   have houtput : σ3.output = k + 1 := by simp only [State.output]; exact h_r2
   exact ⟨⟨6, σ3⟩, StepsN.add (loop_incr_steps m n k)
     (StepsN.succ step3 (StepsN.succ step4 (StepsN.zero _))),
-    by simp [Config.isHalted], houtput⟩
+    by simp, houtput⟩
 
 /-- From pc=1 with n + k < m, we eventually halt with output m - n.
     Note: we require strict inequality because at pc=1, we need room for at least one S(1). -/
@@ -318,7 +317,7 @@ theorem P_diverges (m n : ℕ) (hgt : n > m) : P ↑ [m, n] := by
   cases hsteps using Relation.ReflTransGen.head_induction_on with
   | refl =>
     -- Config.init is halted - contradiction since pc=0 < 6
-    simp [Config.isHalted, P, Config.init] at hhalted
+    simp [P, Config.init] at hhalted
   | head hstep hrest =>
     -- By determinism, the first step goes to c'
     have heq := Step.deterministic hstep hstep_first

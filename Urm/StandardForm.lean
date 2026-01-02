@@ -5,6 +5,7 @@ Authors: Jesse Alama
 -/
 
 import Urm.StraightLine
+import Urm.Computable
 
 /-! # Standard Form Programs
 
@@ -23,10 +24,17 @@ property ensures they remain valid.
 - `Program.isStandardForm`: decidable check for standard form (Bool)
 - `Program.IsStandardForm`: Prop version of standard form
 - `URMComputableSF`: computability by a standard-form program
+- `Program.Equiv`: behavioral equivalence (same partial function)
+
+## Notation
+
+- `p ~ q`: program equivalence (both compute the same partial function)
 
 ## Main results
 
 - `straightLine_isStandardForm`: straight-line programs are standard form
+- `Program.equiv_toStandardForm`: every program is equivalent to its standard form
+- `Program.Equiv.equivalence`: program equivalence is an equivalence relation
 
 ## References
 
@@ -81,38 +89,23 @@ theorem Instr.hasBoundedJump_mono {instr : Instr} {len1 len2 : ℕ}
     (h : instr.hasBoundedJump len1 = true) (hle : len1 ≤ len2) :
     instr.hasBoundedJump len2 = true := by
   cases instr with
-  | Z _ => simp [hasBoundedJump]
-  | S _ => simp [hasBoundedJump]
-  | T _ _ => simp [hasBoundedJump]
-  | J _ _ q =>
-    simp only [hasBoundedJump, decide_eq_true_eq] at h ⊢
-    exact Nat.le_trans h hle
+  | Z _ | S _ | T _ _ => simp [hasBoundedJump]
+  | J _ _ q => simp only [hasBoundedJump, decide_eq_true_eq] at h ⊢; exact Nat.le_trans h hle
 
-/-- shiftJumps preserves bounded jumps with adjusted bound.
-If an instruction has bounded jumps for len, then after shifting by offset,
-it has bounded jumps for (offset + len). -/
+/-- shiftJumps preserves bounded jumps with adjusted bound. -/
 theorem Instr.hasBoundedJump_shiftJumps {instr : Instr} {len offset : ℕ}
     (h : instr.hasBoundedJump len = true) :
     (instr.shiftJumps offset).hasBoundedJump (offset + len) = true := by
   cases instr with
-  | Z _ => simp [shiftJumps, hasBoundedJump]
-  | S _ => simp [shiftJumps, hasBoundedJump]
-  | T _ _ => simp [shiftJumps, hasBoundedJump]
-  | J _ _ q =>
-    simp only [shiftJumps, hasBoundedJump, decide_eq_true_eq] at h ⊢
-    omega
+  | Z _ | S _ | T _ _ => simp [shiftJumps, hasBoundedJump]
+  | J _ _ q => simp only [shiftJumps, hasBoundedJump, decide_eq_true_eq] at h ⊢; omega
 
-/-- Straight-line programs are in standard form.
-
-Since straight-line programs have no jumps, all instructions trivially satisfy
-the bounded jump property. -/
+/-- Straight-line programs are in standard form. -/
 theorem straightLine_isStandardForm {p : Program} (hsl : p.isStraightLine = true) :
     p.IsStandardForm := by
-  unfold Program.IsStandardForm Program.isStandardForm
-  rw [List.all_eq_true]
+  unfold Program.IsStandardForm Program.isStandardForm; rw [List.all_eq_true]
   intro instr hinstr
-  have h := List.all_eq_true.mp hsl instr hinstr
-  exact Instr.hasBoundedJump_of_isNonJumping h p.length
+  exact Instr.hasBoundedJump_of_isNonJumping (List.all_eq_true.mp hsl instr hinstr) p.length
 
 /-! ## Semantic Consequence
 
@@ -137,29 +130,11 @@ theorem Program.IsStandardForm.getInstr_hasBoundedJump {p : Program} (hsf : p.Is
 theorem Step.pc_le_length_of_step {p : Program} (hsf : p.IsStandardForm)
     {c c' : Config} (hstep : Step p c c') : c'.pc ≤ p.length := by
   cases hstep with
-  | zero hinstr =>
-    -- pc' = pc + 1, and since we stepped, pc < p.length
-    have hpc_lt : c.pc < p.length := List.getElem?_eq_some_iff.mp hinstr |>.1
-    show c.pc + 1 ≤ p.length
-    omega
-  | succ hinstr =>
-    have hpc_lt : c.pc < p.length := List.getElem?_eq_some_iff.mp hinstr |>.1
-    show c.pc + 1 ≤ p.length
-    omega
-  | trans hinstr =>
-    have hpc_lt : c.pc < p.length := List.getElem?_eq_some_iff.mp hinstr |>.1
-    show c.pc + 1 ≤ p.length
-    omega
+  | zero hinstr | succ hinstr | trans hinstr | jump_ne hinstr _ =>
+    show c.pc + 1 ≤ p.length; have := List.getElem?_eq_some_iff.mp hinstr |>.1; omega
   | jump_eq hinstr _ =>
-    -- pc' = q, and by standard form, q ≤ p.length
     have hbounded := hsf.getInstr_hasBoundedJump hinstr
-    simp only [Instr.hasBoundedJump, decide_eq_true_eq] at hbounded
-    exact hbounded
-  | jump_ne hinstr _ =>
-    -- pc' = pc + 1
-    have hpc_lt : c.pc < p.length := List.getElem?_eq_some_iff.mp hinstr |>.1
-    show c.pc + 1 ≤ p.length
-    omega
+    simp only [Instr.hasBoundedJump, decide_eq_true_eq] at hbounded; exact hbounded
 
 /-- The pc stays ≤ p.length throughout execution of a standard form program. -/
 theorem Program.IsStandardForm.pc_le_length {p : Program} (hsf : p.IsStandardForm)
@@ -180,6 +155,12 @@ theorem Program.IsStandardForm.halts_at_length {p : Program} (hsf : p.IsStandard
   -- From halted: c.pc ≥ p.length
   -- Combine: c.pc = p.length
   exact Nat.le_antisymm hle hhalted
+
+/-- When a standard form program halts from any starting point with pc ≤ length, pc = length. -/
+theorem Program.IsStandardForm.pc_eq_length_of_halted {p : Program} (hsf : p.IsStandardForm)
+    {c c' : Config} (hsteps : Steps p c c') (hpc : c.pc ≤ p.length)
+    (hhalted : c'.isHalted p) : c'.pc = p.length :=
+  Nat.le_antisymm (hsf.pc_le_length hsteps hpc) hhalted
 
 /-! ## Standard Form Normalization
 
@@ -222,11 +203,7 @@ theorem Program.toStandardForm_length (p : Program) :
 /-- capJump always produces an instruction with bounded jump. -/
 theorem Instr.hasBoundedJump_capJump (len : ℕ) (instr : Instr) :
     (instr.capJump len).hasBoundedJump len = true := by
-  cases instr with
-  | Z n => simp [capJump, hasBoundedJump]
-  | S n => simp [capJump, hasBoundedJump]
-  | T m n => simp [capJump, hasBoundedJump]
-  | J m n q => simp [capJump, hasBoundedJump]
+  cases instr <;> simp [capJump, hasBoundedJump]
 
 /-- toStandardForm produces a standard form program. -/
 theorem Program.toStandardForm_isStandardForm (p : Program) :
@@ -239,15 +216,10 @@ theorem Program.toStandardForm_isStandardForm (p : Program) :
 
 /-- capJump is identity when the instruction already has bounded jump. -/
 theorem Instr.capJump_of_hasBoundedJump {instr : Instr} {len : ℕ}
-    (h : instr.hasBoundedJump len = true) :
-    instr.capJump len = instr := by
+    (h : instr.hasBoundedJump len = true) : instr.capJump len = instr := by
   cases instr with
-  | Z n => rfl
-  | S n => rfl
-  | T m n => rfl
-  | J m n q =>
-    simp only [hasBoundedJump, decide_eq_true_eq] at h
-    simp only [capJump, Nat.min_eq_left h]
+  | Z _ | S _ | T _ _ => rfl
+  | J m n q => simp only [hasBoundedJump, decide_eq_true_eq] at h; simp only [capJump, Nat.min_eq_left h]
 
 /-- toStandardForm is identity for programs already in standard form. -/
 theorem Program.toStandardForm_of_isStandardForm {p : Program}
@@ -346,98 +318,50 @@ def ConfigRelated (p : Program) (c₁ c₂ : Config) : Prop :=
 
 /-- Initial configs are related. -/
 theorem ConfigRelated.init (p : Program) (inputs : List ℕ) :
-    ConfigRelated p (Config.init inputs) (Config.init inputs) := by
-  left
-  exact ⟨rfl, rfl⟩
+    ConfigRelated p (Config.init inputs) (Config.init inputs) := Or.inl ⟨rfl, rfl⟩
 
 /-- If both configs are halted with the same state, they are related. -/
 theorem ConfigRelated.halted {p : Program} {c₁ c₂ : Config}
     (h1 : c₁.isHalted p) (h2 : c₂.isHalted p.toStandardForm) (heq : c₁.state = c₂.state) :
-    ConfigRelated p c₁ c₂ := by
-  right
-  exact ⟨h1, h2, heq⟩
+    ConfigRelated p c₁ c₂ := Or.inr ⟨h1, h2, heq⟩
 
-/-- Forward simulation: if original can step from c₁,
-    then standard form can step to a related config. -/
+/-- Forward simulation: if original can step, standard form can step to a related config. -/
 theorem Step.simulate_toStandardForm {p : Program} {c₁ c₁' : Config}
     (hstep : Step p c₁ c₁') :
     ∃ c₂', Steps p.toStandardForm c₁ c₂' ∧ ConfigRelated p c₁' c₂' := by
   cases hstep with
-  | zero hinstr =>
-    -- Z instruction: identical step in both programs
-    refine ⟨_, Steps.single (Step.toStandardForm_zero hinstr), Or.inl ⟨rfl, rfl⟩⟩
-  | succ hinstr =>
-    -- S instruction: identical step in both programs
-    refine ⟨_, Steps.single (Step.toStandardForm_succ hinstr), Or.inl ⟨rfl, rfl⟩⟩
-  | trans hinstr =>
-    -- T instruction: identical step in both programs
-    refine ⟨_, Steps.single (Step.toStandardForm_trans hinstr), Or.inl ⟨rfl, rfl⟩⟩
+  | zero hinstr => exact ⟨_, Steps.single (Step.toStandardForm_zero hinstr), Or.inl ⟨rfl, rfl⟩⟩
+  | succ hinstr => exact ⟨_, Steps.single (Step.toStandardForm_succ hinstr), Or.inl ⟨rfl, rfl⟩⟩
+  | trans hinstr => exact ⟨_, Steps.single (Step.toStandardForm_trans hinstr), Or.inl ⟨rfl, rfl⟩⟩
+  | jump_ne hinstr hne_reg =>
+    exact ⟨_, Steps.single (Step.toStandardForm_jump_ne hinstr hne_reg), Or.inl ⟨rfl, rfl⟩⟩
   | jump_eq hinstr heq_reg =>
-    -- J instruction with condition true: depends on whether target is bounded
-    -- hinstr : p.getInstr c₁.pc = some (Instr.J m n q) for some m, n, q
-    -- The target config in the goal is ⟨q, c₁.state⟩
     rename_i m n q
     by_cases hbounded : q ≤ p.length
-    · -- Bounded: identical step
-      refine ⟨⟨q, c₁.state⟩, Steps.single (Step.toStandardForm_jump_eq_bounded hinstr hbounded heq_reg),
-              Or.inl ⟨rfl, rfl⟩⟩
-    · -- Unbounded (q > p.length): original halts at q, standard form halts at p.length
-      have hgt : q > p.length := Nat.not_le.mp hbounded
-      refine ⟨⟨p.length, c₁.state⟩, ?_, ?_⟩
-      · -- Standard form steps to p.length
-        have hcap := Program.toStandardForm_getInstr_some hinstr
-        simp only [Instr.capJump] at hcap
-        have hmin : min q p.length = p.length := Nat.min_eq_right (Nat.le_of_lt hgt)
-        rw [hmin] at hcap
-        exact Steps.single (Step.jump_eq hcap heq_reg)
-      · -- Both halted with same state
-        right
-        refine ⟨?_, ?_, rfl⟩
-        · -- ⟨q, c₁.state⟩ is halted (q > p.length)
-          simp only [Config.isHalted]
-          exact Nat.le_of_lt hgt
-        · -- ⟨p.length, c₁.state⟩ is halted in standard form
-          simp only [Config.isHalted, Program.toStandardForm_length, le_refl]
-  | jump_ne hinstr hne_reg =>
-    -- J instruction with condition false: identical step in both programs
-    refine ⟨_, Steps.single (Step.toStandardForm_jump_ne hinstr hne_reg), Or.inl ⟨rfl, rfl⟩⟩
+    · exact ⟨⟨q, c₁.state⟩, Steps.single (Step.toStandardForm_jump_eq_bounded hinstr hbounded heq_reg),
+             Or.inl ⟨rfl, rfl⟩⟩
+    · have hgt : q > p.length := Nat.not_le.mp hbounded
+      have hcap := Program.toStandardForm_getInstr_some hinstr
+      simp only [Instr.capJump, Nat.min_eq_right (Nat.le_of_lt hgt)] at hcap
+      exact ⟨⟨p.length, c₁.state⟩, Steps.single (Step.jump_eq hcap heq_reg),
+             Or.inr ⟨by simp; omega, by simp [Program.toStandardForm_length], rfl⟩⟩
 
-/-- Multi-step simulation: if original executes multiple steps to a halted config,
-    standard form can reach a halted config with the same state. -/
+/-- Multi-step simulation: if original reaches halted config, standard form can too. -/
 theorem Steps.simulate_toStandardForm_halts {p : Program} {c c' : Config}
     (hsteps : Steps p c c') (hhalted : c'.isHalted p) :
     ∃ c₂', Steps p.toStandardForm c c₂' ∧ c₂'.isHalted p.toStandardForm ∧ c'.state = c₂'.state := by
   induction hsteps using Relation.ReflTransGen.head_induction_on with
-  | refl =>
-    -- c = c' is halted
-    use c'
-    refine ⟨Steps.refl _, ?_, rfl⟩
-    simp only [Config.isHalted, Program.toStandardForm_length] at hhalted ⊢
-    exact hhalted
+  | refl => exact ⟨c', Steps.refl _, by simp [Program.toStandardForm_length] at hhalted ⊢; exact hhalted, rfl⟩
   | head hstep hrest ih =>
-    -- c → c_mid → ... → c' (halted)
     obtain ⟨c₂_mid, hsteps₂_mid, hrel_mid⟩ := Step.simulate_toStandardForm hstep
     rcases hrel_mid with ⟨hpc_mid, hstate_mid⟩ | ⟨h_c_mid_halted, hhalted_mid, hstate_mid⟩
-    · -- c_mid and c₂_mid have same pc/state, so they are equal
-      -- We have hpc_mid : c_mid.pc = c₂_mid.pc and hstate_mid : c_mid.state = c₂_mid.state
-      -- Use Config.ext to prove c_mid = c₂_mid
-      rename_i c_mid
+    · rename_i c_mid
       have hcfg_eq : c_mid = c₂_mid := by ext <;> [exact hpc_mid; simp only [hstate_mid]]
       subst hcfg_eq
       obtain ⟨c₂', hsteps₂', hhalted₂', hstate_eq⟩ := ih
-      use c₂'
-      constructor
-      · -- Combine: c → c₂_mid → ... → c₂'
-        exact Steps.trans hsteps₂_mid hsteps₂'
-      · exact ⟨hhalted₂', hstate_eq⟩
-    · -- c_mid is already halted in original, c₂_mid halted in standard form
-      -- Since c_mid is halted and hrest goes from c_mid to c' (also halted),
-      -- by determinism, c_mid = c'. So c'.state = c_mid.state = c₂_mid.state
-      have hc_mid_eq_c' : _ = c' := Steps.halts_unique (Steps.refl _) h_c_mid_halted hrest hhalted
-      use c₂_mid
-      refine ⟨hsteps₂_mid, hhalted_mid, ?_⟩
-      rw [← hc_mid_eq_c']
-      exact hstate_mid
+      exact ⟨c₂', Steps.trans hsteps₂_mid hsteps₂', hhalted₂', hstate_eq⟩
+    · have hc_mid_eq_c' : _ = c' := Steps.halts_unique (Steps.refl _) h_c_mid_halted hrest hhalted
+      exact ⟨c₂_mid, hsteps₂_mid, hhalted_mid, by rw [← hc_mid_eq_c']; exact hstate_mid⟩
 
 /-- Forward halting: if original halts, standard form halts with same state. -/
 theorem Halts.toStandardForm {p : Program} {inputs : List ℕ}
@@ -446,134 +370,71 @@ theorem Halts.toStandardForm {p : Program} {inputs : List ℕ}
   obtain ⟨c₂, hsteps₂, hhalted₂, _⟩ := Steps.simulate_toStandardForm_halts hsteps hhalted
   exact ⟨c₂, hsteps₂, hhalted₂⟩
 
-/-! #### Reverse Direction
+/-! #### Reverse Direction -/
 
-For the reverse direction, we show that steps in the standard form program
-can be simulated by the original. The key cases:
-- Z, S, T: identical in both programs
-- J with bounded target: identical in both programs
-- J with unbounded target: standard form jumps to p.length (halt),
-  original would jump to q > p.length (also halt with same state) -/
-
-/-- Reverse simulation: if standard form can step from c₁,
-    then original can step to a related config. -/
+/-- Reverse simulation: if standard form can step, original can step to a related config. -/
 theorem Step.simulate_from_toStandardForm {p : Program} {c₁ c₁' : Config}
     (hstep : Step p.toStandardForm c₁ c₁') :
     ∃ c₂', Steps p c₁ c₂' ∧ ConfigRelated p c₂' c₁' := by
   cases hstep with
   | zero hinstr =>
-    -- Z instruction: get the original instruction
-    rw [Program.getInstr_toStandardForm] at hinstr
-    simp only [Option.map_eq_some_iff] at hinstr
+    rw [Program.getInstr_toStandardForm] at hinstr; simp only [Option.map_eq_some_iff] at hinstr
     obtain ⟨instr_orig, hinstr_orig, hcap⟩ := hinstr
     cases instr_orig with
-    | Z n' =>
-      simp only [Instr.capJump_Z, Instr.Z.injEq] at hcap
-      subst hcap
-      refine ⟨_, Steps.single (Step.zero hinstr_orig), Or.inl ⟨rfl, rfl⟩⟩
-    | S n' => simp at hcap
-    | T m' n' => simp at hcap
-    | J m' n' q' => simp at hcap
+    | Z n' => simp at hcap; subst hcap; exact ⟨_, Steps.single (Step.zero hinstr_orig), Or.inl ⟨rfl, rfl⟩⟩
+    | S _ | T _ _ | J _ _ _ => simp at hcap
   | succ hinstr =>
-    rw [Program.getInstr_toStandardForm] at hinstr
-    simp only [Option.map_eq_some_iff] at hinstr
+    rw [Program.getInstr_toStandardForm] at hinstr; simp only [Option.map_eq_some_iff] at hinstr
     obtain ⟨instr_orig, hinstr_orig, hcap⟩ := hinstr
     cases instr_orig with
-    | S n' =>
-      simp only [Instr.capJump_S, Instr.S.injEq] at hcap
-      subst hcap
-      refine ⟨_, Steps.single (Step.succ hinstr_orig), Or.inl ⟨rfl, rfl⟩⟩
-    | Z n' => simp at hcap
-    | T m' n' => simp at hcap
-    | J m' n' q' => simp at hcap
+    | S n' => simp at hcap; subst hcap; exact ⟨_, Steps.single (Step.succ hinstr_orig), Or.inl ⟨rfl, rfl⟩⟩
+    | Z _ | T _ _ | J _ _ _ => simp at hcap
   | trans hinstr =>
-    rw [Program.getInstr_toStandardForm] at hinstr
-    simp only [Option.map_eq_some_iff] at hinstr
+    rw [Program.getInstr_toStandardForm] at hinstr; simp only [Option.map_eq_some_iff] at hinstr
     obtain ⟨instr_orig, hinstr_orig, hcap⟩ := hinstr
     cases instr_orig with
-    | T m' n' =>
-      simp only [Instr.capJump_T, Instr.T.injEq] at hcap
-      obtain ⟨rfl, rfl⟩ := hcap
-      refine ⟨_, Steps.single (Step.trans hinstr_orig), Or.inl ⟨rfl, rfl⟩⟩
-    | Z n' => simp at hcap
-    | S n' => simp at hcap
-    | J m' n' q' => simp at hcap
+    | T m' n' => simp at hcap; obtain ⟨rfl, rfl⟩ := hcap
+                 exact ⟨_, Steps.single (Step.trans hinstr_orig), Or.inl ⟨rfl, rfl⟩⟩
+    | Z _ | S _ | J _ _ _ => simp at hcap
   | jump_eq hinstr heq_reg =>
-    rw [Program.getInstr_toStandardForm] at hinstr
-    simp only [Option.map_eq_some_iff] at hinstr
+    rw [Program.getInstr_toStandardForm] at hinstr; simp only [Option.map_eq_some_iff] at hinstr
     obtain ⟨instr_orig, hinstr_orig, hcap⟩ := hinstr
     cases instr_orig with
     | J m' n' q' =>
-      simp only [Instr.capJump_J, Instr.J.injEq] at hcap
-      obtain ⟨rfl, rfl, htarget⟩ := hcap
-      -- htarget : min q' p.length = target in standard form step
-      -- The standard form jumped to min q' p.length
-      -- Original would jump to q'
+      simp only [Instr.capJump_J, Instr.J.injEq] at hcap; obtain ⟨rfl, rfl, htarget⟩ := hcap
       by_cases hbounded : q' ≤ p.length
-      · -- Bounded: min q' p.length = q', so both jump to same target
-        have hmin : min q' p.length = q' := Nat.min_eq_left hbounded
-        rw [hmin] at htarget
-        subst htarget
-        refine ⟨_, Steps.single (Step.jump_eq hinstr_orig heq_reg), Or.inl ⟨rfl, rfl⟩⟩
-      · -- Unbounded: standard form jumps to p.length, original jumps to q' > p.length
-        -- Both halt with same state
-        have hgt : q' > p.length := Nat.not_le.mp hbounded
-        have hmin : min q' p.length = p.length := Nat.min_eq_right (Nat.le_of_lt hgt)
-        rw [hmin] at htarget
-        subst htarget
-        refine ⟨⟨q', c₁.state⟩, Steps.single (Step.jump_eq hinstr_orig heq_reg), ?_⟩
-        right
-        refine ⟨?_, ?_, rfl⟩
-        · simp only [Config.isHalted]
-          exact Nat.le_of_lt hgt
-        · simp only [Config.isHalted, Program.toStandardForm_length, le_refl]
-    | Z n' => simp at hcap
-    | S n' => simp at hcap
-    | T m' n' => simp at hcap
+      · rw [Nat.min_eq_left hbounded] at htarget; subst htarget
+        exact ⟨_, Steps.single (Step.jump_eq hinstr_orig heq_reg), Or.inl ⟨rfl, rfl⟩⟩
+      · have hgt : q' > p.length := Nat.not_le.mp hbounded
+        rw [Nat.min_eq_right (Nat.le_of_lt hgt)] at htarget; subst htarget
+        exact ⟨⟨q', c₁.state⟩, Steps.single (Step.jump_eq hinstr_orig heq_reg),
+               Or.inr ⟨by simp; omega, by simp [Program.toStandardForm_length], rfl⟩⟩
+    | Z _ | S _ | T _ _ => simp at hcap
   | jump_ne hinstr hne_reg =>
-    rw [Program.getInstr_toStandardForm] at hinstr
-    simp only [Option.map_eq_some_iff] at hinstr
+    rw [Program.getInstr_toStandardForm] at hinstr; simp only [Option.map_eq_some_iff] at hinstr
     obtain ⟨instr_orig, hinstr_orig, hcap⟩ := hinstr
     cases instr_orig with
-    | J m' n' q' =>
-      simp only [Instr.capJump_J, Instr.J.injEq] at hcap
-      obtain ⟨rfl, rfl, _⟩ := hcap
-      refine ⟨_, Steps.single (Step.jump_ne hinstr_orig hne_reg), Or.inl ⟨rfl, rfl⟩⟩
-    | Z n' => simp at hcap
-    | S n' => simp at hcap
-    | T m' n' => simp at hcap
+    | J m' n' q' => simp at hcap; obtain ⟨rfl, rfl, _⟩ := hcap
+                    exact ⟨_, Steps.single (Step.jump_ne hinstr_orig hne_reg), Or.inl ⟨rfl, rfl⟩⟩
+    | Z _ | S _ | T _ _ => simp at hcap
 
-/-- Multi-step reverse simulation: if standard form reaches a halted config,
-    original can reach a halted config with the same state. -/
+/-- Multi-step reverse simulation: if standard form reaches halted config, original can too. -/
 theorem Steps.simulate_from_toStandardForm_halts {p : Program} {c c' : Config}
     (hsteps : Steps p.toStandardForm c c') (hhalted : c'.isHalted p.toStandardForm) :
     ∃ c₂', Steps p c c₂' ∧ c₂'.isHalted p ∧ c'.state = c₂'.state := by
   induction hsteps using Relation.ReflTransGen.head_induction_on with
-  | refl =>
-    -- c = c' is halted in standard form
-    use c'
-    refine ⟨Steps.refl _, ?_, rfl⟩
-    simp only [Config.isHalted, Program.toStandardForm_length] at hhalted ⊢
-    exact hhalted
+  | refl => exact ⟨c', Steps.refl _, by simp [Program.toStandardForm_length] at hhalted ⊢; exact hhalted, rfl⟩
   | head hstep hrest ih =>
     obtain ⟨c₂_mid, hsteps₂_mid, hrel_mid⟩ := Step.simulate_from_toStandardForm hstep
     rcases hrel_mid with ⟨hpc_mid, hstate_mid⟩ | ⟨h_c_mid_halted, hhalted_mid, hstate_mid⟩
-    · -- c_mid and c₂_mid have same pc/state, so they are equal
-      rename_i c_mid
+    · rename_i c_mid
       have hcfg_eq : c₂_mid = c_mid := by ext <;> [exact hpc_mid; simp only [hstate_mid]]
       subst hcfg_eq
       obtain ⟨c₂', hsteps₂', hhalted₂', hstate_eq⟩ := ih
-      use c₂'
-      constructor
-      · exact Steps.trans hsteps₂_mid hsteps₂'
-      · exact ⟨hhalted₂', hstate_eq⟩
-    · -- c₂_mid is halted in original, c_mid halted in standard form
-      rename_i c_mid
+      exact ⟨c₂', Steps.trans hsteps₂_mid hsteps₂', hhalted₂', hstate_eq⟩
+    · rename_i c_mid
       have hc_mid_eq_c' : c_mid = c' := Steps.halts_unique (Steps.refl _) hhalted_mid hrest hhalted
-      use c₂_mid
-      refine ⟨hsteps₂_mid, h_c_mid_halted, ?_⟩
-      rw [← hc_mid_eq_c']
-      exact hstate_mid.symm
+      exact ⟨c₂_mid, hsteps₂_mid, h_c_mid_halted, by rw [← hc_mid_eq_c']; exact hstate_mid.symm⟩
 
 /-- Reverse halting: if standard form halts, original halts with same state. -/
 theorem Halts.of_toStandardForm {p : Program} {inputs : List ℕ}
@@ -593,39 +454,85 @@ theorem Halts.toStandardForm_iff {p : Program} {inputs : List ℕ} :
 theorem Result.toStandardForm_state {p : Program} {inputs : List ℕ}
     (hp : Halts p inputs) (hq : Halts p.toStandardForm inputs) :
     (Classical.choose hp).state = (Classical.choose hq).state := by
-  -- Extract the chosen configs and their properties
-  have hp_spec := Classical.choose_spec hp
-  have hq_spec := Classical.choose_spec hq
-  -- Get steps and halted proofs
-  have hsteps : Steps p (Config.init inputs) (Classical.choose hp) := hp_spec.1
-  have hhalted : (Classical.choose hp).isHalted p := hp_spec.2
-  have hsteps' : Steps p.toStandardForm (Config.init inputs) (Classical.choose hq) := hq_spec.1
-  have hhalted' : (Classical.choose hq).isHalted p.toStandardForm := hq_spec.2
-  -- Get related configs from simulation
+  have ⟨hsteps, hhalted⟩ := Classical.choose_spec hp
+  have ⟨hsteps', hhalted'⟩ := Classical.choose_spec hq
   obtain ⟨c₂, hsteps₂, hhalted₂, hstate_eq⟩ := Steps.simulate_toStandardForm_halts hsteps hhalted
-  -- By halts_unique, Classical.choose hq = c₂
-  have hchoose_eq : Classical.choose hq = c₂ := Steps.halts_unique hsteps' hhalted' hsteps₂ hhalted₂
-  rw [hchoose_eq, hstate_eq]
+  rw [Steps.halts_unique hsteps' hhalted' hsteps₂ hhalted₂, hstate_eq]
 
 /-- Result equality: both programs produce the same output. -/
 theorem Result.toStandardForm {p : Program} {inputs : List ℕ}
     (hp : Halts p inputs) (hq : Halts p.toStandardForm inputs) :
     Result p inputs hp = Result p.toStandardForm inputs hq := by
-  unfold Result
-  simp only [State.output]
-  rw [Result.toStandardForm_state hp hq]
+  simp only [Result, State.output, Result.toStandardForm_state hp hq]
 
-/-! #### Main Theorem -/
+/-! ## Program Equivalence
+
+Two programs are equivalent if they compute the same partial function:
+they halt on exactly the same inputs and produce the same results. -/
+
+/-- Two programs are equivalent if they compute the same partial function. -/
+def Program.Equiv (p q : Program) : Prop :=
+  ∀ inputs, (Halts p inputs ↔ Halts q inputs) ∧
+    ∀ hp hq, Result p inputs hp = Result q inputs hq
+
+/-- Notation for program equivalence. -/
+scoped infix:50 " ~ " => Program.Equiv
+
+/-- Program equivalence is reflexive. -/
+@[refl]
+theorem Program.Equiv.refl (p : Program) : p ~ p :=
+  fun _ => ⟨Iff.rfl, fun _ _ => rfl⟩
+
+/-- Program equivalence is symmetric. -/
+@[symm]
+theorem Program.Equiv.symm {p q : Program} (h : p ~ q) : q ~ p :=
+  fun inputs => ⟨(h inputs).1.symm, fun hq hp => ((h inputs).2 hp hq).symm⟩
+
+/-- Program equivalence is transitive. -/
+@[trans]
+theorem Program.Equiv.trans {p q r : Program} (hpq : p ~ q) (hqr : q ~ r) : p ~ r :=
+  fun inputs =>
+    ⟨(hpq inputs).1.trans (hqr inputs).1,
+     fun hp hr =>
+       let hq := (hpq inputs).1.mp hp
+       ((hpq inputs).2 hp hq).trans ((hqr inputs).2 hq hr)⟩
+
+/-- Program equivalence is an equivalence relation. -/
+theorem Program.Equiv.equivalence : Equivalence Program.Equiv :=
+  ⟨Equiv.refl, Equiv.symm, Equiv.trans⟩
+
+/-- A program is equivalent to its standard form. -/
+theorem Program.equiv_toStandardForm (p : Program) : p ~ p.toStandardForm :=
+  fun _ => ⟨Halts.toStandardForm_iff, fun hp hq => Result.toStandardForm hp hq⟩
 
 /-- Every program has a behaviorally equivalent standard form program. -/
 theorem exists_standardForm_equiv (p : Program) :
-    ∃ q : Program, q.IsStandardForm ∧
-      (∀ inputs, (Halts p inputs ↔ Halts q inputs) ∧
-        ∀ hp hq, Result p inputs hp = Result q inputs hq) := by
-  use p.toStandardForm
-  refine ⟨Program.toStandardForm_isStandardForm p, fun inputs => ⟨?_, ?_⟩⟩
-  · exact Halts.toStandardForm_iff
-  · intro hp hq
-    exact Result.toStandardForm hp hq
+    ∃ q : Program, q.IsStandardForm ∧ p ~ q :=
+  ⟨p.toStandardForm, Program.toStandardForm_isStandardForm p, p.equiv_toStandardForm⟩
+
+/-- Standard form computability implies general computability (trivial direction). -/
+theorem URMComputableSF.toComputable {n : ℕ} {f : (Fin n → ℕ) → Part ℕ}
+    (h : URMComputableSF n f) : URMComputable n f := by
+  obtain ⟨p, _, hspec⟩ := h
+  exact ⟨p, hspec⟩
+
+/-- General computability implies standard form computability.
+Any computable function can be witnessed by a standard form program. -/
+theorem URMComputable.toSF {n : ℕ} {f : (Fin n → ℕ) → Part ℕ}
+    (h : URMComputable n f) : URMComputableSF n f := by
+  obtain ⟨p, hspec⟩ := h
+  refine ⟨p.toStandardForm, Program.toStandardForm_isStandardForm p, fun inputs => ?_⟩
+  constructor
+  · rw [← Halts.toStandardForm_iff]
+    exact (hspec inputs).1
+  · intro hHalts hDom
+    have hp : Halts p (List.ofFn inputs) := Halts.toStandardForm_iff.mpr hHalts
+    rw [← Result.toStandardForm hp hHalts]
+    exact (hspec inputs).2 hp hDom
+
+/-- URM computability and standard form computability are equivalent. -/
+theorem URMComputable_iff_URMComputableSF {n : ℕ} {f : (Fin n → ℕ) → Part ℕ} :
+    URMComputable n f ↔ URMComputableSF n f :=
+  ⟨URMComputable.toSF, URMComputableSF.toComputable⟩
 
 end Urm

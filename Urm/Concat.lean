@@ -49,18 +49,6 @@ theorem shiftJumps_zero (p : Program) : p.shiftJumps 0 = p := by
     simp only [List.map_cons]
     cases hd <;> simp [Instr.shiftJumps, ih]
 
-/-- Shifting jumps is additive: shifting by a then b equals shifting by (a + b). -/
-theorem shiftJumps_add (p : Program) (a b : ℕ) :
-    (p.shiftJumps a).shiftJumps b = p.shiftJumps (a + b) := by
-  simp only [shiftJumps, List.map_map]
-  congr 1
-  funext instr
-  cases instr with
-  | Z n => simp [Instr.shiftJumps]
-  | S n => simp [Instr.shiftJumps]
-  | T m n => simp [Instr.shiftJumps]
-  | J m n q => simp [Instr.shiftJumps]; omega
-
 /-- Concatenate two programs, adjusting the second program's jump targets.
 
 When concatenating `p1 ++ p2`, jumps within `p2` must be shifted by `p1.length`
@@ -188,13 +176,7 @@ theorem Steps.concat_right {c c' : Config}
   induction hsteps using Relation.ReflTransGen.head_induction_on with
   | refl => exact Relation.ReflTransGen.refl
   | @head a b hstep hrest ih =>
-    -- hstep : Step p2 a b
-    -- Need: a.pc < p2.length (since a can step)
-    have hpc : a.pc < p2.length := by
-      by_contra hc
-      simp only [not_lt] at hc
-      exact Step.halted_no_step hc hstep
-    have hstep' := Step.concat_right (p1 := p1) hpc hstep
+    have hstep' := Step.concat_right (p1 := p1) (Step.pc_lt_length hstep) hstep
     exact Relation.ReflTransGen.head hstep' ih
 
 /-- Multi-step in the second part of a concatenated program (interior version).
@@ -206,11 +188,7 @@ theorem Steps.concat_right_interior {c c' : Config}
   induction hsteps using Relation.ReflTransGen.head_induction_on with
   | refl => exact Relation.ReflTransGen.refl
   | @head a b hstep hrest ih =>
-    have hpc : a.pc < p2.length := by
-      by_contra hc
-      simp only [not_lt] at hc
-      exact Step.halted_no_step hc hstep
-    have hstep' := Step.concat_right (p1 := p1) hpc hstep
+    have hstep' := Step.concat_right (p1 := p1) (Step.pc_lt_length hstep) hstep
     exact Relation.ReflTransGen.head hstep' ih
 
 /-- Multi-step from within p1 (interior version, no halting required).
@@ -221,12 +199,7 @@ theorem Steps.concat_left_prefix_interior {c c' : Config}
   induction hsteps using Relation.ReflTransGen.head_induction_on with
   | refl => exact Relation.ReflTransGen.refl
   | @head a b hstep hrest ih =>
-    have hpc : a.pc < p1.length := by
-      by_contra hc
-      simp only [not_lt] at hc
-      exact Step.halted_no_step hc hstep
-    have hstep' : Step (p1.concat p2) a b := Step.concat_left hpc hstep
-    exact Relation.ReflTransGen.head hstep' ih
+    exact Relation.ReflTransGen.head (Step.concat_left (Step.pc_lt_length hstep) hstep) ih
 
 /-- Multi-step from within p1 stays in p1 until halting.
 If we execute Steps in p1 from c to a halted config c', then the same path exists in p1.concat p2. -/
@@ -246,20 +219,5 @@ theorem Halts.concat_left_lift (h : Halts p1 inputs) :
   exact Steps.concat_left_prefix hsteps hhalted
 
 end ConcatLemmas
-
-/-! ## Straight-Line Bridge Lemmas -/
-
-/-- For straight-line p2, concat equals simple append.
-This is because shiftJumps is a no-op when there are no jumps. -/
-theorem Program.concat_eq_append_of_isStraightLine (p1 p2 : Program) (h : p2.isStraightLine = true) :
-    p1.concat p2 = p1 ++ p2 := by
-  simp only [concat, Program.shiftJumps_of_isStraightLine h]
-
-/-- For straight-line programs, concat equals simple append.
-This is a convenience variant when both programs are straight-line. -/
-theorem Program.concat_eq_append_of_both_isStraightLine (p1 p2 : Program)
-    (_h1 : p1.isStraightLine = true) (h2 : p2.isStraightLine = true) :
-    p1.concat p2 = p1 ++ p2 :=
-  concat_eq_append_of_isStraightLine p1 p2 h2
 
 end Urm
