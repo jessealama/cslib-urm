@@ -45,10 +45,8 @@ def Program.isStraightLine (p : Program) : Bool :=
 theorem Instr.shiftJumps_of_isNonJumping {instr : Instr} (h : instr.isNonJumping = true) (offset : ℕ) :
     instr.shiftJumps offset = instr := by
   cases instr with
-  | Z n => rfl
-  | S n => rfl
-  | T m n => rfl
-  | J m n q => simp [isNonJumping] at h
+  | Z _ | S _ | T _ _ => rfl
+  | J _ _ _ => simp [isNonJumping] at h
 
 /-- shiftJumps is identity for straight-line programs. -/
 theorem Program.shiftJumps_of_isStraightLine {p : Program} (h : p.isStraightLine = true) (offset : ℕ) :
@@ -64,46 +62,27 @@ theorem Program.shiftJumps_of_isStraightLine {p : Program} (h : p.isStraightLine
 /-- A straight-line program halts on any input (pc always increases until it exceeds length). -/
 theorem straightLine_halts {p : Program} (hsl : p.isStraightLine = true) (inputs : List ℕ) :
     Halts p inputs := by
-  -- We show that in at most p.length steps, pc reaches p.length
-  -- Use strong induction on remaining instructions
-  suffices h : ∀ (c : Config), c.pc ≤ p.length →
-      ∃ c', Steps p c c' ∧ c'.pc ≥ p.length by
+  suffices h : ∀ c : Config, c.pc ≤ p.length → ∃ c', Steps p c c' ∧ c'.pc ≥ p.length by
     obtain ⟨c', hsteps, hpc⟩ := h (Config.init inputs) (by simp [Config.init])
     exact ⟨c', hsteps, hpc⟩
   intro c hpc_le
-  -- Induction on p.length - c.pc (remaining steps)
   generalize hrem : p.length - c.pc = remaining
   induction remaining using Nat.strong_induction_on generalizing c with
   | _ remaining ih =>
     by_cases hhalted : c.pc ≥ p.length
-    · -- Already halted
-      exact ⟨c, Relation.ReflTransGen.refl, hhalted⟩
-    · -- Can take a step
-      push_neg at hhalted
-      have hpc_lt : c.pc < p.length := hhalted
-      have hinstr : ∃ instr, p.getInstr c.pc = some instr := by
-        simp only [Program.getInstr]
-        exact ⟨p[c.pc], List.getElem?_eq_getElem hpc_lt⟩
-      obtain ⟨instr, hinstr⟩ := hinstr
-      have hnonjump : instr.isNonJumping = true := by
-        simp only [Program.isStraightLine, List.all_eq_true] at hsl
-        have hmem : instr ∈ p := by
-          simp only [Program.getInstr] at hinstr
-          exact List.getElem?_eq_some_iff.mp hinstr |>.2 ▸ List.getElem_mem hpc_lt
-        exact hsl instr hmem
+    · exact ⟨c, Relation.ReflTransGen.refl, hhalted⟩
+    · push_neg at hhalted
+      have hinstr : p.getInstr c.pc = some p[c.pc] := List.getElem?_eq_getElem hhalted
+      simp only [Program.isStraightLine, List.all_eq_true] at hsl
+      have hnonjump := hsl p[c.pc] (List.getElem_mem hhalted)
       have hstep : ∃ c', Step p c c' ∧ c'.pc = c.pc + 1 := by
-        cases instr with
-        | Z n => exact ⟨⟨c.pc + 1, c.state.write n 0⟩, Step.zero hinstr, rfl⟩
-        | S n => exact ⟨⟨c.pc + 1, c.state.write n (c.state.read n + 1)⟩, Step.succ hinstr, rfl⟩
-        | T m n =>
-          exact ⟨⟨c.pc + 1, c.state.write n (c.state.read m)⟩, Step.trans hinstr, rfl⟩
-        | J m n q =>
-          simp [Instr.isNonJumping] at hnonjump
+        cases hp : p[c.pc] with
+        | Z n => exact ⟨_, Step.zero (hp ▸ hinstr), rfl⟩
+        | S n => exact ⟨_, Step.succ (hp ▸ hinstr), rfl⟩
+        | T m n => exact ⟨_, Step.trans (hp ▸ hinstr), rfl⟩
+        | J _ _ _ => simp [hp, Instr.isNonJumping] at hnonjump
       obtain ⟨c', hstep', hpc'⟩ := hstep
-      -- Apply IH with smaller remaining count
-      have hremaining : p.length - c'.pc < remaining := by omega
-      have hpc'_le : c'.pc ≤ p.length := by omega
-      obtain ⟨c'', hsteps'', hpc''⟩ := ih (p.length - c'.pc) hremaining c' hpc'_le rfl
+      obtain ⟨c'', hsteps'', hpc''⟩ := ih (p.length - c'.pc) (by omega) c' (by omega) rfl
       exact ⟨c'', Relation.ReflTransGen.head hstep' hsteps'', hpc''⟩
 
 /-- For straight-line programs, the halted config has pc exactly equal to the program length.
@@ -127,46 +106,21 @@ theorem straightLine_halts_at_length {p : Program} (hsl : p.isStraightLine = tru
   | refl => omega
   | head hstep _ ih =>
     -- Each step increases pc by 1 for non-jumping instructions
-    -- Now handle each case
     cases hstep with
-    | zero hinstr =>
-      simp only [Program.getInstr] at hinstr
+    | zero hinstr | succ hinstr | trans hinstr =>
       have hpc_lt := List.getElem?_eq_some_iff.mp hinstr |>.1
-      simp only at ih ⊢
-      omega
-    | succ hinstr =>
-      simp only [Program.getInstr] at hinstr
-      have hpc_lt := List.getElem?_eq_some_iff.mp hinstr |>.1
-      simp only at ih ⊢
-      omega
-    | trans hinstr =>
-      simp only [Program.getInstr] at hinstr
-      have hpc_lt := List.getElem?_eq_some_iff.mp hinstr |>.1
-      simp only at ih ⊢
-      omega
-    | jump_eq hinstr _ =>
-      -- Jump instructions don't appear in straight-line programs
-      simp only [Program.getInstr] at hinstr
+      simp only at ih ⊢; omega
+    | jump_eq hinstr _ | jump_ne hinstr _ =>
       have ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.mp hinstr
-      have hmem : (Instr.J _ _ _) ∈ p := heq ▸ List.getElem_mem hlt
       simp only [Program.isStraightLine, List.all_eq_true] at hsl
-      exact absurd (hsl _ hmem) (by simp [Instr.isNonJumping])
-    | jump_ne hinstr _ =>
-      -- Jump instructions don't appear in straight-line programs
-      simp only [Program.getInstr] at hinstr
-      have ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.mp hinstr
-      have hmem : (Instr.J _ _ _) ∈ p := heq ▸ List.getElem_mem hlt
-      simp only [Program.isStraightLine, List.all_eq_true] at hsl
-      exact absurd (hsl _ hmem) (by simp [Instr.isNonJumping])
+      exact absurd (hsl _ (heq ▸ List.getElem_mem hlt)) (by simp [Instr.isNonJumping])
 
 /-- Straight-line programs halt from any starting state, not just Config.init.
 This is key for chaining: after running one program, we can run the next
 straight-line segment from whatever state we're in. -/
 theorem straightLine_halts_from_state {p : Program} (hsl : p.isStraightLine = true) (s : State) :
     ∃ c, Steps p ⟨0, s⟩ c ∧ c.isHalted p ∧ c.pc = p.length := by
-  -- Induction on remaining instructions
-  suffices h : ∀ (c : Config), c.pc ≤ p.length →
-      ∃ c', Steps p c c' ∧ c'.pc = p.length by
+  suffices h : ∀ c : Config, c.pc ≤ p.length → ∃ c', Steps p c c' ∧ c'.pc = p.length by
     obtain ⟨c', hsteps, hpc'⟩ := h ⟨0, s⟩ (Nat.zero_le _)
     exact ⟨c', hsteps, Nat.le_of_eq hpc'.symm, hpc'⟩
   intro c hpc_le
@@ -176,27 +130,17 @@ theorem straightLine_halts_from_state {p : Program} (hsl : p.isStraightLine = tr
     by_cases hhalted : c.pc ≥ p.length
     · exact ⟨c, Relation.ReflTransGen.refl, by omega⟩
     · push_neg at hhalted
-      have hpc_lt : c.pc < p.length := hhalted
-      have hinstr : ∃ instr, p.getInstr c.pc = some instr := by
-        simp only [Program.getInstr]
-        exact ⟨p[c.pc], List.getElem?_eq_getElem hpc_lt⟩
-      obtain ⟨instr, hinstr⟩ := hinstr
-      have hnonjump : instr.isNonJumping = true := by
-        simp only [Program.isStraightLine, List.all_eq_true] at hsl
-        have hmem : instr ∈ p := by
-          simp only [Program.getInstr] at hinstr
-          exact List.getElem?_eq_some_iff.mp hinstr |>.2 ▸ List.getElem_mem hpc_lt
-        exact hsl instr hmem
+      have hinstr : p.getInstr c.pc = some p[c.pc] := List.getElem?_eq_getElem hhalted
+      simp only [Program.isStraightLine, List.all_eq_true] at hsl
+      have hnonjump := hsl p[c.pc] (List.getElem_mem hhalted)
       have hstep : ∃ c', Step p c c' ∧ c'.pc = c.pc + 1 := by
-        cases instr with
-        | Z n => exact ⟨⟨c.pc + 1, c.state.write n 0⟩, Step.zero hinstr, rfl⟩
-        | S n => exact ⟨⟨c.pc + 1, c.state.write n (c.state.read n + 1)⟩, Step.succ hinstr, rfl⟩
-        | T m n => exact ⟨⟨c.pc + 1, c.state.write n (c.state.read m)⟩, Step.trans hinstr, rfl⟩
-        | J m n q => simp [Instr.isNonJumping] at hnonjump
+        cases hp : p[c.pc] with
+        | Z n => exact ⟨_, Step.zero (hp ▸ hinstr), rfl⟩
+        | S n => exact ⟨_, Step.succ (hp ▸ hinstr), rfl⟩
+        | T m n => exact ⟨_, Step.trans (hp ▸ hinstr), rfl⟩
+        | J _ _ _ => simp [hp, Instr.isNonJumping] at hnonjump
       obtain ⟨c', hstep', hpc'⟩ := hstep
-      have hremaining : p.length - c'.pc < remaining := by omega
-      have hpc'_le : c'.pc ≤ p.length := by omega
-      obtain ⟨c'', hsteps'', hpc''⟩ := ih (p.length - c'.pc) hremaining c' hpc'_le rfl
+      obtain ⟨c'', hsteps'', hpc''⟩ := ih (p.length - c'.pc) (by omega) c' (by omega) rfl
       exact ⟨c'', Relation.ReflTransGen.head hstep' hsteps'', hpc''⟩
 
 /-- The final state after running a straight-line program from a given starting state.
@@ -218,33 +162,17 @@ theorem straightLine_state_at_pc {p : Program} (hsl : p.isStraightLine = true)
   induction targetPc with
   | zero => exact ⟨⟨0, s⟩, Relation.ReflTransGen.refl, rfl⟩
   | succ n ih =>
-    have hn_le : n ≤ p.length := Nat.le_of_succ_le htarget
-    obtain ⟨c_n, hsteps_n, hpc_n⟩ := ih hn_le
+    obtain ⟨c_n, hsteps_n, hpc_n⟩ := ih (Nat.le_of_succ_le htarget)
     have hn_lt : n < p.length := Nat.lt_of_succ_le htarget
-    have hinstr : ∃ instr, p.getInstr n = some instr := by
-      simp only [Program.getInstr]
-      exact ⟨p[n], List.getElem?_eq_getElem hn_lt⟩
-    obtain ⟨instr, hinstr⟩ := hinstr
-    have hnonjump : instr.isNonJumping = true := by
-      simp only [Program.isStraightLine, List.all_eq_true] at hsl
-      have hmem : instr ∈ p := by
-        simp only [Program.getInstr] at hinstr
-        exact List.getElem?_eq_some_iff.mp hinstr |>.2 ▸ List.getElem_mem hn_lt
-      exact hsl instr hmem
-    -- Convert hinstr to use c_n.pc
-    have hinstr' : p.getInstr c_n.pc = some instr := by rw [hpc_n]; exact hinstr
+    have hinstr : p.getInstr c_n.pc = some p[n] := hpc_n ▸ List.getElem?_eq_getElem hn_lt
+    simp only [Program.isStraightLine, List.all_eq_true] at hsl
+    have hnonjump := hsl p[n] (List.getElem_mem hn_lt)
     have hstep : ∃ c', Step p c_n c' ∧ c'.pc = n + 1 := by
-      cases instr with
-      | Z m =>
-        refine ⟨⟨c_n.pc + 1, c_n.state.write m 0⟩, Step.zero hinstr', ?_⟩
-        rw [hpc_n]
-      | S m =>
-        refine ⟨⟨c_n.pc + 1, c_n.state.write m (c_n.state.read m + 1)⟩, Step.succ hinstr', ?_⟩
-        rw [hpc_n]
-      | T m1 m2 =>
-        refine ⟨⟨c_n.pc + 1, c_n.state.write m2 (c_n.state.read m1)⟩, Step.trans hinstr', ?_⟩
-        rw [hpc_n]
-      | J _ _ _ => simp [Instr.isNonJumping] at hnonjump
+      cases hp : p[n] with
+      | Z m => exact ⟨_, Step.zero (hp ▸ hinstr), hpc_n ▸ rfl⟩
+      | S m => exact ⟨_, Step.succ (hp ▸ hinstr), hpc_n ▸ rfl⟩
+      | T m1 m2 => exact ⟨_, Step.trans (hp ▸ hinstr), hpc_n ▸ rfl⟩
+      | J _ _ _ => simp [hp, Instr.isNonJumping] at hnonjump
     obtain ⟨c', hstep', hpc'⟩ := hstep
     exact ⟨c', Relation.ReflTransGen.tail hsteps_n hstep', hpc'⟩
 
@@ -254,34 +182,14 @@ theorem Step.straightLine_preserves {p : Program} {c c' : Config} {r : ℕ}
     (hr : ∀ instr, p.getInstr c.pc = some instr → instr.writesTo ≠ some r) :
     c'.state.read r = c.state.read r := by
   cases hstep with
-  | zero hinstr =>
+  | zero hinstr | succ hinstr | trans hinstr =>
     have := hr _ hinstr
     simp only [Instr.writesTo, ne_eq, Option.some.injEq] at this
-    simp only [State.read, State.write]
     exact Function.update_of_ne (Ne.symm this) _ _
-  | succ hinstr =>
-    have := hr _ hinstr
-    simp only [Instr.writesTo, ne_eq, Option.some.injEq] at this
-    simp only [State.read, State.write]
-    exact Function.update_of_ne (Ne.symm this) _ _
-  | trans hinstr =>
-    have := hr _ hinstr
-    simp only [Instr.writesTo, ne_eq, Option.some.injEq] at this
-    simp only [State.read, State.write]
-    exact Function.update_of_ne (Ne.symm this) _ _
-  | jump_eq hinstr _ =>
-    -- Jump in a straight-line program is a contradiction
-    simp only [Program.getInstr] at hinstr
+  | jump_eq hinstr _ | jump_ne hinstr _ =>
     have ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.mp hinstr
-    have hmem : (Instr.J _ _ _) ∈ p := heq ▸ List.getElem_mem hlt
     simp only [Program.isStraightLine, List.all_eq_true] at hsl
-    exact absurd (hsl _ hmem) (by simp [Instr.isNonJumping])
-  | jump_ne hinstr _ =>
-    simp only [Program.getInstr] at hinstr
-    have ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.mp hinstr
-    have hmem : (Instr.J _ _ _) ∈ p := heq ▸ List.getElem_mem hlt
-    simp only [Program.isStraightLine, List.all_eq_true] at hsl
-    exact absurd (hsl _ hmem) (by simp [Instr.isNonJumping])
+    exact absurd (hsl _ (heq ▸ List.getElem_mem hlt)) (by simp [Instr.isNonJumping])
 
 /-- Multi-step execution preserves registers not written by any instruction. -/
 theorem Steps.straightLine_preserves {p : Program} {c c' : Config} {r : ℕ}
@@ -316,18 +224,8 @@ theorem clearRegistersFrom_zero (start : ℕ) : clearRegistersFrom start 0 = [] 
 
 theorem clearRegistersFrom_isStraightLine (start count : ℕ) :
     (clearRegistersFrom start count).isStraightLine = true := by
-  simp only [clearRegistersFrom, isStraightLine, List.all_map]
-  induction count with
-  | zero => simp
-  | succ n ih =>
-    simp only [List.range_succ, List.all_append, List.all_cons, List.all_nil,
-               and_true, Bool.and_eq_true]
-    constructor
-    · -- Show all elements in range n satisfy the predicate
-      simp only [List.all_eq_true]
-      intro i hi
-      simp [Instr.isNonJumping]
-    · simp [Instr.isNonJumping]
+  simp only [clearRegistersFrom, isStraightLine, List.all_map, List.all_eq_true, List.mem_range]
+  intro i _; simp [Instr.isNonJumping]
 
 end Program
 
@@ -339,12 +237,8 @@ theorem straightLine_zero_after_exec {p : Program} (hsl : p.isStraightLine = tru
     (s : State) (k : ℕ) (r : ℕ) (hk : k < p.length) (hwrite : p[k] = Instr.Z r) :
     ∃ c, Steps p ⟨0, s⟩ c ∧ c.pc = k + 1 ∧ c.state.read r = 0 := by
   obtain ⟨c_k, hsteps_k, hpc_k⟩ := straightLine_state_at_pc hsl s k (Nat.le_of_lt hk)
-  have hinstr : p.getInstr k = some (Instr.Z r) := by
-    simp only [Program.getInstr, List.getElem?_eq_getElem hk, hwrite]
-  have hinstr' : p.getInstr c_k.pc = some (Instr.Z r) := by rw [hpc_k]; exact hinstr
-  have hstep : Step p c_k ⟨c_k.pc + 1, c_k.state.write r 0⟩ := Step.zero hinstr'
-  have hpc_eq : c_k.pc + 1 = k + 1 := by rw [hpc_k]
-  refine ⟨⟨c_k.pc + 1, c_k.state.write r 0⟩, Relation.ReflTransGen.tail hsteps_k hstep, hpc_eq, ?_⟩
+  have hinstr : p.getInstr c_k.pc = some (Instr.Z r) := by simp [Program.getInstr, hpc_k, hk, hwrite]
+  refine ⟨_, Relation.ReflTransGen.tail hsteps_k (Step.zero hinstr), hpc_k ▸ rfl, ?_⟩
   simp only [State.read, State.write, Function.update_self]
 
 /-- For a straight-line program, if some instruction writes 0 to register r,
@@ -372,80 +266,50 @@ theorem straightLine_zeros_register {p : Program} (hsl : p.isStraightLine = true
   induction hsteps using Relation.ReflTransGen.head_induction_on with
   | refl => rfl
   | @head a' c' hstep hrest ih =>
-    -- We have a' → c' → ... → b
-    -- Need: b.state.read r = a'.state.read r
     have hc'_pc_gt : c'.pc > k := by
       cases hstep with
-      | zero h => simp only []; omega
-      | succ h => simp only []; omega
-      | trans h => simp only []; omega
+      | zero _ | succ _ | trans _ | jump_ne _ _ => simp only []; omega
       | jump_eq h heq =>
-        -- This can't happen in a straight-line program
-        exfalso
-        simp only [Program.isStraightLine, List.all_eq_true] at hsl
         have ha'_pc_lt : a'.pc < p.length := by
-          by_contra hc
-          simp only [not_lt] at hc
-          exact Step.halted_no_step hc (Step.jump_eq h heq)
-        simp only [Program.getInstr] at h
+          by_contra hc; exact Step.halted_no_step (Nat.not_lt.mp hc) (Step.jump_eq h heq)
+        simp only [Program.isStraightLine, List.all_eq_true] at hsl
         have hmem := List.getElem?_eq_some_iff.mp h
-        have hinstr_sl := hsl _ (hmem.2 ▸ List.getElem_mem ha'_pc_lt)
-        simp only [Instr.isNonJumping] at hinstr_sl
-        exact Bool.false_ne_true hinstr_sl
-      | jump_ne h hne => simp only []; omega
+        exact absurd (hsl _ (hmem.2 ▸ List.getElem_mem ha'_pc_lt)) (by simp [Instr.isNonJumping])
     rw [ih hc'_pc_gt]
-    -- Show that the step a' → c' preserves register r
     apply Step.straightLine_preserves hsl hstep
     intro instr hinstr
     have ha'_pc_lt : a'.pc < p.length := by
-      by_contra hc
-      simp only [not_lt] at hc
-      exact Step.halted_no_step hc hstep
-    simp only [Program.getInstr] at hinstr
+      by_contra hc; exact Step.halted_no_step (Nat.not_lt.mp hc) hstep
     have heq : p[a'.pc] = instr := (List.getElem?_eq_some_iff.mp hinstr).2
-    rw [← heq]
-    exact hnowrite a'.pc ha'_pc_lt hpc_gt
+    exact heq ▸ hnowrite a'.pc ha'_pc_lt hpc_gt
 
 /-- clearRegistersFrom zeros the specified range. -/
 theorem clearRegistersFrom_zeros (start count : ℕ) (s : State) (r : ℕ)
     (hr : start ≤ r ∧ r < start + count) :
     (straightLineFinalState (Program.clearRegistersFrom_isStraightLine start count) s).read r = 0 := by
   have hsl := Program.clearRegistersFrom_isStraightLine start count
-  -- The instruction at index (r - start) is Z r
-  let k := r - start
-  have hk : k < count := by omega
-  have hk_lt : k < (Program.clearRegistersFrom start count).length := by
-    simp only [Program.clearRegistersFrom_length]; omega
-  have hwrite : (Program.clearRegistersFrom start count)[k] = Instr.Z r := by
-    simp only [Program.clearRegistersFrom, List.getElem_map, List.getElem_range]
-    congr; omega
+  have hk_lt : r - start < (Program.clearRegistersFrom start count).length := by simp; omega
+  have hwrite : (Program.clearRegistersFrom start count)[r - start] = Instr.Z r := by
+    simp only [Program.clearRegistersFrom, List.getElem_map, List.getElem_range]; congr; omega
   have hnowrite : ∀ j (hj : j < (Program.clearRegistersFrom start count).length),
-      k < j → ((Program.clearRegistersFrom start count)[j]'hj).writesTo ≠ some r := by
+      r - start < j → ((Program.clearRegistersFrom start count)[j]'hj).writesTo ≠ some r := by
     intro j hj hkj
-    simp only [Program.clearRegistersFrom, List.getElem_map, List.getElem_range,
-               Instr.writesTo, ne_eq, Option.some.injEq]
-    simp only [Program.clearRegistersFrom_length] at hj
+    simp only [Program.clearRegistersFrom, List.getElem_map, List.getElem_range, Instr.writesTo,
+               ne_eq, Option.some.injEq] at hj ⊢
     omega
-  exact straightLine_zeros_register hsl s r k hk_lt hwrite hnowrite
+  exact straightLine_zeros_register hsl s r (r - start) hk_lt hwrite hnowrite
 
 /-- clearRegistersFrom preserves registers outside its range. -/
 theorem clearRegistersFrom_preserves (start count : ℕ) (s : State) (r : ℕ)
     (hr : r < start ∨ start + count ≤ r) :
     (straightLineFinalState (Program.clearRegistersFrom_isStraightLine start count) s).read r = s.read r := by
-  -- The program only writes to registers start, start+1, ..., start+count-1
-  -- Since r is outside this range, it is preserved
   have hsl := Program.clearRegistersFrom_isStraightLine start count
   have ⟨hsteps, _, _⟩ := straightLineFinalState_spec hsl s
   apply Steps.straightLine_preserves hsl hsteps
   intro instr hmem
-  -- Each instruction in clearRegistersFrom is Z (start+i) for some i
-  simp only [Program.clearRegistersFrom, List.mem_map] at hmem
-  obtain ⟨i, hi_range, hinstr_eq⟩ := hmem
-  simp only [List.mem_range] at hi_range
-  subst hinstr_eq
+  simp only [Program.clearRegistersFrom, List.mem_map, List.mem_range] at hmem
+  obtain ⟨i, hi_range, rfl⟩ := hmem
   simp only [Instr.writesTo, ne_eq, Option.some.injEq]
-  cases hr with
-  | inl h => omega
-  | inr h => omega
+  omega
 
 end Urm
