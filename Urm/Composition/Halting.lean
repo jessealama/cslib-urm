@@ -45,18 +45,24 @@ theorem gPhase_writes_result {base n : ℕ} {pG : Program} {j : ℕ} {inputs : F
     (hSaved : ∀ k : ℕ, (hk : k < n) → s.read (base + 1 + k) = inputs ⟨k, hk⟩) (c' : Config)
     (hsteps : Steps (gPhase base n pG j) ⟨0, s⟩ c') (hhalted : c'.isHalted (gPhase base n pG j)) :
     c'.state.read (base + n + 1 + j) = Result pG (List.ofFn inputs) hpG_halts := by
-  obtain ⟨sClear, hClear_steps, cRest, hRest_steps, hRest_halted⟩ :=
-    suffix_of_concat_from_zero hsteps hhalted (clearRegisters_isStandardForm base)
-  obtain ⟨sCopy, hCopy_steps, cPGT, hPGT_steps, hPGT_halted⟩ :=
-    suffix_of_concat_from_zero hRest_steps hRest_halted (copyRegisterRange_isStandardForm (base + 1) 0 n)
-  obtain ⟨sPG, hPG_steps, cT, hT_steps, hT_halted⟩ := suffix_of_concat_from_zero hPGT_steps hPGT_halted hpG_sf
+  -- Decompose: gPhase = clearRegisters ++ copyRegisterRange ++ pG ++ T
+  let sClear := suffix_of_concat_state hsteps hhalted (clearRegisters_isStandardForm base)
+  have hClear_steps := suffix_of_concat_steps_left hsteps hhalted (clearRegisters_isStandardForm base)
+  obtain ⟨cRest, hRest_steps, hRest_halted⟩ := suffix_of_concat_halts_right hsteps hhalted (clearRegisters_isStandardForm base)
+  let sCopy := suffix_of_concat_state hRest_steps hRest_halted (copyRegisterRange_isStandardForm (base + 1) 0 n)
+  have hCopy_steps := suffix_of_concat_steps_left hRest_steps hRest_halted (copyRegisterRange_isStandardForm (base + 1) 0 n)
+  obtain ⟨cPGT, hPGT_steps, hPGT_halted⟩ := suffix_of_concat_halts_right hRest_steps hRest_halted (copyRegisterRange_isStandardForm (base + 1) 0 n)
+  let sPG := suffix_of_concat_state hPGT_steps hPGT_halted hpG_sf
+  have hPG_steps := suffix_of_concat_steps_left hPGT_steps hPGT_halted hpG_sf
+  obtain ⟨cT, hT_steps, hT_halted⟩ := suffix_of_concat_halts_right hPGT_steps hPGT_halted hpG_sf
   have hsClear_eq : sClear = straightLineFinalState (clearRegisters_isStraightLine base) s :=
-    straightLineFinalState_eq_of_halted _ s ⟨_, sClear⟩ hClear_steps (by simp)
+    straightLine_suffix_of_concat_state (clearRegisters_isStraightLine base) hsteps hhalted (clearRegisters_isStandardForm base)
   have hSaved_after_clear : ∀ k : ℕ, (hk : k < n) → sClear.read (base + 1 + k) = inputs ⟨k, hk⟩ := by
     intro k hk; rw [hsClear_eq, clearRegisters_preserves_above' base s _ (by omega), hSaved k hk]
-  have hsCopy_eq : sCopy = straightLineFinalState (copyRegisterRange_isStraightLine (base + 1) 0 n) sClear :=
-    straightLineFinalState_eq_of_halted _ sClear ⟨_, sCopy⟩ hCopy_steps (by simp)
   obtain ⟨_, hsCopy'_eq, hCopy_correct, hCopy_preserves⟩ := copyRegisterRange_state (base + 1) 0 n sClear (Or.inr (by omega))
+  have hsCopy_eq : sCopy = straightLineFinalState (copyRegisterRange_isStraightLine (base + 1) 0 n) sClear :=
+    straightLine_suffix_of_concat_state (copyRegisterRange_isStraightLine (base + 1) 0 n) hRest_steps hRest_halted
+      (copyRegisterRange_isStandardForm (base + 1) 0 n)
   have hInputs_after_copy : ∀ k : ℕ, (hk : k < n) → sCopy.read k = inputs ⟨k, hk⟩ := fun k hk => by
     rw [hsCopy_eq, hsCopy'_eq]; simp only [Nat.zero_add] at hCopy_correct
     rw [hCopy_correct k hk, hSaved_after_clear k hk]
@@ -165,8 +171,9 @@ theorem allGPhases_suffix_preserves_earlier_results {m n base : ℕ} {pGs : Fin 
         rw [List.drop_eq_getElem_cons (by simp; exact hEmpty), List.foldl_cons, foldl_concat_eq_acc_concat]
         simp only [concat_nil_left, List.getElem_finRange]; congr 2
       rw [hSuffix_decomp] at hsteps hhalted
-      obtain ⟨sFirst, hFirst_steps, cRest, hRest_steps, hRest_halted⟩ :=
-        suffix_of_concat_from_zero hsteps hhalted (gPhase_isStandardForm (hpGs_sf ⟨start, hEmpty⟩))
+      let sFirst := suffix_of_concat_state hsteps hhalted (gPhase_isStandardForm (hpGs_sf ⟨start, hEmpty⟩))
+      have hFirst_steps := suffix_of_concat_steps_left hsteps hhalted (gPhase_isStandardForm (hpGs_sf ⟨start, hEmpty⟩))
+      obtain ⟨cRest, hRest_steps, hRest_halted⟩ := suffix_of_concat_halts_right hsteps hhalted (gPhase_isStandardForm (hpGs_sf ⟨start, hEmpty⟩))
       have hFirst_preserves := gPhase_preserves_other_results base n (pGs ⟨start, hEmpty⟩) start k
         (hpGs_sf _) (hpGs_max _) hn_le_base (by omega) s sFirst ⟨_, sFirst⟩ hFirst_steps (by simp) rfl
       have hRest_preserves := allGPhases_suffix_preserves_earlier_results hpGs_sf hpGs_max hn_le_base
