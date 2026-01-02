@@ -133,23 +133,12 @@ theorem Program.instr_maxRegister_le {i : ℕ} {instr : Instr}
 theorem Step.preserves_high_register {c c' : Config} (hstep : Step p c c') (r : ℕ)
     (hr : p.maxRegister < r) : c'.state.read r = c.state.read r := by
   cases hstep with
-  | zero h =>
+  | zero h | succ h | trans h =>
     have hinstr := Program.instr_maxRegister_le h
     simp only [Instr.maxRegister] at hinstr
     simp only [State.read, State.write]
-    exact Function.update_of_ne (by omega : r ≠ _) _ _
-  | succ h =>
-    have hinstr := Program.instr_maxRegister_le h
-    simp only [Instr.maxRegister] at hinstr
-    simp only [State.read, State.write]
-    exact Function.update_of_ne (by omega : r ≠ _) _ _
-  | trans h =>
-    have hinstr := Program.instr_maxRegister_le h
-    simp only [Instr.maxRegister] at hinstr
-    simp only [State.read, State.write]
-    exact Function.update_of_ne (by omega : r ≠ _) _ _
-  | jump_eq _ _ => rfl
-  | jump_ne _ _ => rfl
+    exact Function.update_of_ne (by omega) _ _
+  | jump_eq _ _ | jump_ne _ _ => rfl
 
 /-- Multi-step execution preserves registers above maxRegister. -/
 theorem Steps.preserves_high_register {c c' : Config} (hsteps : Steps p c c') (r : ℕ)
@@ -277,154 +266,45 @@ theorem Program.IsStandardForm.concat {p1 p2 : Program}
     simp only [Program.concat_length]
     exact hshift
 
-/-- If p1.concat p2 halts and p1 is standard form, then p1 halts.
-
-This is the "prefix halts" property: execution of the concatenation must pass through
-a state where p1 has halted (at pc = p1.length) before continuing into p2.
-
-The key insight is that for standard form programs:
-1. Execution starts at pc = 0
-2. While pc < p1.length, we execute p1's instructions
-3. Standard form means when we "exit" p1, it's at pc = p1.length (halted in p1)
-4. This config witnesses that p1 halts -/
-theorem Halts.prefix_of_concat_sf {p1 p2 : Program} {inputs : List ℕ}
-    (hH : Halts (p1.concat p2) inputs)
-    (h1 : p1.IsStandardForm) :
-    Halts p1 inputs := by
-  -- Extract the execution path from Config.init to a halted config in H
-  -- Find the first config where pc = p1.length
-  -- The prefix of the path up to that point is an execution of p1
-  -- At pc = p1.length, p1 is halted
-  obtain ⟨cH, hsteps, hhalted⟩ := hH
-  -- Build p1 steps by extracting prefix of concat execution while pc < p1.length
-  -- Key: we need to show there exists a config c with Steps p1 (Config.init inputs) c and c.isHalted p1
-  -- Strategy: induction on hsteps, maintaining that we're building parallel p1 steps
-
-  -- Handle empty p1 case first
-  by_cases hp1 : p1.length = 0
-  · -- Empty p1: Config.init is already halted
-    exact ⟨Config.init inputs, Relation.ReflTransGen.refl, by simp [Config.isHalted, hp1]⟩
-
-  -- Non-empty p1: we need to find where pc first reaches p1.length
-  -- Use induction on the execution path.
-  -- Key insight: at each step, while pc < p1.length, we can convert the step to a p1 step.
-  -- When pc reaches p1.length, p1 is halted.
-
-  -- Helper: from any config c with pc ≤ p1.length and steps to a halted config in concat,
-  -- we can find a halted config in p1 reachable from c
-  suffices h : ∀ c c' : Config,
-      Steps (p1.concat p2) c c' → c'.isHalted (p1.concat p2) →
-      c.pc ≤ p1.length →
-      (∃ c'', Steps p1 c c'' ∧ c''.isHalted p1) by
-    have hpc0 : (Config.init inputs).pc ≤ p1.length := by simp [Config.init]
-    exact h (Config.init inputs) cH hsteps hhalted hpc0
-
-  intro c c' hsteps'
-  -- Use head_induction_on which gives the right IH structure:
-  -- motive a := c'.isHalted → a.pc ≤ p1.length → ∃ c'', Steps p1 a c'' ∧ c''.isHalted p1
-  -- Given Step a d and Steps d c', the IH applies to d
-  induction hsteps' using Relation.ReflTransGen.head_induction_on with
-  | refl =>
-    -- At the end: c = c'. Need to prove the motive for c'.
-    -- Given c'.isHalted (concat) and c'.pc ≤ p1.length, show c' is halted in p1.
-    intro hhalted' hpc_le
-    simp only [Config.isHalted, Program.concat_length] at hhalted'
-    have hpc_eq : c'.pc = p1.length := by omega
-    exact ⟨c', Relation.ReflTransGen.refl, by simp [Config.isHalted, hpc_eq]⟩
-  | @head a d hstep hrest ih =>
-    -- hstep : Step (p1.concat p2) a d
-    -- hrest : Steps (p1.concat p2) d c'
-    -- ih : c'.isHalted (p1.concat p2) → d.pc ≤ p1.length → ∃ c'', Steps p1 d c'' ∧ c''.isHalted p1
-    intro hhalted' hpc_le
-
-    -- Check if a is already halted in p1
-    by_cases hhalted_p1 : a.isHalted p1
-    · exact ⟨a, Relation.ReflTransGen.refl, hhalted_p1⟩
-
-    -- a is not halted in p1, so a.pc < p1.length
-    have hpc_lt : a.pc < p1.length := by
-      simp only [Config.isHalted, not_le] at hhalted_p1
-      exact hhalted_p1
-
-    -- Since a.pc < p1.length, we can convert the step to a p1 step
-    have hstep_p1 : Step p1 a d := Step.of_concat_left hpc_lt hstep
-
-    -- d.pc ≤ p1.length by standard form
-    have hd_pc_le : d.pc ≤ p1.length := by
-      cases hstep_p1 with
-      | zero h => simp only; omega
-      | succ h => simp only; omega
-      | trans h => simp only; omega
-      | jump_eq h _ =>
-        simp only [Program.getInstr] at h
-        have ⟨hpc_valid, hinstr_eq⟩ := List.getElem?_eq_some_iff.mp h
-        have hmem : Instr.J _ _ _ ∈ p1 := hinstr_eq ▸ List.getElem_mem hpc_valid
-        simp only [Program.IsStandardForm, Program.isStandardForm, List.all_eq_true] at h1
-        have hbounded := h1 _ hmem
-        simp only [Instr.hasBoundedJump, decide_eq_true_eq] at hbounded
-        exact hbounded
-      | jump_ne h _ => simp only; omega
-
-    -- Apply IH to get p1 execution from d
-    obtain ⟨c'', hsteps_dc'', hhalted_c''⟩ := ih hhalted' hd_pc_le
-
-    -- Chain: a → d in p1, then d →* c'' in p1
-    exact ⟨c'', Relation.ReflTransGen.head hstep_p1 hsteps_dc'', hhalted_c''⟩
-
 /-- Generalized prefix extraction: if p1.concat p2 halts starting from ⟨0, s⟩ and p1 is standard form,
-then p1 halts from ⟨0, s⟩.
-
-This generalizes `Halts.prefix_of_concat_sf` to arbitrary starting states (not just Config.init). -/
+then p1 halts from ⟨0, s⟩. -/
 theorem prefix_of_concat_from_zero {p1 p2 : Program} {s : State} {c : Config}
     (hsteps : Steps (p1.concat p2) ⟨0, s⟩ c)
     (hhalted : c.isHalted (p1.concat p2))
     (h1 : p1.IsStandardForm) :
     ∃ c', Steps p1 ⟨0, s⟩ c' ∧ c'.isHalted p1 := by
-  -- Handle empty p1 case first
   by_cases hp1 : p1.length = 0
-  · -- Empty p1: ⟨0, s⟩ is already halted
-    exact ⟨⟨0, s⟩, Relation.ReflTransGen.refl, by simp [Config.isHalted, hp1]⟩
-
-  -- Non-empty p1: find where pc first reaches p1.length
-  -- Use the same induction as prefix_of_concat_sf
+  · exact ⟨⟨0, s⟩, Relation.ReflTransGen.refl, by simp [Config.isHalted, hp1]⟩
   suffices h : ∀ c0 c' : Config,
       Steps (p1.concat p2) c0 c' → c'.isHalted (p1.concat p2) →
       c0.pc ≤ p1.length →
       (∃ c'', Steps p1 c0 c'' ∧ c''.isHalted p1) by
-    have hpc0 : (⟨0, s⟩ : Config).pc ≤ p1.length := by simp
-    exact h ⟨0, s⟩ c hsteps hhalted hpc0
-
+    exact h ⟨0, s⟩ c hsteps hhalted (by simp)
   intro c0 c' hsteps'
   induction hsteps' using Relation.ReflTransGen.head_induction_on with
   | refl =>
     intro hhalted' hpc_le
     simp only [Config.isHalted, Program.concat_length] at hhalted'
-    have hpc_eq : c'.pc = p1.length := by omega
-    exact ⟨c', Relation.ReflTransGen.refl, by simp [Config.isHalted, hpc_eq]⟩
+    exact ⟨c', Relation.ReflTransGen.refl, by simp [Config.isHalted]; omega⟩
   | @head a d hstep hrest ih =>
     intro hhalted' hpc_le
     by_cases hhalted_p1 : a.isHalted p1
     · exact ⟨a, Relation.ReflTransGen.refl, hhalted_p1⟩
-    have hpc_lt : a.pc < p1.length := by
-      simp only [Config.isHalted, not_le] at hhalted_p1
-      exact hhalted_p1
+    have hpc_lt : a.pc < p1.length := by simp only [Config.isHalted, not_le] at hhalted_p1; exact hhalted_p1
     have hstep_p1 : Step p1 a d := Step.of_concat_left hpc_lt hstep
-    have hd_pc_le : d.pc ≤ p1.length := by
-      cases hstep_p1 with
-      | zero h => simp only; omega
-      | succ h => simp only; omega
-      | trans h => simp only; omega
-      | jump_eq h _ =>
-        simp only [Program.getInstr] at h
-        have ⟨hpc_valid, hinstr_eq⟩ := List.getElem?_eq_some_iff.mp h
-        have hmem : Instr.J _ _ _ ∈ p1 := hinstr_eq ▸ List.getElem_mem hpc_valid
-        simp only [Program.IsStandardForm, Program.isStandardForm, List.all_eq_true] at h1
-        have hbounded := h1 _ hmem
-        simp only [Instr.hasBoundedJump, decide_eq_true_eq] at hbounded
-        exact hbounded
-      | jump_ne h _ => simp only; omega
-    obtain ⟨c'', hsteps_dc'', hhalted_c''⟩ := ih hhalted' hd_pc_le
+    obtain ⟨c'', hsteps_dc'', hhalted_c''⟩ := ih hhalted' (Step.pc_le_length_of_step h1 hstep_p1)
     exact ⟨c'', Relation.ReflTransGen.head hstep_p1 hsteps_dc'', hhalted_c''⟩
+
+/-- If p1.concat p2 halts and p1 is standard form, then p1 halts.
+
+This is the "prefix halts" property: execution of the concatenation must pass through
+a state where p1 has halted (at pc = p1.length) before continuing into p2. -/
+theorem Halts.prefix_of_concat_sf {p1 p2 : Program} {inputs : List ℕ}
+    (hH : Halts (p1.concat p2) inputs)
+    (h1 : p1.IsStandardForm) :
+    Halts p1 inputs := by
+  obtain ⟨cH, hsteps, hhalted⟩ := hH
+  exact prefix_of_concat_from_zero hsteps hhalted h1
 
 /-- clearRegisters produces a straight-line program. -/
 theorem clearRegisters_isStraightLine (maxReg : ℕ) :
@@ -657,36 +537,21 @@ theorem Steps.of_concat_right {s : State} {c' : Config}
       exact Step.halted_no_step hhalted_a hstep
     have hstep_p2 := Step.of_concat_right hstart ha_in_range hstep
     have hb_pc_ge : b.pc ≥ p1.length := by
-      have ha_ge := hstart  -- a.pc ≥ p1.length
+      have ha_ge := hstart
       cases hstep with
-      | zero h => simp only []; omega
-      | succ h => simp only []; omega
-      | trans h => simp only []; omega
-      | jump_eq h heq =>
-        -- The instruction is in p2's range, so its jump target is shifted by p1.length
-        -- h : (p1.concat p2).getInstr a.pc = some (J m n q)
-        -- Since a.pc ≥ p1.length, this instruction comes from p2.shiftJumps p1.length
-        -- So the target q is of the form original_target + p1.length
+      | zero _ | succ _ | trans _ | jump_ne _ _ => simp only []; omega
+      | jump_eq h _ =>
         have hconcat := Program.getInstr_concat_right a.pc hstart ha_in_range
         rw [hconcat, Program.getInstr_shiftJumps] at h
-        -- h : Option.map (Instr.shiftJumps p1.length) (p2.getInstr (a.pc - p1.length)) = some (J m n q)
-        -- The original instruction in p2 has target q' and the shifted one has q = q' + p1.length
         cases hp2 : p2.getInstr (a.pc - p1.length) with
         | none => simp only [hp2, Option.map_none] at h; nomatch h
         | some instr =>
           simp only [hp2, Option.map_some] at h
           cases instr with
-          | J m' n' q' =>
+          | J _ _ q' =>
             simp only [Instr.shiftJumps, Option.some.injEq, Instr.J.injEq] at h
-            -- h gives us that the jump target is q' + p1.length = q✝
-            -- Goal is: b.pc ≥ p1.length, where b.pc = q✝ (the jump target)
-            obtain ⟨_, _, hq_eq⟩ := h
-            simp only [← hq_eq]
-            omega
-          | Z _ => simp only [Instr.shiftJumps, Option.some.injEq] at h; nomatch h
-          | S _ => simp only [Instr.shiftJumps, Option.some.injEq] at h; nomatch h
-          | T _ _ => simp only [Instr.shiftJumps, Option.some.injEq] at h; nomatch h
-      | jump_ne h hne => simp only []; omega
+            obtain ⟨_, _, hq_eq⟩ := h; simp only [← hq_eq]; omega
+          | _ => simp only [Instr.shiftJumps, Option.some.injEq] at h; nomatch h
     -- ih takes hb_pc_ge and gives us ∃ c, Steps p2 ⟨b.pc - p1.length, b.state⟩ c ∧ ...
     obtain ⟨c, hrest_p2, hhalted_c, hstate_eq⟩ := ih hb_pc_ge
     exact ⟨c, Relation.ReflTransGen.head hstep_p2 hrest_p2, hhalted_c, hstate_eq⟩
@@ -707,45 +572,7 @@ theorem suffix_of_concat_from_zero {p1 p2 : Program} {s : State} {c : Config}
   -- By standard form, c1.pc = p1.length
   have hc1_pc : c1.pc = p1.length := by
     simp only [Config.isHalted] at hhalted_p1
-    by_contra hne
-    have hgt : c1.pc > p1.length := Nat.lt_of_le_of_ne hhalted_p1 (Ne.symm hne)
-    have hinv : ∀ c0 c' : Config, Steps p1 c0 c' → c0.pc ≤ p1.length → c'.pc ≤ p1.length := by
-      intro c0 c' hsteps' hpc0
-      induction hsteps' using Relation.ReflTransGen.head_induction_on with
-      | refl => exact hpc0
-      | @head a b hstep _ ih =>
-        have hb_le : b.pc ≤ p1.length := by
-          by_cases ha_halted : a.isHalted p1
-          · exact Step.halted_no_step ha_halted hstep |>.elim
-          simp only [Config.isHalted, not_le] at ha_halted
-          cases hstep with
-          | zero h =>
-            simp only [Program.getInstr] at h
-            have ⟨hpc_lt, _⟩ := List.getElem?_eq_some_iff.mp h
-            grind
-          | succ h =>
-            simp only [Program.getInstr] at h
-            have ⟨hpc_lt, _⟩ := List.getElem?_eq_some_iff.mp h
-            grind
-          | trans h =>
-            simp only [Program.getInstr] at h
-            have ⟨hpc_lt, _⟩ := List.getElem?_eq_some_iff.mp h
-            grind
-          | jump_eq h _ =>
-            simp only [Program.getInstr] at h
-            have ⟨hpc_valid, hinstr_eq⟩ := List.getElem?_eq_some_iff.mp h
-            have hmem : Instr.J _ _ _ ∈ p1 := hinstr_eq ▸ List.getElem_mem hpc_valid
-            simp only [Program.IsStandardForm, Program.isStandardForm, List.all_eq_true] at h1
-            have hbounded := h1 _ hmem
-            simp only [Instr.hasBoundedJump, decide_eq_true_eq] at hbounded
-            exact hbounded
-          | jump_ne h _ =>
-            simp only [Program.getInstr] at h
-            have ⟨hpc_lt, _⟩ := List.getElem?_eq_some_iff.mp h
-            grind
-        exact ih hb_le
-    have hstart : (⟨0, s⟩ : Config).pc ≤ p1.length := by simp
-    have hc1_le := hinv ⟨0, s⟩ c1 hsteps_p1 hstart
+    have hc1_le := h1.pc_le_length hsteps_p1 (by simp : (⟨0, s⟩ : Config).pc ≤ p1.length)
     omega
 
   use c1.state

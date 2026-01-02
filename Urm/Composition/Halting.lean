@@ -105,11 +105,10 @@ theorem gPhase_halts_from_saved_inputs
   have hpG_pc' := epG.pc_eq
 
   -- T halts
-  obtain ⟨cT, hT_steps, hT_halted, hT_pc, _hT_state⟩ :=
-    single_transfer_halts 0 (base + n + 1 + i) epG.config.state
+  let eT := executeSingleTransfer 0 (base + n + 1 + i) epG.config.state
 
   -- Chain: pG ++ T
-  have ⟨hPGT_steps, hPGT_halted⟩ := Steps.chain_concat hpG_steps' hpG_halted' hpG_pc' hT_steps hT_halted
+  have ⟨hPGT_steps, hPGT_halted⟩ := Steps.chain_concat hpG_steps' hpG_halted' hpG_pc' eT.steps eT.halted
 
   -- Chain: copy ++ (pG ++ T)
   have ⟨hCopyPGT_steps, hCopyPGT_halted⟩ := Steps.chain_concat hCopy_steps hCopy_halted rfl hPGT_steps hPGT_halted
@@ -151,66 +150,33 @@ theorem gPhase_writes_result
     suffix_of_concat_from_zero hPGT_steps hPGT_halted hpG_sf
 
   -- After clear, saved inputs still there
+  have hsClear_eq : sClear = straightLineFinalState (clearRegisters_isStraightLine base) s :=
+    straightLineFinalState_eq_of_halted _ s ⟨_, sClear⟩ hClear_steps (by simp [Config.isHalted])
   have hSaved_after_clear : ∀ k : ℕ, (hk : k < n) → sClear.read (base + 1 + k) = inputs ⟨k, hk⟩ := by
-    intro k hk
-    have hClear_sl := clearRegisters_isStraightLine base
-    have hsClear_eq : sClear = straightLineFinalState hClear_sl s := by
-      have hClear_halted' : (⟨(clearRegisters base).length, sClear⟩ : Config).isHalted (clearRegisters base) := by
-        simp [Config.isHalted]
-      exact straightLineFinalState_eq_of_halted hClear_sl s ⟨(clearRegisters base).length, sClear⟩ hClear_steps hClear_halted'
-    rw [hsClear_eq]
-    have hpres := clearRegisters_preserves_above' base s (base + 1 + k) (by omega)
-    rw [hpres, hSaved k hk]
+    intro k hk; rw [hsClear_eq, clearRegisters_preserves_above' base s _ (by omega), hSaved k hk]
 
   -- After copy, R[0..n-1] = inputs
-  have hInputs_after_copy : ∀ k : ℕ, (hk : k < n) → sCopy.read k = inputs ⟨k, hk⟩ := by
-    intro k hk
-    have hCopy_sl := copyRegisterRange_isStraightLine (base + 1) 0 n
-    have hsCopy_eq : sCopy = straightLineFinalState hCopy_sl sClear := by
-      have hCopy_halted' : (⟨(copyRegisterRange (base + 1) 0 n).length, sCopy⟩ : Config).isHalted
-          (copyRegisterRange (base + 1) 0 n) := by simp [Config.isHalted]
-      exact straightLineFinalState_eq_of_halted hCopy_sl sClear
-        ⟨(copyRegisterRange (base + 1) 0 n).length, sCopy⟩ hCopy_steps hCopy_halted'
-    rw [hsCopy_eq]
-    have hNoOverlap : base + 1 + n ≤ 0 ∨ 0 + n ≤ base + 1 := Or.inr (by omega)
-    obtain ⟨sCopy', hsCopy'_eq, hCopy_correct, _⟩ := copyRegisterRange_state (base + 1) 0 n sClear hNoOverlap
-    have hk_eq : sCopy'.read k = sClear.read (base + 1 + k) := by
-      have h := hCopy_correct k hk
-      simp only [Nat.zero_add] at h
-      exact h
-    rw [hsCopy'_eq, hk_eq]
-    exact hSaved_after_clear k hk
+  have hNoOverlap : base + 1 + n ≤ 0 ∨ 0 + n ≤ base + 1 := Or.inr (by omega)
+  have hsCopy_eq : sCopy = straightLineFinalState (copyRegisterRange_isStraightLine (base + 1) 0 n) sClear :=
+    straightLineFinalState_eq_of_halted _ sClear ⟨_, sCopy⟩ hCopy_steps (by simp [Config.isHalted])
+  obtain ⟨_, hsCopy'_eq, hCopy_correct, hCopy_preserves⟩ := copyRegisterRange_state (base + 1) 0 n sClear hNoOverlap
+  have hInputs_after_copy : ∀ k : ℕ, (hk : k < n) → sCopy.read k = inputs ⟨k, hk⟩ := fun k hk => by
+    rw [hsCopy_eq, hsCopy'_eq]; simp only [Nat.zero_add] at hCopy_correct
+    rw [hCopy_correct k hk, hSaved_after_clear k hk]
 
   -- State sCopy agrees with inputs on R[0..pG.maxRegister]
   have hagree : sCopy.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG.maxRegister := by
-    intro r _hr0 hr_max
+    intro r _ hr_max
     by_cases hr_n : r < n
     · rw [hInputs_after_copy r hr_n]
-      simp only [State.fromInputs, State.read, List.getD_eq_getElem?_getD, List.getElem?_ofFn]
-      simp only [hr_n, ↓reduceDIte, Option.getD_some]
+      simp only [State.fromInputs, State.read, List.getD_eq_getElem?_getD, List.getElem?_ofFn,
+        hr_n, ↓reduceDIte, Option.getD_some]
     · -- r ≥ n, both should be 0
-      have hClear_sl := clearRegisters_isStraightLine base
-      have hCopy_sl := copyRegisterRange_isStraightLine (base + 1) 0 n
-      have hsClear_eq : sClear = straightLineFinalState hClear_sl s := by
-        have hClear_halted' : (⟨(clearRegisters base).length, sClear⟩ : Config).isHalted (clearRegisters base) := by
-          simp [Config.isHalted]
-        exact straightLineFinalState_eq_of_halted hClear_sl s ⟨(clearRegisters base).length, sClear⟩ hClear_steps hClear_halted'
-      have hsCopy_eq : sCopy = straightLineFinalState hCopy_sl sClear := by
-        have hCopy_halted' : (⟨(copyRegisterRange (base + 1) 0 n).length, sCopy⟩ : Config).isHalted
-            (copyRegisterRange (base + 1) 0 n) := by simp [Config.isHalted]
-        exact straightLineFinalState_eq_of_halted hCopy_sl sClear
-          ⟨(copyRegisterRange (base + 1) 0 n).length, sCopy⟩ hCopy_steps hCopy_halted'
-      have hr_le_base : r ≤ base := Nat.le_trans hr_max hpG_max
       have hsCopy_r : sCopy.read r = 0 := by
-        rw [hsCopy_eq]
-        have hNoOverlap : base + 1 + n ≤ 0 ∨ 0 + n ≤ base + 1 := Or.inr (by omega)
-        obtain ⟨sCopy', hsCopy'_eq, _, hCopy_preserves⟩ := copyRegisterRange_state (base + 1) 0 n sClear hNoOverlap
-        rw [hsCopy'_eq, hCopy_preserves r (Or.inr (by omega : r ≥ 0 + n)), hsClear_eq]
-        exact clearRegisters_zeros' base s r (by omega)
-      have hfromInputs_r : (State.fromInputs (List.ofFn inputs)).read r = 0 := by
-        simp only [State.fromInputs, State.read, List.getD_eq_getElem?_getD, List.getElem?_ofFn]
-        simp only [hr_n, ↓reduceDIte, Option.getD_none]
-      rw [hsCopy_r, hfromInputs_r]
+        rw [hsCopy_eq, hsCopy'_eq, hCopy_preserves r (Or.inr (by omega)), hsClear_eq]
+        exact clearRegisters_zeros' base s r (by omega : r ≤ base)
+      rw [hsCopy_r]; simp only [State.fromInputs, State.read, List.getD_eq_getElem?_getD,
+        List.getElem?_ofFn, hr_n, ↓reduceDIte, Option.getD_none]
 
   -- pG runs from sCopy via agreeing execution
   let epG := Halts.executeFromAgreeingState hpG_halts hpG_sf hagree

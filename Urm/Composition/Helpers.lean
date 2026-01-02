@@ -19,7 +19,7 @@ from composition proofs.
 ## Main results
 
 - `Steps.chain_concat`: Chain two program executions in a concatenation
-- `agrees_single_input_after_clear_transfer`: State agreement after clear+transfer
+- `agrees_list_inputs_after_clear_transfer`: State agreement after clear+transfer
 -/
 
 namespace Urm
@@ -160,20 +160,12 @@ theorem agrees_list_inputs_after_clear_transfer {m : ℕ} {p : Program} {s : Sta
     (hp : p.maxRegister ≤ m)
     (hs_inputs : ∀ i, i < inputs.length → s.read i = inputs.getD i 0)
     (hs_zeros : ∀ r, inputs.length ≤ r → r ≤ m → s.read r = 0) :
-    s.agreeOn (State.fromInputs inputs) 0 p.maxRegister := by
-  intro r _ hhi
-  simp only [State.fromInputs, State.read]
+    s.agreeOn (State.fromInputs inputs) 0 p.maxRegister := fun r _ hhi => by
+  simp only [State.fromInputs, State.read, List.getD_eq_getElem?_getD] at hs_inputs hs_zeros ⊢
   by_cases hr_in : r < inputs.length
-  · -- r < inputs.length: s.read r = inputs[r]
-    have heq := hs_inputs r hr_in
-    simp only [State.read] at heq
-    rw [heq, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hr_in]
-  · -- r ≥ inputs.length: both are 0
-    have hr_ge : inputs.length ≤ r := Nat.le_of_not_lt hr_in
-    have hr_le_m : r ≤ m := Nat.le_trans hhi hp
-    have heq := hs_zeros r hr_ge hr_le_m
-    simp only [State.read] at heq
-    rw [heq, List.getD_eq_getElem?_getD, List.getElem?_eq_none hr_ge, Option.getD_none]
+  · rw [hs_inputs r hr_in, List.getElem?_eq_getElem hr_in]
+  · simp only [hs_zeros r (Nat.le_of_not_lt hr_in) (Nat.le_trans hhi hp),
+        List.getElem?_eq_none (Nat.le_of_not_lt hr_in), Option.getD_none]
 
 /-! ## General Composition Infrastructure
 
@@ -226,14 +218,8 @@ theorem AgreeingExecution.result_matches_original {p : Program} {inputs : List �
 Bundles single transfer execution with all commonly-needed properties to avoid
 repeated unpacking and State.write_read_same/diff calls. -/
 
-/-- Bundle single transfer execution with commonly-needed properties.
-This eliminates the repeated pattern of:
-```
-have hex := single_transfer_halts src dst s
-obtain ⟨c', hsteps', hhalted', hpc', hstate'⟩ := hex
--- then State.write_read_same/diff calls
-```
--/
+/-- Bundle single transfer execution with commonly-needed properties:
+steps, halted, destination value, and register preservation. -/
 structure SingleTransferResult (src dst : ℕ) (s : State) where
   /-- The final state after the transfer -/
   finalState : State
@@ -279,73 +265,34 @@ theorem clearRegisters_isStraightLine' (maxReg : ℕ) :
   intro i _
   simp [Instr.isNonJumping]
 
+/-- Helper: clearRegisters and clearRegistersFrom 0 (maxReg + 1) produce the same final state. -/
+private theorem clearRegisters_finalState_eq (maxReg : ℕ) (s : State) :
+    straightLineFinalState (clearRegisters_isStraightLine' maxReg) s =
+    straightLineFinalState (Program.clearRegistersFrom_isStraightLine 0 (maxReg + 1)) s := by
+  have ⟨hsteps1, hhalted1, _⟩ := straightLineFinalState_spec (clearRegisters_isStraightLine' maxReg) s
+  have ⟨hsteps2, hhalted2, _⟩ :=
+    straightLineFinalState_spec (Program.clearRegistersFrom_isStraightLine 0 (maxReg + 1)) s
+  have hsteps1' : Steps (Program.clearRegistersFrom 0 (maxReg + 1)) ⟨0, s⟩
+      (Classical.choose (straightLine_halts_from_state (clearRegisters_isStraightLine' maxReg) s)) := by
+    simp only [← clearRegisters_eq_clearRegistersFrom' maxReg]; exact hsteps1
+  have hhalted1' : (Classical.choose (straightLine_halts_from_state
+      (clearRegisters_isStraightLine' maxReg) s)).isHalted
+      (Program.clearRegistersFrom 0 (maxReg + 1)) := by
+    simp only [Config.isHalted, ← clearRegisters_eq_clearRegistersFrom' maxReg] at hhalted1 ⊢
+    exact hhalted1
+  simp only [straightLineFinalState, Steps.halts_unique hsteps1' hhalted1' hsteps2 hhalted2]
+
 /-- clearRegisters preserves registers above maxReg. -/
 theorem clearRegisters_preserves_above' (maxReg : ℕ) (s : State) (r : ℕ) (hr : maxReg < r) :
     (straightLineFinalState (clearRegisters_isStraightLine' maxReg) s).read r = s.read r := by
-  have hsl := clearRegisters_isStraightLine' maxReg
-  have heq := clearRegisters_eq_clearRegistersFrom' maxReg
-  have hstate_eq : straightLineFinalState hsl s =
-      straightLineFinalState (Program.clearRegistersFrom_isStraightLine 0 (maxReg + 1)) s := by
-    have ⟨hsteps1, hhalted1, _⟩ := straightLineFinalState_spec hsl s
-    have ⟨hsteps2, hhalted2, _⟩ :=
-      straightLineFinalState_spec (Program.clearRegistersFrom_isStraightLine 0 (maxReg + 1)) s
-    have hsteps1' : Steps (Program.clearRegistersFrom 0 (maxReg + 1)) ⟨0, s⟩
-        (Classical.choose (straightLine_halts_from_state hsl s)) := by
-      simp only [← heq]; exact hsteps1
-    have hlen_eq : (Program.clearRegisters maxReg).length =
-        (Program.clearRegistersFrom 0 (maxReg + 1)).length := by simp only [heq]
-    have hhalted1' : (Classical.choose (straightLine_halts_from_state hsl s)).isHalted
-        (Program.clearRegistersFrom 0 (maxReg + 1)) := by
-      simp only [Config.isHalted] at hhalted1 ⊢
-      rw [← hlen_eq]; exact hhalted1
-    have huniq := Steps.halts_unique hsteps1' hhalted1' hsteps2 hhalted2
-    simp only [straightLineFinalState]; rw [huniq]
-  rw [hstate_eq]
-  have hr_range : r < 0 ∨ 0 + (maxReg + 1) ≤ r := Or.inr (by omega)
-  exact clearRegistersFrom_preserves 0 (maxReg + 1) s r hr_range
+  rw [clearRegisters_finalState_eq]
+  exact clearRegistersFrom_preserves 0 (maxReg + 1) s r (Or.inr (by omega))
 
 /-- clearRegisters zeros all registers up to and including maxReg. -/
 theorem clearRegisters_zeros' (maxReg : ℕ) (s : State) (r : ℕ) (hr : r ≤ maxReg) :
     (straightLineFinalState (clearRegisters_isStraightLine' maxReg) s).read r = 0 := by
-  have heq := clearRegisters_eq_clearRegistersFrom' maxReg
-  have hsl := clearRegisters_isStraightLine' maxReg
-  have hstate_eq : straightLineFinalState hsl s =
-      straightLineFinalState (Program.clearRegistersFrom_isStraightLine 0 (maxReg + 1)) s := by
-    have ⟨hsteps1, hhalted1, _⟩ := straightLineFinalState_spec hsl s
-    have ⟨hsteps2, hhalted2, _⟩ :=
-      straightLineFinalState_spec (Program.clearRegistersFrom_isStraightLine 0 (maxReg + 1)) s
-    have hsteps1' : Steps (Program.clearRegistersFrom 0 (maxReg + 1)) ⟨0, s⟩
-        (Classical.choose (straightLine_halts_from_state hsl s)) := by
-      simp only [← heq]; exact hsteps1
-    have hlen_eq : (Program.clearRegisters maxReg).length =
-        (Program.clearRegistersFrom 0 (maxReg + 1)).length := by simp only [heq]
-    have hhalted1' : (Classical.choose (straightLine_halts_from_state hsl s)).isHalted
-        (Program.clearRegistersFrom 0 (maxReg + 1)) := by
-      simp only [Config.isHalted] at hhalted1 ⊢
-      rw [← hlen_eq]; exact hhalted1
-    have huniq := Steps.halts_unique hsteps1' hhalted1' hsteps2 hhalted2
-    simp only [straightLineFinalState]; rw [huniq]
-  rw [hstate_eq]
-  have hr_range : 0 ≤ r ∧ r < 0 + (maxReg + 1) := ⟨Nat.zero_le r, by omega⟩
-  exact clearRegistersFrom_zeros 0 (maxReg + 1) s r hr_range
-
-/-! ## Single Transfer Instruction Execution -/
-
-/-- A single Transfer instruction takes exactly one step and halts. -/
-theorem single_transfer_step (src dst : ℕ) (s : State) :
-    Step [Instr.T src dst] ⟨0, s⟩ ⟨1, s.write dst (s.read src)⟩ := by
-  apply Step.trans
-  simp [Program.getInstr]
-
-/-- A single Transfer instruction halts at pc = 1 with the copied value. -/
-theorem single_transfer_halts (src dst : ℕ) (s : State) :
-    ∃ c', Steps [Instr.T src dst] ⟨0, s⟩ c' ∧
-          c'.isHalted [Instr.T src dst] ∧
-          c'.pc = 1 ∧
-          c'.state = s.write dst (s.read src) := by
-  refine ⟨⟨1, s.write dst (s.read src)⟩, ?_, ?_, rfl, rfl⟩
-  · exact Relation.ReflTransGen.single (single_transfer_step src dst s)
-  · simp [Config.isHalted]
+  rw [clearRegisters_finalState_eq]
+  exact clearRegistersFrom_zeros 0 (maxReg + 1) s r ⟨Nat.zero_le r, by omega⟩
 
 /-! ## Straight Line State Equality -/
 
