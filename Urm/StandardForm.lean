@@ -336,15 +336,14 @@ theorem Step.simulate_toStandardForm {p : Program} {c₁ c₁' : Config}
       have hcap := Program.toStandardForm_getInstr_some hinstr
       simp only [Instr.capJump, Nat.min_eq_right (Nat.le_of_lt hgt)] at hcap
       exact ⟨⟨p.length, c₁.state⟩, Steps.single (Step.jump_eq hcap heq_reg),
-             Or.inr ⟨by simp [Config.isHalted]; exact Nat.le_of_lt hgt,
-                     by simp [Config.isHalted, Program.toStandardForm_length], rfl⟩⟩
+             Or.inr ⟨by simp; omega, by simp [Program.toStandardForm_length], rfl⟩⟩
 
 /-- Multi-step simulation: if original reaches halted config, standard form can too. -/
 theorem Steps.simulate_toStandardForm_halts {p : Program} {c c' : Config}
     (hsteps : Steps p c c') (hhalted : c'.isHalted p) :
     ∃ c₂', Steps p.toStandardForm c c₂' ∧ c₂'.isHalted p.toStandardForm ∧ c'.state = c₂'.state := by
   induction hsteps using Relation.ReflTransGen.head_induction_on with
-  | refl => exact ⟨c', Steps.refl _, by simp [Config.isHalted, Program.toStandardForm_length] at hhalted ⊢; exact hhalted, rfl⟩
+  | refl => exact ⟨c', Steps.refl _, by simp [Program.toStandardForm_length] at hhalted ⊢; exact hhalted, rfl⟩
   | head hstep hrest ih =>
     obtain ⟨c₂_mid, hsteps₂_mid, hrel_mid⟩ := Step.simulate_toStandardForm hstep
     rcases hrel_mid with ⟨hpc_mid, hstate_mid⟩ | ⟨h_c_mid_halted, hhalted_mid, hstate_mid⟩
@@ -401,8 +400,7 @@ theorem Step.simulate_from_toStandardForm {p : Program} {c₁ c₁' : Config}
       · have hgt : q' > p.length := Nat.not_le.mp hbounded
         rw [Nat.min_eq_right (Nat.le_of_lt hgt)] at htarget; subst htarget
         exact ⟨⟨q', c₁.state⟩, Steps.single (Step.jump_eq hinstr_orig heq_reg),
-               Or.inr ⟨by simp [Config.isHalted]; exact Nat.le_of_lt hgt,
-                       by simp [Config.isHalted, Program.toStandardForm_length], rfl⟩⟩
+               Or.inr ⟨by simp; omega, by simp [Program.toStandardForm_length], rfl⟩⟩
     | Z _ | S _ | T _ _ => simp at hcap
   | jump_ne hinstr hne_reg =>
     rw [Program.getInstr_toStandardForm] at hinstr; simp only [Option.map_eq_some_iff] at hinstr
@@ -417,7 +415,7 @@ theorem Steps.simulate_from_toStandardForm_halts {p : Program} {c c' : Config}
     (hsteps : Steps p.toStandardForm c c') (hhalted : c'.isHalted p.toStandardForm) :
     ∃ c₂', Steps p c c₂' ∧ c₂'.isHalted p ∧ c'.state = c₂'.state := by
   induction hsteps using Relation.ReflTransGen.head_induction_on with
-  | refl => exact ⟨c', Steps.refl _, by simp [Config.isHalted, Program.toStandardForm_length] at hhalted ⊢; exact hhalted, rfl⟩
+  | refl => exact ⟨c', Steps.refl _, by simp [Program.toStandardForm_length] at hhalted ⊢; exact hhalted, rfl⟩
   | head hstep hrest ih =>
     obtain ⟨c₂_mid, hsteps₂_mid, hrel_mid⟩ := Step.simulate_from_toStandardForm hstep
     rcases hrel_mid with ⟨hpc_mid, hstate_mid⟩ | ⟨h_c_mid_halted, hhalted_mid, hstate_mid⟩

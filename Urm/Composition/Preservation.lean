@@ -98,20 +98,20 @@ private theorem gPhase_preserves_register_aux (base n : ℕ) (pG : Program) (j :
     suffix_of_concat_from_zero hPGT_steps hPGT_halted hpG_sf
   have hClear_preserves : sClear.read r = s.read r := by
     rw [show sClear = _ from straightLineFinalState_eq_of_halted (clearRegisters_isStraightLine base) s
-      ⟨_, sClear⟩ hClear_steps (by simp [Config.isHalted])]
+      ⟨_, sClear⟩ hClear_steps (by simp)]
     exact clearRegisters_preserves_above' base s r (by omega)
   have hCopy_preserves : sCopy.read r = sClear.read r := by
     rw [show sCopy = _ from straightLineFinalState_eq_of_halted (copyRegisterRange_isStraightLine (base + 1) 0 n)
-      sClear ⟨_, sCopy⟩ hCopy_steps (by simp [Config.isHalted])]
+      sClear ⟨_, sCopy⟩ hCopy_steps (by simp)]
     exact copyRegisterRange_preserves (base + 1) 0 n sClear r (Or.inr (by omega))
   have hPG_preserves : sPG.read r = sCopy.read r :=
     Steps.preserves_high_register hPG_steps r (Nat.lt_of_le_of_lt hpG_max (by omega))
   let tr := executeSingleTransfer 0 (base + n + 1 + j) sPG
   have hT_preserves : cT.state.read r = sPG.read r := by
     simp only [Steps.halts_unique hT_steps hT_halted tr.steps tr.halted]; exact tr.preserved r (by omega)
-  have hPGT := Steps.chain_concat hPG_steps (by simp [Config.isHalted]) rfl hT_steps hT_halted
-  have hRest' := Steps.chain_concat hCopy_steps (by simp [Config.isHalted]) rfl hPGT_steps hPGT_halted
-  have hGPhase := Steps.chain_concat hClear_steps (by simp [Config.isHalted]) rfl hRest_steps hRest_halted
+  have hPGT := Steps.chain_concat hPG_steps (by simp) rfl hT_steps hT_halted
+  have hRest' := Steps.chain_concat hCopy_steps (by simp) rfl hPGT_steps hPGT_halted
+  have hGPhase := Steps.chain_concat hClear_steps (by simp) rfl hRest_steps hRest_halted
   simp only [← hstate_eq, Steps.halts_unique hsteps hhalted hGPhase.1 hGPhase.2,
     Steps.halts_unique hRest_steps hRest_halted hRest'.1 hRest'.2,
     Steps.halts_unique hPGT_steps hPGT_halted hPGT.1 hPGT.2,
@@ -136,7 +136,7 @@ theorem allGPhases_prefix_preserves_saved_inputs (m n base : ℕ) (pGs : Fin m �
   induction k generalizing s s' c' with
   | zero =>
     simp only [allGPhases_prefix, List.take_zero, List.foldl_nil] at hsteps hhalted
-    simp only [← hstate_eq, Steps.halts_unique hsteps hhalted (.refl _) (by simp [Config.isHalted])]
+    simp only [← hstate_eq, Steps.halts_unique hsteps hhalted (.refl _) (by simp)]
   | succ k' ih =>
     have hk'_lt : k' < m := Nat.lt_of_succ_le hk
     let k'_fin : Fin m := ⟨k', hk'_lt⟩
@@ -151,7 +151,7 @@ theorem allGPhases_prefix_preserves_saved_inputs (m n base : ℕ) (pGs : Fin m �
     obtain ⟨sMid, hMid_steps, ⟨cGPhase, hGPhase_steps, hGPhase_halted⟩⟩ :=
       suffix_of_concat_from_zero hsteps hhalted (allGPhases_prefix_isStandardForm hpGs_sf k')
     have hMid_halted : (⟨(allGPhases_prefix m n base pGs k').length, sMid⟩ : Config).isHalted
-        (allGPhases_prefix m n base pGs k') := by simp [Config.isHalted]
+        (allGPhases_prefix m n base pGs k') := by simp
     have hPrefix_preserves := ih (Nat.le_of_succ_le hk) s sMid _ hMid_steps hMid_halted rfl
     have hMid_lifted := @Steps.concat_left_prefix _ (gPhase base n (pGs k'_fin) k') _ _ hMid_steps hMid_halted
     have hSuffix := Steps.deterministic_continuation hMid_lifted hsteps hhalted
@@ -183,5 +183,41 @@ theorem gPhase_preserves_other_results (base n : ℕ) (pG : Program) (j k : ℕ)
     s'.read (base + n + 1 + k) = s.read (base + n + 1 + k) :=
   gPhase_preserves_register_aux base n pG j hpG_sf hpG_max hn_le_base s s' c' hsteps hhalted hstate_eq
     (base + n + 1 + k) (by omega) (by omega)
+
+/-! ## Bundled Execution Helpers -/
+
+/-- Bundled execution of copyRegisterRange with all properties. -/
+theorem copyRegisterRange_exec (srcStart dstStart count : ℕ) (s : State)
+    (hNoOverlap : srcStart + count ≤ dstStart ∨ dstStart + count ≤ srcStart) :
+    ∃ c, Steps (Program.copyRegisterRange srcStart dstStart count) ⟨0, s⟩ c ∧
+         c.isHalted (Program.copyRegisterRange srcStart dstStart count) ∧
+         c.pc = (Program.copyRegisterRange srcStart dstStart count).length ∧
+         (∀ i, i < count → c.state.read (dstStart + i) = s.read (srcStart + i)) ∧
+         (∀ r, r < dstStart ∨ r ≥ dstStart + count → c.state.read r = s.read r) := by
+  have hsl := copyRegisterRange_isStraightLine srcStart dstStart count
+  obtain ⟨c, hsteps, hhalted, hpc⟩ := straightLine_halts_from_state hsl s
+  have hstate_eq := straightLineFinalState_eq_of_halted hsl s c hsteps hhalted
+  obtain ⟨s', hs'_eq, hcopies, hpreserves⟩ := copyRegisterRange_state srcStart dstStart count s hNoOverlap
+  have hc_state_eq_s' : c.state = s' := hstate_eq.trans hs'_eq
+  exact ⟨c, hsteps, hhalted, hpc,
+    fun i hi => hc_state_eq_s' ▸ hcopies i hi,
+    fun r hr => hc_state_eq_s' ▸ hpreserves r hr⟩
+
+/-- Bundled execution of transferResultsToInputs with all properties. -/
+theorem transferResultsToInputs_exec (resultStart arityF : ℕ) (s : State)
+    (hNoOverlap : arityF ≤ resultStart) :
+    ∃ c, Steps (Program.transferResultsToInputs resultStart arityF) ⟨0, s⟩ c ∧
+         c.isHalted (Program.transferResultsToInputs resultStart arityF) ∧
+         c.pc = (Program.transferResultsToInputs resultStart arityF).length ∧
+         (∀ i, i < arityF → c.state.read i = s.read (resultStart + i)) ∧
+         (∀ r, r ≥ arityF → c.state.read r = s.read r) := by
+  have hsl := transferResultsToInputs_isStraightLine resultStart arityF
+  obtain ⟨c, hsteps, hhalted, hpc⟩ := straightLine_halts_from_state hsl s
+  have hstate_eq := straightLineFinalState_eq_of_halted hsl s c hsteps hhalted
+  obtain ⟨s', hs'_eq, hcopies, hpreserves⟩ := transferResultsToInputs_state resultStart arityF s hNoOverlap
+  have hc_state_eq_s' : c.state = s' := hstate_eq.trans hs'_eq
+  exact ⟨c, hsteps, hhalted, hpc,
+    fun i hi => hc_state_eq_s' ▸ hcopies i hi,
+    fun r hr => hc_state_eq_s' ▸ hpreserves r hr⟩
 
 end Urm

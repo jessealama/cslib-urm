@@ -201,6 +201,9 @@ def isHalted (c : Config) (p : Program) : Prop := p.length ≤ c.pc
 instance (c : Config) (p : Program) : Decidable (c.isHalted p) :=
   inferInstanceAs (Decidable (p.length ≤ c.pc))
 
+@[simp]
+theorem isHalted_def (c : Config) (p : Program) : c.isHalted p ↔ p.length ≤ c.pc := Iff.rfl
+
 @[simp, scoped grind =]
 theorem init_pc (inputs : List ℕ) : (init inputs).pc = 0 := rfl
 

@@ -108,7 +108,7 @@ structure SingleTransferResult (src dst : ℕ) (s : State) where
 noncomputable def executeSingleTransfer (src dst : ℕ) (s : State) : SingleTransferResult src dst s where
   finalState := s.write dst (s.read src)
   steps := .single (by apply Step.trans; simp [Program.getInstr])
-  halted := by simp [Config.isHalted]
+  halted := by simp
   dst_eq := State.write_read_same s dst (s.read src)
   preserved := fun r hr => State.write_read_diff s r dst (s.read src) hr
 

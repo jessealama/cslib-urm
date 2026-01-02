@@ -149,13 +149,13 @@ theorem prefix_of_concat_from_zero {p1 p2 : Program} {s : State} {c : Config}
     (hsteps : Steps (p1.concat p2) ⟨0, s⟩ c) (hhalted : c.isHalted (p1.concat p2)) (h1 : p1.IsStandardForm) :
     ∃ c', Steps p1 ⟨0, s⟩ c' ∧ c'.isHalted p1 := by
   by_cases hp1 : p1.length = 0
-  · exact ⟨⟨0, s⟩, Relation.ReflTransGen.refl, by simp [Config.isHalted, hp1]⟩
+  · exact ⟨⟨0, s⟩, Relation.ReflTransGen.refl, by simp [hp1]⟩
   suffices h : ∀ c0 c', Steps (p1.concat p2) c0 c' → c'.isHalted (p1.concat p2) → c0.pc ≤ p1.length →
       (∃ c'', Steps p1 c0 c'' ∧ c''.isHalted p1) by exact h ⟨0, s⟩ c hsteps hhalted (by simp)
   intro c0 c' hsteps'
   induction hsteps' using Relation.ReflTransGen.head_induction_on with
   | refl => intro hhalted' _; simp only [Config.isHalted, Program.concat_length] at hhalted'
-            exact ⟨c', Relation.ReflTransGen.refl, by simp [Config.isHalted]; omega⟩
+            exact ⟨c', Relation.ReflTransGen.refl, by simp; omega⟩
   | @head a d hstep hrest ih =>
     intro hhalted' hpc_le
     by_cases hhalted_p1 : a.isHalted p1

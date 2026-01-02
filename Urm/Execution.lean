@@ -170,7 +170,7 @@ variable {p : Program}
 /-- The empty program halts immediately on any input. -/
 theorem empty_halts (inputs : List ℕ) : Halts [] inputs := by
   refine ⟨Config.init inputs, Steps.refl _, ?_⟩
-  simp [Config.isHalted, Config.init]
+  simp [Config.init]
 
 end Halts
 

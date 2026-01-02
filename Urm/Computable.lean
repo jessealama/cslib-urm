@@ -51,7 +51,7 @@ private theorem single_instr_computes {instr : Instr} {inputs : List ℕ} {final
     Halts [instr] inputs ∧
     ∀ h : Halts [instr] inputs, Result [instr] inputs h = finalState.output := by
   have h_final_halted : (⟨1, finalState⟩ : Config).isHalted [instr] := by
-    simp [Config.isHalted]
+    simp
   constructor
   · exact ⟨⟨1, finalState⟩, Steps.single hstep, h_final_halted⟩
   · intro hHalts
@@ -74,7 +74,7 @@ theorem zero_computable : URMComputable 0 (fun _ => Part.some 0) := by
     obtain ⟨hsteps, hhalted⟩ := Classical.choose_spec hHalts
     -- The init config is also halted for the empty program
     have h_init_halted : (Config.init (List.ofFn inputs)).isHalted [] := by
-      simp [Config.isHalted]
+      simp
     -- By uniqueness of halted configs, the chosen one equals init
     have heq := Steps.halts_unique hsteps hhalted (Steps.refl _) h_init_halted
     simp only [Result, heq, State.output, Config.init, State.fromInputs, List.getD, List.ofFn_zero,
