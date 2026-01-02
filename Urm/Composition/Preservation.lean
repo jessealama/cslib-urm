@@ -54,7 +54,7 @@ theorem copyRegisterRange_state (srcStart dstStart count : ℕ) (s : State)
     simp only [p, Program.copyRegisterRange, List.getElem_map, List.getElem_range, Instr.writesTo,
       ne_eq, Option.some.injEq]; omega
   obtain ⟨s_before, ⟨_, hsteps_i, _, hs_before_eq⟩, hread_eq⟩ := straightLine_transfer_result hsl s i
-    (srcStart + i) (dstStart + i) (by simp [copyRegisterRange_length, hi])
+    (srcStart + i) (dstStart + i) (by simp [hi])
     (by simp [Program.copyRegisterRange]) hnowrite
   rw [hread_eq, ← hs_before_eq]
   exact Steps.straightLine_preserves hsl hsteps_i (copyRegisterRange_preserves_outside srcStart
@@ -75,7 +75,7 @@ theorem transferResultsToInputs_state (resultStart arityF : ℕ) (s : State)
     simp only [p, Program.transferResultsToInputs, List.getElem_map, List.getElem_range,
       Instr.writesTo, ne_eq, Option.some.injEq]; omega
   obtain ⟨s_before, ⟨_, hsteps_i, _, hs_before_eq⟩, hread_eq⟩ := straightLine_transfer_result hsl s i
-    (resultStart + i) i (by simp [transferResultsToInputs_length, hi])
+    (resultStart + i) i (by simp [hi])
     (by simp [Program.transferResultsToInputs]) hnowrite
   rw [hread_eq, ← hs_before_eq]
   exact Steps.straightLine_preserves hsl hsteps_i

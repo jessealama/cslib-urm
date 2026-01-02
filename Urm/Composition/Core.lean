@@ -27,6 +27,11 @@ def transferResultsToInputs (resultStart arityF : ℕ) : Program :=
 
 end Program
 
+@[simp]
+theorem clearRegisters_length (maxReg : ℕ) :
+    (Program.clearRegisters maxReg).length = maxReg + 1 := by simp [Program.clearRegisters]
+
+@[simp]
 theorem copyRegisterRange_length (srcStart dstStart count : ℕ) :
     (Program.copyRegisterRange srcStart dstStart count).length = count := by simp [Program.copyRegisterRange]
 
@@ -35,6 +40,7 @@ theorem copyRegisterRange_isStraightLine (srcStart dstStart count : ℕ) :
   simp only [Program.copyRegisterRange, Program.isStraightLine, List.all_map, List.all_eq_true]
   intro i _; simp [Instr.isNonJumping]
 
+@[simp]
 theorem transferResultsToInputs_length (resultStart arityF : ℕ) :
     (Program.transferResultsToInputs resultStart arityF).length = arityF := by
   simp [Program.transferResultsToInputs]
