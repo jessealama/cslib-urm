@@ -108,17 +108,16 @@ theorem gPhase_preserves_saved_inputs (base n : ℕ) (pG : Program) (j : ℕ)
     exact copyRegisterRange_preserves (base + 1) 0 n sClear r (Or.inr (by omega))
   have hPG_preserves : sPG.read r = sCopy.read r :=
     Steps.preserves_high_register hPG_steps r (Nat.lt_of_le_of_lt hpG_max (by omega))
-  have hT_preserves : s'.read r = sPG.read r := by
-    let tr := executeSingleTransfer 0 (base + n + 1 + j) sPG
-    have hT_state : cT.state.read r = sPG.read r := by
-      simp only [Steps.halts_unique hT_steps hT_halted tr.steps tr.halted]; exact tr.preserved r (by omega)
-    have hPGT := Steps.chain_concat hPG_steps (by simp [Config.isHalted]) rfl hT_steps hT_halted
-    have hRest := Steps.chain_concat hCopy_steps (by simp [Config.isHalted]) rfl hPGT_steps hPGT_halted
-    have hGPhase := Steps.chain_concat hClear_steps (by simp [Config.isHalted]) rfl hRest_steps hRest_halted
-    simp only [← hstate_eq, Steps.halts_unique hsteps hhalted hGPhase.1 hGPhase.2,
-      Steps.halts_unique hRest_steps hRest_halted hRest.1 hRest.2,
-      Steps.halts_unique hPGT_steps hPGT_halted hPGT.1 hPGT.2, hT_state]
-  rw [hT_preserves, hPG_preserves, hCopy_preserves, hClear_preserves]
+  let tr := executeSingleTransfer 0 (base + n + 1 + j) sPG
+  have hT_state : cT.state.read r = sPG.read r := by
+    simp only [Steps.halts_unique hT_steps hT_halted tr.steps tr.halted]; exact tr.preserved r (by omega)
+  have hPGT := Steps.chain_concat hPG_steps (by simp [Config.isHalted]) rfl hT_steps hT_halted
+  have hRest' := Steps.chain_concat hCopy_steps (by simp [Config.isHalted]) rfl hPGT_steps hPGT_halted
+  have hGPhase := Steps.chain_concat hClear_steps (by simp [Config.isHalted]) rfl hRest_steps hRest_halted
+  simp only [← hstate_eq, Steps.halts_unique hsteps hhalted hGPhase.1 hGPhase.2,
+    Steps.halts_unique hRest_steps hRest_halted hRest'.1 hRest'.2,
+    Steps.halts_unique hPGT_steps hPGT_halted hPGT.1 hPGT.2,
+    hT_state, hPG_preserves, hCopy_preserves, hClear_preserves]
 
 /-- allGPhases_prefix preserves registers in R[base+1..base+n]. -/
 theorem allGPhases_prefix_preserves_saved_inputs (m n base : ℕ) (pGs : Fin m → Program)
@@ -148,12 +147,12 @@ theorem allGPhases_prefix_preserves_saved_inputs (m n base : ℕ) (pGs : Fin m �
     have hMid_halted : (⟨(allGPhases_prefix m n base pGs k').length, sMid⟩ : Config).isHalted
         (allGPhases_prefix m n base pGs k') := by simp [Config.isHalted]
     have hPrefix_preserves := ih (Nat.le_of_succ_le hk) s sMid _ hMid_steps hMid_halted rfl
-    have hGPhase_state_eq : cGPhase.state = s' := by
-      have hMid_lifted := @Steps.concat_left_prefix _ (gPhase base n (pGs k'_fin) k') _ _ hMid_steps hMid_halted
-      have hSuffix := Steps.deterministic_continuation hMid_lifted hsteps hhalted
-      obtain ⟨cGPhase', hGPhase'_steps, hGPhase'_halted, hGPhase'_state⟩ := Steps.of_concat_right hSuffix hhalted
-        (by simp only [Config.isHalted, Program.concat_length] at hhalted; omega)
-      exact hstate_eq ▸ (Steps.halts_unique hGPhase_steps hGPhase_halted hGPhase'_steps hGPhase'_halted) ▸ hGPhase'_state
+    have hMid_lifted := @Steps.concat_left_prefix _ (gPhase base n (pGs k'_fin) k') _ _ hMid_steps hMid_halted
+    have hSuffix := Steps.deterministic_continuation hMid_lifted hsteps hhalted
+    obtain ⟨cGPhase', hGPhase'_steps, hGPhase'_halted, hGPhase'_state⟩ := Steps.of_concat_right hSuffix hhalted
+      (by simp only [Config.isHalted, Program.concat_length] at hhalted; omega)
+    have hGPhase_state_eq : cGPhase.state = s' :=
+      hstate_eq ▸ (Steps.halts_unique hGPhase_steps hGPhase_halted hGPhase'_steps hGPhase'_halted) ▸ hGPhase'_state
     rw [gPhase_preserves_saved_inputs base n (pGs k'_fin) k' (hpGs_sf k'_fin) (hpGs_max k'_fin)
       hn_le_base sMid s' cGPhase hGPhase_steps hGPhase_halted hGPhase_state_eq r hr_lo hr_hi, hPrefix_preserves]
 
@@ -195,13 +194,13 @@ theorem gPhase_preserves_other_results (base n : ℕ) (pG : Program) (j k : ℕ)
     exact copyRegisterRange_preserves (base + 1) 0 n sClear r (Or.inr (by omega))
   have hPG_preserves : sPG.read r = sCopy.read r :=
     Steps.preserves_high_register hPG_steps r (Nat.lt_of_le_of_lt hpG_max (by omega))
+  let tr := executeSingleTransfer 0 (base + n + 1 + j) sPG
   have hT_preserves : cT.state.read r = sPG.read r := by
-    let tr := executeSingleTransfer 0 (base + n + 1 + j) sPG
     simp only [Steps.halts_unique hT_steps hT_halted tr.steps tr.halted]; exact tr.preserved r (by omega)
+  have hPGT := Steps.chain_concat hPG_steps (by simp [Config.isHalted]) rfl hT_steps hT_halted
+  have hCopyPGT := Steps.chain_concat hCopy_steps (by simp [Config.isHalted]) rfl hPGT_steps hPGT_halted
+  have hClearRest := Steps.chain_concat hClear_steps (by simp [Config.isHalted]) rfl hRest_steps hRest_halted
   have hc'_state_eq : c'.state.read r = cT.state.read r := by
-    have hPGT := Steps.chain_concat hPG_steps (by simp [Config.isHalted]) rfl hT_steps hT_halted
-    have hCopyPGT := Steps.chain_concat hCopy_steps (by simp [Config.isHalted]) rfl hPGT_steps hPGT_halted
-    have hClearRest := Steps.chain_concat hClear_steps (by simp [Config.isHalted]) rfl hRest_steps hRest_halted
     simp only [Steps.halts_unique hsteps hhalted hClearRest.1 hClearRest.2,
       Steps.halts_unique hRest_steps hRest_halted hCopyPGT.1 hCopyPGT.2,
       Steps.halts_unique hPGT_steps hPGT_halted hPGT.1 hPGT.2]
