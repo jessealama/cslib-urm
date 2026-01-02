@@ -5,6 +5,7 @@ Authors: Jesse Alama
 -/
 
 import Urm.StraightLine
+import Urm.Computable
 
 /-! # Standard Form Programs
 
@@ -463,5 +464,30 @@ theorem exists_standardForm_equiv (p : Program) :
       (∀ inputs, (Halts p inputs ↔ Halts q inputs) ∧ ∀ hp hq, Result p inputs hp = Result q inputs hq) :=
   ⟨p.toStandardForm, Program.toStandardForm_isStandardForm p,
    fun _ => ⟨Halts.toStandardForm_iff, fun hp hq => Result.toStandardForm hp hq⟩⟩
+
+/-- Standard form computability implies general computability (trivial direction). -/
+theorem URMComputableSF.toComputable {n : ℕ} {f : (Fin n → ℕ) → Part ℕ}
+    (h : URMComputableSF n f) : URMComputable n f := by
+  obtain ⟨p, _, hspec⟩ := h
+  exact ⟨p, hspec⟩
+
+/-- General computability implies standard form computability.
+Any computable function can be witnessed by a standard form program. -/
+theorem URMComputable.toSF {n : ℕ} {f : (Fin n → ℕ) → Part ℕ}
+    (h : URMComputable n f) : URMComputableSF n f := by
+  obtain ⟨p, hspec⟩ := h
+  refine ⟨p.toStandardForm, Program.toStandardForm_isStandardForm p, fun inputs => ?_⟩
+  constructor
+  · rw [← Halts.toStandardForm_iff]
+    exact (hspec inputs).1
+  · intro hHalts hDom
+    have hp : Halts p (List.ofFn inputs) := Halts.toStandardForm_iff.mpr hHalts
+    rw [← Result.toStandardForm hp hHalts]
+    exact (hspec inputs).2 hp hDom
+
+/-- URM computability and standard form computability are equivalent. -/
+theorem URMComputable_iff_URMComputableSF {n : ℕ} {f : (Fin n → ℕ) → Part ℕ} :
+    URMComputable n f ↔ URMComputableSF n f :=
+  ⟨URMComputable.toSF, URMComputableSF.toComputable⟩
 
 end Urm
