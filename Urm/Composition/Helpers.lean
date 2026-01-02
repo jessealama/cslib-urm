@@ -173,6 +173,15 @@ theorem straightLine_suffix_of_concat_state {p1 p2 : Program} {s : State} {c : C
   exact straightLineFinalState_eq_of_halted hsl s ⟨p1.length, suffix_of_concat_state hsteps hhalted h1⟩
     hsteps_left (by simp)
 
+/-- Simp lemma: decompose_concat.state equals straightLineFinalState for straight-line programs. -/
+@[simp]
+theorem decompose_concat_state_straightLine {p1 p2 : Program} {s : State} {c : Config}
+    (hsl : p1.isStraightLine = true)
+    (hsteps : Steps (p1.concat p2) ⟨0, s⟩ c) (hhalted : c.isHalted (p1.concat p2))
+    (h1 : p1.IsStandardForm) :
+    (decompose_concat hsteps hhalted h1).state = straightLineFinalState hsl s :=
+  straightLine_suffix_of_concat_state hsl hsteps hhalted h1
+
 theorem clearRegisters_exec (maxReg : ℕ) (s : State) :
     ∃ c, Steps (Program.clearRegisters maxReg) ⟨0, s⟩ c ∧
          c.isHalted (Program.clearRegisters maxReg) ∧

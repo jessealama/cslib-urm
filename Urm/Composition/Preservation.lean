@@ -91,30 +91,27 @@ private theorem gPhase_preserves_register_aux (base n : ℕ) (pG : Program) (j :
     (r : ℕ) (hr_above_base : r > base) (hr_not_dst : r ≠ base + n + 1 + j) :
     s'.read r = s.read r := by
   -- Decompose gPhase = clear.concat(copy.concat(pG.concat(transfer)))
-  let sClear := suffix_of_concat_state hsteps hhalted (clearRegisters_isStandardForm base)
-  have hClear_steps := suffix_of_concat_steps_left hsteps hhalted (clearRegisters_isStandardForm base)
-  obtain ⟨_, hRest_steps, hRest_halted⟩ := suffix_of_concat_halts_right hsteps hhalted (clearRegisters_isStandardForm base)
-  let sCopy := suffix_of_concat_state hRest_steps hRest_halted (copyRegisterRange_isStandardForm (base + 1) 0 n)
-  have hCopy_steps := suffix_of_concat_steps_left hRest_steps hRest_halted (copyRegisterRange_isStandardForm (base + 1) 0 n)
-  obtain ⟨_, hPGT_steps, hPGT_halted⟩ := suffix_of_concat_halts_right hRest_steps hRest_halted (copyRegisterRange_isStandardForm (base + 1) 0 n)
-  let sPG := suffix_of_concat_state hPGT_steps hPGT_halted hpG_sf
-  have hPG_steps := suffix_of_concat_steps_left hPGT_steps hPGT_halted hpG_sf
-  obtain ⟨cT, hT_steps, hT_halted⟩ := suffix_of_concat_halts_right hPGT_steps hPGT_halted hpG_sf
-  -- Use straightLine helpers to characterize intermediate states
-  have hClear_preserves : sClear.read r = s.read r := by
-    simp only [sClear, straightLine_suffix_of_concat_state (clearRegisters_isStraightLine base) hsteps hhalted]
+  let dClear := decompose_concat hsteps hhalted (clearRegisters_isStandardForm base)
+  obtain ⟨_, hRest_steps, hRest_halted⟩ := dClear.halts_right
+  let dCopy := decompose_concat hRest_steps hRest_halted (copyRegisterRange_isStandardForm (base + 1) 0 n)
+  obtain ⟨_, hPGT_steps, hPGT_halted⟩ := dCopy.halts_right
+  let dPG := decompose_concat hPGT_steps hPGT_halted hpG_sf
+  obtain ⟨cT, hT_steps, hT_halted⟩ := dPG.halts_right
+  -- Use simp lemma to characterize intermediate states
+  have hClear_preserves : dClear.state.read r = s.read r := by
+    rw [decompose_concat_state_straightLine (clearRegisters_isStraightLine base)]
     exact clearRegisters_preserves_above' base s r (by omega)
-  have hCopy_preserves : sCopy.read r = sClear.read r := by
-    simp only [sCopy, straightLine_suffix_of_concat_state (copyRegisterRange_isStraightLine (base + 1) 0 n) hRest_steps hRest_halted]
-    exact copyRegisterRange_preserves (base + 1) 0 n sClear r (Or.inr (by omega))
-  have hPG_preserves : sPG.read r = sCopy.read r :=
-    Steps.preserves_high_register hPG_steps r (Nat.lt_of_le_of_lt hpG_max (by omega))
-  let tr := executeSingleTransfer 0 (base + n + 1 + j) sPG
-  have hT_preserves : cT.state.read r = sPG.read r := by
+  have hCopy_preserves : dCopy.state.read r = dClear.state.read r := by
+    rw [decompose_concat_state_straightLine (copyRegisterRange_isStraightLine (base + 1) 0 n)]
+    exact copyRegisterRange_preserves (base + 1) 0 n dClear.state r (Or.inr (by omega))
+  have hPG_preserves : dPG.state.read r = dCopy.state.read r :=
+    Steps.preserves_high_register dPG.steps_left r (Nat.lt_of_le_of_lt hpG_max (by omega))
+  let tr := executeSingleTransfer 0 (base + n + 1 + j) dPG.state
+  have hT_preserves : cT.state.read r = dPG.state.read r := by
     simp only [Steps.halts_unique hT_steps hT_halted tr.steps tr.halted]; exact tr.preserved r (by omega)
-  have hPGT := Steps.chain_concat_sf hpG_sf hPG_steps (by simp) hT_steps hT_halted
-  have hRest' := Steps.chain_concat_sf (copyRegisterRange_isStandardForm (base + 1) 0 n) hCopy_steps (by simp) hPGT_steps hPGT_halted
-  have hGPhase := Steps.chain_concat_sf (clearRegisters_isStandardForm base) hClear_steps (by simp) hRest_steps hRest_halted
+  have hPGT := Steps.chain_concat_sf hpG_sf dPG.steps_left (by simp) hT_steps hT_halted
+  have hRest' := Steps.chain_concat_sf (copyRegisterRange_isStandardForm (base + 1) 0 n) dCopy.steps_left (by simp) hPGT_steps hPGT_halted
+  have hGPhase := Steps.chain_concat_sf (clearRegisters_isStandardForm base) dClear.steps_left (by simp) hRest_steps hRest_halted
   simp only [← hstate_eq, Steps.halts_unique hsteps hhalted hGPhase.1 hGPhase.2,
     Steps.halts_unique hRest_steps hRest_halted hRest'.1 hRest'.2,
     Steps.halts_unique hPGT_steps hPGT_halted hPGT.1 hPGT.2,

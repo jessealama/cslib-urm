@@ -354,6 +354,27 @@ theorem suffix_of_concat_halts_right {p1 p2 : Program} {s : State} {c : Config}
     ∃ c', Steps p2 ⟨0, suffix_of_concat_state hsteps hhalted h1⟩ c' ∧ c'.isHalted p2 :=
   (suffix_of_concat_from_zero hsteps hhalted h1).choose_spec.2
 
+/-- Bundle for decomposing execution of concatenated programs p1 ++ p2.
+    Combines suffix_of_concat_state, suffix_of_concat_steps_left, and suffix_of_concat_halts_right
+    into a single structure to reduce boilerplate. -/
+structure ConcatDecomposition (p1 p2 : Program) (s : State) where
+  /-- The intermediate state after p1 halts, before p2 begins. -/
+  state : State
+  /-- Steps in p1 reaching the intermediate state. -/
+  steps_left : Steps p1 ⟨0, s⟩ ⟨p1.length, state⟩
+  /-- Proof that p2 halts when starting from the intermediate state. -/
+  halts_right : ∃ c', Steps p2 ⟨0, state⟩ c' ∧ c'.isHalted p2
+
+/-- Decompose execution of p1 ++ p2 into intermediate state and proofs.
+    This bundles the three separate calls (suffix_of_concat_state, suffix_of_concat_steps_left,
+    suffix_of_concat_halts_right) into a single structure. -/
+noncomputable def decompose_concat {p1 p2 : Program} {s : State} {c : Config}
+    (hsteps : Steps (p1.concat p2) ⟨0, s⟩ c) (hhalted : c.isHalted (p1.concat p2))
+    (h1 : p1.IsStandardForm) : ConcatDecomposition p1 p2 s :=
+  ⟨suffix_of_concat_state hsteps hhalted h1,
+   suffix_of_concat_steps_left hsteps hhalted h1,
+   suffix_of_concat_halts_right hsteps hhalted h1⟩
+
 theorem Halts.suffix_of_concat_sf {p1 p2 : Program} {inputs : List ℕ}
     (hH : Halts (p1.concat p2) inputs) (h1 : p1.IsStandardForm) :
     ∃ s : State, Halts p1 inputs ∧ (∀ hP1 : Halts p1 inputs, s = (Classical.choose hP1).state) ∧

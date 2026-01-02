@@ -69,74 +69,57 @@ theorem comp_general_halts_imp_gi_dom
   obtain ⟨_, hGPhase_i_steps, hGPhase_i_halted⟩ :=
     prefix_of_concat_from_zero hSuffix_steps hSuffix_halted hGPhase_i_sf
   -- Decompose gPhase_i = clear.concat(copy.concat(pGs_i.concat(transfer)))
-  let sClear := suffix_of_concat_state hGPhase_i_steps hGPhase_i_halted (clearRegisters_isStandardForm base)
-  have hClear_steps := suffix_of_concat_steps_left hGPhase_i_steps hGPhase_i_halted (clearRegisters_isStandardForm base)
-  obtain ⟨_, hCopyRest_steps, hCopyRest_halted⟩ := suffix_of_concat_halts_right hGPhase_i_steps hGPhase_i_halted (clearRegisters_isStandardForm base)
-  let sCopy := suffix_of_concat_state hCopyRest_steps hCopyRest_halted (copyRegisterRange_isStandardForm (base + 1) 0 n)
-  have hCopy_steps := suffix_of_concat_steps_left hCopyRest_steps hCopyRest_halted (copyRegisterRange_isStandardForm (base + 1) 0 n)
-  obtain ⟨_, hGiT_steps, hGiT_halted⟩ := suffix_of_concat_halts_right hCopyRest_steps hCopyRest_halted (copyRegisterRange_isStandardForm (base + 1) 0 n)
+  let dClear := decompose_concat hGPhase_i_steps hGPhase_i_halted (clearRegisters_isStandardForm base)
+  obtain ⟨_, hCopyRest_steps, hCopyRest_halted⟩ := dClear.halts_right
+  let dCopy := decompose_concat hCopyRest_steps hCopyRest_halted (copyRegisterRange_isStandardForm (base + 1) 0 n)
+  obtain ⟨_, hGiT_steps, hGiT_halted⟩ := dCopy.halts_right
   obtain ⟨cGi', hGi_steps, hGi_halted⟩ :=
     prefix_of_concat_from_zero hGiT_steps hGiT_halted (hGs_sf i)
 
   have hbase_ge : (pGs i).maxRegister ≤ base := compositionBase_ge_Gi m n pF pGs i
   have hagreeGi : ∀ r, r ≤ (pGs i).maxRegister →
-      sCopy.read r = (State.fromInputs (List.ofFn inputs)).read r := by
+      dCopy.state.read r = (State.fromInputs (List.ofFn inputs)).read r := by
     intro r hr
     have hr_le_base : r ≤ base := Nat.le_trans hr hbase_ge
     rcases Nat.lt_or_ge r n with hr_lt_n | hr_ge_n
-    · have hCopy_sl := copyRegisterRange_isStraightLine (base + 1) 0 n
-      have hsCopy_eq : sCopy = straightLineFinalState hCopy_sl sClear := by
-        simp only [sCopy, sClear, straightLine_suffix_of_concat_state hCopy_sl hCopyRest_steps hCopyRest_halted
-          (copyRegisterRange_isStandardForm (base + 1) 0 n)]
-      obtain ⟨_, hsCopy_final_eq, hsCopy_copies, _⟩ :=
-        copyRegisterRange_state (base + 1) 0 n sClear (Or.inr (by have := compositionBase_ge_n m n pF pGs; omega))
-      have hsCopy_r : sCopy.read r = sClear.read (base + 1 + r) := by
+    · obtain ⟨_, hsCopy_final_eq, hsCopy_copies, _⟩ :=
+        copyRegisterRange_state (base + 1) 0 n dClear.state (Or.inr (by have := compositionBase_ge_n m n pF pGs; omega))
+      have hsCopy_r : dCopy.state.read r = dClear.state.read (base + 1 + r) := by
         have hr' := hsCopy_copies r hr_lt_n; simp only [Nat.zero_add] at hr'
-        rw [hsCopy_eq, hsCopy_final_eq]; convert hr' using 2
-      have hClear_sl := clearRegisters_isStraightLine base
-      have hsClear_eq : sClear = straightLineFinalState hClear_sl sSavePrefix := by
-        simp only [sClear, straightLine_suffix_of_concat_state hClear_sl hGPhase_i_steps hGPhase_i_halted
-          (clearRegisters_isStandardForm base)]
-      have hsClear_preserves : sClear.read (base + 1 + r) = sSavePrefix.read (base + 1 + r) := by
-        rw [hsClear_eq]; exact clearRegisters_preserves_above' base sSavePrefix _ (by omega)
+        rw [decompose_concat_state_straightLine (copyRegisterRange_isStraightLine (base + 1) 0 n), hsCopy_final_eq]
+        convert hr' using 2
+      have hsClear_preserves : dClear.state.read (base + 1 + r) = sSavePrefix.read (base + 1 + r) := by
+        rw [decompose_concat_state_straightLine (clearRegisters_isStraightLine base)]
+        exact clearRegisters_preserves_above' base sSavePrefix _ (by omega)
       have hRHS : (State.fromInputs (List.ofFn inputs)).read r = inputs ⟨r, hr_lt_n⟩ := by
         simp only [State.fromInputs, State.read]
         rw [List.getD_eq_getElem (List.ofFn inputs) 0 (by simp; exact hr_lt_n), List.getElem_ofFn]
       rw [hsCopy_r, hsClear_preserves, hRHS]
-      let sSave := suffix_of_concat_state hSavePrefix_halts.choose_spec.1
-          hSavePrefix_halts.choose_spec.2 hSaveInputs_sf
-      have hSave_steps := suffix_of_concat_steps_left hSavePrefix_halts.choose_spec.1
-          hSavePrefix_halts.choose_spec.2 hSaveInputs_sf
-      obtain ⟨cPrefix, hPrefix_steps, hPrefix_halted⟩ := suffix_of_concat_halts_right hSavePrefix_halts.choose_spec.1
-          hSavePrefix_halts.choose_spec.2 hSaveInputs_sf
+      let dSave := decompose_concat hSavePrefix_halts.choose_spec.1 hSavePrefix_halts.choose_spec.2 hSaveInputs_sf
+      obtain ⟨cPrefix, hPrefix_steps, hPrefix_halted⟩ := dSave.halts_right
       have hSave_sl := copyRegisterRange_isStraightLine 0 (base + 1) n
-      have hSave_halted' : (⟨saveInputs.length, sSave⟩ : Config).isHalted saveInputs := by simp [sSave]
-      have hsSave_eq : sSave = straightLineFinalState hSave_sl (State.fromInputs (List.ofFn inputs)) := by
-        simp only [sSave, straightLine_suffix_of_concat_state hSave_sl hSavePrefix_halts.choose_spec.1
-          hSavePrefix_halts.choose_spec.2 hSaveInputs_sf]
+      have hSave_halted' : (⟨saveInputs.length, dSave.state⟩ : Config).isHalted saveInputs := by simp
+      have hsSave_eq : dSave.state = straightLineFinalState hSave_sl (State.fromInputs (List.ofFn inputs)) :=
+        straightLine_suffix_of_concat_state hSave_sl hSavePrefix_halts.choose_spec.1
+          hSavePrefix_halts.choose_spec.2 hSaveInputs_sf
       have hpGs_max : ∀ j, (pGs j).maxRegister ≤ base := fun j => compositionBase_ge_Gi m n pF pGs j
       have hn_le_base : n ≤ base + 1 := by have := compositionBase_ge_n_sub_one m n pF pGs; omega
-      have hsSave_value : sSave.read (base + 1 + r) = inputs ⟨r, hr_lt_n⟩ := by
+      have hsSave_value : dSave.state.read (base + 1 + r) = inputs ⟨r, hr_lt_n⟩ := by
         rw [hsSave_eq]; exact saveInputs_state base n hn_le_base inputs r hr_lt_n
-      have hSavePrefixChain := Steps.chain_concat_sf hSaveInputs_sf hSave_steps hSave_halted' hPrefix_steps hPrefix_halted
+      have hSavePrefixChain := Steps.chain_concat_sf hSaveInputs_sf dSave.steps_left hSave_halted' hPrefix_steps hPrefix_halted
       have hPrefix_state_match : cPrefix.state = sSavePrefix := by
         simp only [hsSavePrefix_eq hSavePrefix_halts, ← Steps.halts_unique hSavePrefixChain.1 hSavePrefixChain.2 hSavePrefix_halts.choose_spec.1 hSavePrefix_halts.choose_spec.2]
       have hPrefix_preserves := allGPhases_prefix_preserves_saved_inputs m n base pGs hGs_sf hpGs_max hn_le_base
-        i.val (Nat.le_of_lt i.isLt) sSave sSavePrefix cPrefix hPrefix_steps hPrefix_halted hPrefix_state_match
+        i.val (Nat.le_of_lt i.isLt) dSave.state sSavePrefix cPrefix hPrefix_steps hPrefix_halted hPrefix_state_match
       rw [hPrefix_preserves (base + 1 + r) (by omega) (by omega), hsSave_value]
     · have hRHS_zero : (State.fromInputs (List.ofFn inputs)).read r = 0 := by
         simp only [State.fromInputs, State.read, List.getD_eq_getElem?_getD]
         rw [List.getElem?_eq_none (by simp; exact hr_ge_n)]; rfl
-      have hClear_sl := clearRegisters_isStraightLine base
-      have hCopy_sl := copyRegisterRange_isStraightLine (base + 1) 0 n
-      have hsCopy_eq : sCopy = straightLineFinalState hCopy_sl sClear := by
-        simp only [sCopy, sClear, straightLine_suffix_of_concat_state hCopy_sl hCopyRest_steps hCopyRest_halted
-          (copyRegisterRange_isStandardForm (base + 1) 0 n)]
-      have hsClear_eq : sClear = straightLineFinalState hClear_sl sSavePrefix := by
-        simp only [sClear, straightLine_suffix_of_concat_state hClear_sl hGPhase_i_steps hGPhase_i_halted
-          (clearRegisters_isStandardForm base)]
-      rw [hRHS_zero, hsCopy_eq, copyRegisterRange_preserves _ _ _ _ _ (Or.inr (by omega)),
-          hsClear_eq, clearRegisters_zeros' base sSavePrefix r hr_le_base]
+      rw [hRHS_zero,
+          decompose_concat_state_straightLine (copyRegisterRange_isStraightLine (base + 1) 0 n),
+          copyRegisterRange_preserves _ _ _ _ _ (Or.inr (by omega)),
+          decompose_concat_state_straightLine (clearRegisters_isStraightLine base),
+          clearRegisters_zeros' base sSavePrefix r hr_le_base]
   exact (hGs_spec i inputs).1.mp (Halts.of_agreeing_state hGi_steps hGi_halted hagreeGi)
 
 /-- If the composition halts and all gᵢ are defined, then f is defined. -/
@@ -169,49 +152,38 @@ theorem comp_general_halts_imp_f_dom
   obtain ⟨sFinal_start, hSaveGPhases_halts', hsFinal_start_eq', cFinal, hFinal_steps, hFinal_halted⟩ :=
     Halts.suffix_of_concat_sf hHalts hSaveGPhases_sf
   -- Decompose final = clear.concat(transfer.concat(pF))
-  let sClear := suffix_of_concat_state hFinal_steps hFinal_halted (clearRegisters_isStandardForm base)
-  have hClear_steps := suffix_of_concat_steps_left hFinal_steps hFinal_halted (clearRegisters_isStandardForm base)
-  obtain ⟨_, hTF_steps, hTF_halted⟩ := suffix_of_concat_halts_right hFinal_steps hFinal_halted (clearRegisters_isStandardForm base)
-  let sTransfer := suffix_of_concat_state hTF_steps hTF_halted (transferResultsToInputs_isStandardForm (base + n + 1) m)
-  have hTransfer_steps := suffix_of_concat_steps_left hTF_steps hTF_halted (transferResultsToInputs_isStandardForm (base + n + 1) m)
-  obtain ⟨cF, hF_steps, hF_halted⟩ := suffix_of_concat_halts_right hTF_steps hTF_halted (transferResultsToInputs_isStandardForm (base + n + 1) m)
+  let dClear := decompose_concat hFinal_steps hFinal_halted (clearRegisters_isStandardForm base)
+  obtain ⟨_, hTF_steps, hTF_halted⟩ := dClear.halts_right
+  let dTransfer := decompose_concat hTF_steps hTF_halted (transferResultsToInputs_isStandardForm (base + n + 1) m)
+  obtain ⟨cF, hF_steps, hF_halted⟩ := dTransfer.halts_right
   have hagreeF : ∀ r, r ≤ pF.maxRegister →
-      sTransfer.read r = (State.fromInputs (List.ofFn (fun i => (gs i inputs).get (hGs_dom i)))).read r := by
+      dTransfer.state.read r = (State.fromInputs (List.ofFn (fun i => (gs i inputs).get (hGs_dom i)))).read r := by
     intro r hr
     have hr_le_base : r ≤ base := Nat.le_trans hr (compositionBase_ge_F m n pF pGs)
     rcases Nat.lt_or_ge r m with hr_lt_m | hr_ge_m
     · have hRHS : (State.fromInputs (List.ofFn (fun i => (gs i inputs).get (hGs_dom i)))).read r =
           (gs ⟨r, hr_lt_m⟩ inputs).get (hGs_dom ⟨r, hr_lt_m⟩) := by simp [State.fromInputs, State.read, hr_lt_m]
-      have hClear_sl := clearRegisters_isStraightLine base
-      have hsClear_eq : sClear = straightLineFinalState hClear_sl sFinal_start := by
-        simp only [sClear, straightLine_suffix_of_concat_state hClear_sl hFinal_steps hFinal_halted
-          (clearRegisters_isStandardForm base)]
-      have hTransfer_sl := transferResultsToInputs_isStraightLine (base + n + 1) m
-      have hsTransfer_eq : sTransfer = straightLineFinalState hTransfer_sl sClear := by
-        simp only [sTransfer, sClear, straightLine_suffix_of_concat_state hTransfer_sl hTF_steps hTF_halted
-          (transferResultsToInputs_isStandardForm (base + n + 1) m)]
       have hNoOverlap_transfer : m ≤ base + n + 1 := by have := compositionBase_ge_m m n pF pGs; omega
       obtain ⟨_, hsTransfer'_eq, hTransfer_copies, _⟩ :=
-        transferResultsToInputs_state (base + n + 1) m sClear hNoOverlap_transfer
+        transferResultsToInputs_state (base + n + 1) m dClear.state hNoOverlap_transfer
       have hSavedResult : sFinal_start.read (base + n + 1 + r) = (gs ⟨r, hr_lt_m⟩ inputs).get (hGs_dom ⟨r, hr_lt_m⟩) := by
         have h := Classical.choose_spec hSaveGPhases_halts'
         rw [hsFinal_start_eq' hSaveGPhases_halts']; exact allGPhases_saves_result (pF := pF) hGs_sf hGs_spec inputs hGs_dom ⟨r, hr_lt_m⟩ _ ⟨_, h.1, h.2, rfl⟩
-      calc sTransfer.read r = sClear.read (base + n + 1 + r) := by rw [hsTransfer_eq, hsTransfer'_eq]; exact hTransfer_copies r hr_lt_m
-        _ = sFinal_start.read (base + n + 1 + r) := by rw [hsClear_eq]; exact clearRegisters_preserves_above' base _ _ (by omega)
+      calc dTransfer.state.read r = dClear.state.read (base + n + 1 + r) := by
+            rw [decompose_concat_state_straightLine (transferResultsToInputs_isStraightLine (base + n + 1) m), hsTransfer'_eq]
+            exact hTransfer_copies r hr_lt_m
+        _ = sFinal_start.read (base + n + 1 + r) := by
+            rw [decompose_concat_state_straightLine (clearRegisters_isStraightLine base)]
+            exact clearRegisters_preserves_above' base _ _ (by omega)
         _ = (gs ⟨r, hr_lt_m⟩ inputs).get (hGs_dom ⟨r, hr_lt_m⟩) := hSavedResult
         _ = _ := hRHS.symm
     · have hRHS_zero : (State.fromInputs (List.ofFn (fun i => (gs i inputs).get (hGs_dom i)))).read r = 0 := by
         simp [State.fromInputs, State.read, hr_ge_m]
-      have hClear_sl := clearRegisters_isStraightLine base
-      have hsClear_eq : sClear = straightLineFinalState hClear_sl sFinal_start := by
-        simp only [sClear, straightLine_suffix_of_concat_state hClear_sl hFinal_steps hFinal_halted
-          (clearRegisters_isStandardForm base)]
-      have hTransfer_sl := transferResultsToInputs_isStraightLine (base + n + 1) m
-      have hsTransfer_eq : sTransfer = straightLineFinalState hTransfer_sl sClear := by
-        simp only [sTransfer, sClear, straightLine_suffix_of_concat_state hTransfer_sl hTF_steps hTF_halted
-          (transferResultsToInputs_isStandardForm (base + n + 1) m)]
-      rw [hRHS_zero, hsTransfer_eq, transferResultsToInputs_preserves _ _ _ _ hr_ge_m,
-          hsClear_eq, clearRegisters_zeros' base _ _ hr_le_base]
+      rw [hRHS_zero,
+          decompose_concat_state_straightLine (transferResultsToInputs_isStraightLine (base + n + 1) m),
+          transferResultsToInputs_preserves _ _ _ _ hr_ge_m,
+          decompose_concat_state_straightLine (clearRegisters_isStraightLine base),
+          clearRegisters_zeros' base _ _ hr_le_base]
   exact (hF_spec _).1.mp (Halts.of_agreeing_state hF_steps hF_halted hagreeF)
 
 set_option maxHeartbeats 800000 in
