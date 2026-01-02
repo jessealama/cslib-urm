@@ -133,9 +133,8 @@ private theorem loop_incr_steps (m n k : ℕ) :
     simp only [σ1, State.read, State.write, Function.update_of_ne (by decide : (2 : ℕ) ≠ 1)]
     rfl
   let σ2 := σ1.write 2 (k + 1)
-  have step2 : Step P ⟨2, σ1⟩ ⟨3, σ2⟩ := by
-    have heq : σ2 = σ1.write 2 (σ1.read 2 + 1) := by simp only [σ2, h_r2_1]
-    rw [heq]; exact Step.succ h_instr2
+  have hσ2_eq' : σ2 = σ1.write 2 (σ1.read 2 + 1) := by simp only [σ2, h_r2_1]
+  have step2 : Step P ⟨2, σ1⟩ ⟨3, σ2⟩ := hσ2_eq' ▸ Step.succ h_instr2
   have hσ2_eq : σ2 = stateAfterIncr m n k := by
     funext i; simp only [σ2, σ1, σ0, State.write, loopState, stateAfterIncr, Function.update]
     match i with

@@ -266,22 +266,18 @@ theorem straightLine_zeros_register {p : Program} (hsl : p.isStraightLine = true
   induction hsteps using Relation.ReflTransGen.head_induction_on with
   | refl => rfl
   | @head a' c' hstep hrest ih =>
+    have ha'_pc_lt : a'.pc < p.length := by
+      by_contra hc; exact Step.halted_no_step (Nat.not_lt.mp hc) hstep
     have hc'_pc_gt : c'.pc > k := by
       cases hstep with
       | zero _ | succ _ | trans _ | jump_ne _ _ => simp only []; omega
       | jump_eq h heq =>
-        have ha'_pc_lt : a'.pc < p.length := by
-          by_contra hc; exact Step.halted_no_step (Nat.not_lt.mp hc) (Step.jump_eq h heq)
         simp only [Program.isStraightLine, List.all_eq_true] at hsl
-        have hmem := List.getElem?_eq_some_iff.mp h
-        exact absurd (hsl _ (hmem.2 ▸ List.getElem_mem ha'_pc_lt)) (by simp [Instr.isNonJumping])
+        exact absurd (hsl _ ((List.getElem?_eq_some_iff.mp h).2 ▸ List.getElem_mem ha'_pc_lt)) (by simp [Instr.isNonJumping])
     rw [ih hc'_pc_gt]
     apply Step.straightLine_preserves hsl hstep
     intro instr hinstr
-    have ha'_pc_lt : a'.pc < p.length := by
-      by_contra hc; exact Step.halted_no_step (Nat.not_lt.mp hc) hstep
-    have heq : p[a'.pc] = instr := (List.getElem?_eq_some_iff.mp hinstr).2
-    exact heq ▸ hnowrite a'.pc ha'_pc_lt hpc_gt
+    exact (List.getElem?_eq_some_iff.mp hinstr).2 ▸ hnowrite a'.pc ha'_pc_lt hpc_gt
 
 /-- clearRegistersFrom zeros the specified range. -/
 theorem clearRegistersFrom_zeros (start count : ℕ) (s : State) (r : ℕ)

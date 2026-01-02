@@ -52,6 +52,15 @@ theorem Program.instr_maxRegister_le {i : ℕ} {instr : Instr}
     (h : p.getInstr i = some instr) : instr.maxRegister ≤ p.maxRegister := by
   simp only [Program.getInstr] at h
   have hi : i < p.length := by by_contra hc; simp only [not_lt] at hc; simp [List.getElem?_eq_none hc] at h
+  have foldl_ge_init : ∀ (init : ℕ) (l : List Instr), init ≤ l.foldl (fun acc i => max acc i.maxRegister) init := by
+    intro init l; induction l generalizing init with
+    | nil => exact Nat.le_refl _
+    | cons h t iht => exact Nat.le_trans (Nat.le_max_left _ _) (iht _)
+  have foldl_mono : ∀ (a b : ℕ) (l : List Instr), a ≤ b →
+      l.foldl (fun acc i => max acc i.maxRegister) a ≤ l.foldl (fun acc i => max acc i.maxRegister) b := by
+    intro a b l hab; induction l generalizing a b with
+    | nil => exact hab
+    | cons h t iht => simp only [List.foldl_cons]; apply iht; exact max_le_max hab (Nat.le_refl _)
   induction p generalizing i instr with
   | nil => simp at h
   | cons hd tl ih =>
@@ -59,22 +68,12 @@ theorem Program.instr_maxRegister_le {i : ℕ} {instr : Instr}
     cases i with
     | zero =>
       simp only [List.getElem?_cons_zero, Option.some.injEq] at h; subst h
-      have h1 : hd.maxRegister ≤ max 0 hd.maxRegister := Nat.le_max_right _ _
-      have h2 : ∀ (init : ℕ) (l : List Instr), init ≤ l.foldl (fun acc i => max acc i.maxRegister) init := by
-        intro init l; induction l generalizing init with
-        | nil => exact Nat.le_refl _
-        | cons h t iht => exact Nat.le_trans (Nat.le_max_left _ _) (iht _)
-      exact Nat.le_trans h1 (h2 _ _)
+      exact Nat.le_trans (Nat.le_max_right 0 _) (foldl_ge_init _ _)
     | succ j =>
       simp only [List.getElem?_cons_succ] at h
       have hj : j < tl.length := by simp at hi; omega
       have ih' := ih h hj; simp only [Program.maxRegister] at ih'
-      have hmono : ∀ (a b : ℕ) (l : List Instr), a ≤ b →
-          l.foldl (fun acc i => max acc i.maxRegister) a ≤ l.foldl (fun acc i => max acc i.maxRegister) b := by
-        intro a b l hab; induction l generalizing a b with
-        | nil => exact hab
-        | cons h t iht => simp only [List.foldl_cons]; apply iht; exact max_le_max hab (Nat.le_refl _)
-      exact Nat.le_trans ih' (hmono 0 _ tl (Nat.zero_le _))
+      exact Nat.le_trans ih' (foldl_mono 0 _ tl (Nat.zero_le _))
 
 theorem Step.preserves_high_register {c c' : Config} (hstep : Step p c c') (r : ℕ)
     (hr : p.maxRegister < r) : c'.state.read r = c.state.read r := by
@@ -230,24 +229,15 @@ theorem straightLine_transfer_result {p : Program} (hsl : p.isStraightLine = tru
   induction hsteps using Relation.ReflTransGen.head_induction_on with
   | refl => rfl
   | @head a' c' hstep hrest ih =>
+    have ha'_pc_lt : a'.pc < p.length := by by_contra hc; exact Step.halted_no_step (Nat.not_lt.mp hc) hstep
     have hc'_pc_gt : c'.pc > k := by
       cases hstep with
-      | zero h => simp only []; omega
-      | succ h => simp only []; omega
-      | trans h => simp only []; omega
+      | zero h | succ h | trans h | jump_ne h _ => simp only []; omega
       | jump_eq h heq' =>
-        exfalso; simp only [Program.isStraightLine, List.all_eq_true] at hsl
-        have ha'_pc_lt : a'.pc < p.length := by by_contra hc; simp only [not_lt] at hc; exact Step.halted_no_step hc (Step.jump_eq h heq')
-        simp only [Program.getInstr] at h
-        have hmem := List.getElem?_eq_some_iff.mp h
-        have hinstr_sl := hsl _ (hmem.2 ▸ List.getElem_mem ha'_pc_lt)
-        simp only [Instr.isNonJumping] at hinstr_sl; exact Bool.false_ne_true hinstr_sl
-      | jump_ne h _ => simp only []; omega
+        simp only [Program.isStraightLine, List.all_eq_true] at hsl
+        exact absurd (hsl _ ((List.getElem?_eq_some_iff.mp h).2 ▸ List.getElem_mem ha'_pc_lt)) (by simp [Instr.isNonJumping])
     rw [ih hc'_pc_gt]; apply Step.straightLine_preserves hsl hstep; intro instr hinstr
-    have ha'_pc_lt : a'.pc < p.length := by by_contra hc; simp only [not_lt] at hc; exact Step.halted_no_step hc hstep
-    simp only [Program.getInstr] at hinstr
-    have heq' : p[a'.pc] = instr := (List.getElem?_eq_some_iff.mp hinstr).2
-    rw [← heq']; exact hnowrite a'.pc ha'_pc_lt hpc_gt
+    rw [← (List.getElem?_eq_some_iff.mp hinstr).2]; exact hnowrite a'.pc ha'_pc_lt hpc_gt
 
 section Continuation
 
