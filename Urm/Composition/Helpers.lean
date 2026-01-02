@@ -45,6 +45,15 @@ theorem Steps.chain_concat {p1 p2 : Program} {s : State} {c1 c2 : Config}
   rw [hstart_eq] at h2'
   exact ⟨h1'.trans h2', by simp only [Config.isHalted, Program.concat_length] at h2_halted ⊢; omega⟩
 
+/-- Chain two programs where p1 is standard form: derives pc equality from halted. -/
+theorem Steps.chain_concat_sf {p1 p2 : Program} {s : State} {c1 c2 : Config}
+    (h1_sf : p1.IsStandardForm)
+    (h1_steps : Steps p1 ⟨0, s⟩ c1) (h1_halted : c1.isHalted p1)
+    (h2_steps : Steps p2 ⟨0, c1.state⟩ c2) (h2_halted : c2.isHalted p2) :
+    Steps (p1.concat p2) ⟨0, s⟩ ⟨c2.pc + p1.length, c2.state⟩ ∧
+    (⟨c2.pc + p1.length, c2.state⟩ : Config).isHalted (p1.concat p2) :=
+  chain_concat h1_steps h1_halted (h1_sf.pc_eq_length_of_halted h1_steps (Nat.zero_le _) h1_halted) h2_steps h2_halted
+
 /-! ## Agreeing State Execution -/
 
 /-- Bundle for an execution from an agreeing state. -/

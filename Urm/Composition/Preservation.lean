@@ -109,9 +109,9 @@ private theorem gPhase_preserves_register_aux (base n : ℕ) (pG : Program) (j :
   let tr := executeSingleTransfer 0 (base + n + 1 + j) sPG
   have hT_preserves : cT.state.read r = sPG.read r := by
     simp only [Steps.halts_unique hT_steps hT_halted tr.steps tr.halted]; exact tr.preserved r (by omega)
-  have hPGT := Steps.chain_concat hPG_steps (by simp) rfl hT_steps hT_halted
-  have hRest' := Steps.chain_concat hCopy_steps (by simp) rfl hPGT_steps hPGT_halted
-  have hGPhase := Steps.chain_concat hClear_steps (by simp) rfl hRest_steps hRest_halted
+  have hPGT := Steps.chain_concat_sf hpG_sf hPG_steps (by simp) hT_steps hT_halted
+  have hRest' := Steps.chain_concat_sf (copyRegisterRange_isStandardForm (base + 1) 0 n) hCopy_steps (by simp) hPGT_steps hPGT_halted
+  have hGPhase := Steps.chain_concat_sf (clearRegisters_isStandardForm base) hClear_steps (by simp) hRest_steps hRest_halted
   simp only [← hstate_eq, Steps.halts_unique hsteps hhalted hGPhase.1 hGPhase.2,
     Steps.halts_unique hRest_steps hRest_halted hRest'.1 hRest'.2,
     Steps.halts_unique hPGT_steps hPGT_halted hPGT.1 hPGT.2,
