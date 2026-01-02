@@ -45,10 +45,10 @@ theorem gPhase_writes_result {base n : ℕ} {pG : Program} {j : ℕ} {inputs : F
     (hSaved : ∀ k : ℕ, (hk : k < n) → s.read (base + 1 + k) = inputs ⟨k, hk⟩) (c' : Config)
     (hsteps : Steps (gPhase base n pG j) ⟨0, s⟩ c') (hhalted : c'.isHalted (gPhase base n pG j)) :
     c'.state.read (base + n + 1 + j) = Result pG (List.ofFn inputs) hpG_halts := by
-  have hClear_sf := straightLine_isStandardForm (clearRegisters_isStraightLine base)
-  have hCopyRange_sf := straightLine_isStandardForm (copyRegisterRange_isStraightLine (base + 1) 0 n)
-  obtain ⟨sClear, hClear_steps, cRest, hRest_steps, hRest_halted⟩ := suffix_of_concat_from_zero hsteps hhalted hClear_sf
-  obtain ⟨sCopy, hCopy_steps, cPGT, hPGT_steps, hPGT_halted⟩ := suffix_of_concat_from_zero hRest_steps hRest_halted hCopyRange_sf
+  obtain ⟨sClear, hClear_steps, cRest, hRest_steps, hRest_halted⟩ :=
+    suffix_of_concat_from_zero hsteps hhalted (clearRegisters_isStandardForm base)
+  obtain ⟨sCopy, hCopy_steps, cPGT, hPGT_steps, hPGT_halted⟩ :=
+    suffix_of_concat_from_zero hRest_steps hRest_halted (copyRegisterRange_isStandardForm (base + 1) 0 n)
   obtain ⟨sPG, hPG_steps, cT, hT_steps, hT_halted⟩ := suffix_of_concat_from_zero hPGT_steps hPGT_halted hpG_sf
   have hsClear_eq : sClear = straightLineFinalState (clearRegisters_isStraightLine base) s :=
     straightLineFinalState_eq_of_halted _ s ⟨_, sClear⟩ hClear_steps (by simp)

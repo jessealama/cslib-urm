@@ -68,12 +68,10 @@ theorem comp_general_halts_imp_gi_dom
   rw [hSuffix_i_eq] at hSuffix_steps hSuffix_halted
   obtain ⟨_, hGPhase_i_steps, hGPhase_i_halted⟩ :=
     prefix_of_concat_from_zero hSuffix_steps hSuffix_halted hGPhase_i_sf
-  have hClear_sf := straightLine_isStandardForm (clearRegisters_isStraightLine base)
-  have hCopyRange_sf := straightLine_isStandardForm (copyRegisterRange_isStraightLine (base + 1) 0 n)
   obtain ⟨sClear, hClear_steps, ⟨cCopyRest, hCopyRest_steps, hCopyRest_halted⟩⟩ :=
-    suffix_of_concat_from_zero hGPhase_i_steps hGPhase_i_halted hClear_sf
+    suffix_of_concat_from_zero hGPhase_i_steps hGPhase_i_halted (clearRegisters_isStandardForm base)
   obtain ⟨sCopy, hCopy_steps, ⟨cGiT, hGiT_steps, hGiT_halted⟩⟩ :=
-    suffix_of_concat_from_zero hCopyRest_steps hCopyRest_halted hCopyRange_sf
+    suffix_of_concat_from_zero hCopyRest_steps hCopyRest_halted (copyRegisterRange_isStandardForm (base + 1) 0 n)
   obtain ⟨cGi', hGi_steps, hGi_halted⟩ :=
     prefix_of_concat_from_zero hGiT_steps hGiT_halted (hGs_sf i)
 
@@ -159,12 +157,10 @@ theorem comp_general_halts_imp_f_dom
   have hSaveGPhases_halts := Halts.prefix_of_concat_sf hHalts hSaveGPhases_sf
   obtain ⟨sFinal_start, hSaveGPhases_halts', hsFinal_start_eq', cFinal, hFinal_steps, hFinal_halted⟩ :=
     Halts.suffix_of_concat_sf hHalts hSaveGPhases_sf
-  have hClear_sf := straightLine_isStandardForm (clearRegisters_isStraightLine base)
-  have hTransfer_sf := straightLine_isStandardForm (transferResultsToInputs_isStraightLine (base + n + 1) m)
   obtain ⟨sClear, hClear_steps, ⟨cTF, hTF_steps, hTF_halted⟩⟩ :=
-    suffix_of_concat_from_zero hFinal_steps hFinal_halted hClear_sf
+    suffix_of_concat_from_zero hFinal_steps hFinal_halted (clearRegisters_isStandardForm base)
   obtain ⟨sTransfer, hTransfer_steps, ⟨cF, hF_steps, hF_halted⟩⟩ :=
-    suffix_of_concat_from_zero hTF_steps hTF_halted hTransfer_sf
+    suffix_of_concat_from_zero hTF_steps hTF_halted (transferResultsToInputs_isStandardForm (base + n + 1) m)
   have hagreeF : ∀ r, r ≤ pF.maxRegister →
       sTransfer.read r = (State.fromInputs (List.ofFn (fun i => (gs i inputs).get (hGs_dom i)))).read r := by
     intro r hr

@@ -40,6 +40,10 @@ theorem copyRegisterRange_isStraightLine (srcStart dstStart count : ℕ) :
   simp only [Program.copyRegisterRange, Program.isStraightLine, List.all_map, List.all_eq_true]
   intro i _; simp [Instr.isNonJumping]
 
+theorem copyRegisterRange_isStandardForm (srcStart dstStart count : ℕ) :
+    (Program.copyRegisterRange srcStart dstStart count).IsStandardForm :=
+  straightLine_isStandardForm (copyRegisterRange_isStraightLine srcStart dstStart count)
+
 @[simp]
 theorem transferResultsToInputs_length (resultStart arityF : ℕ) :
     (Program.transferResultsToInputs resultStart arityF).length = arityF := by
@@ -49,6 +53,10 @@ theorem transferResultsToInputs_isStraightLine (resultStart arityF : ℕ) :
     (Program.transferResultsToInputs resultStart arityF).isStraightLine = true := by
   simp only [Program.transferResultsToInputs, Program.isStraightLine, List.all_map, List.all_eq_true]
   intro i _; simp [Instr.isNonJumping]
+
+theorem transferResultsToInputs_isStandardForm (resultStart arityF : ℕ) :
+    (Program.transferResultsToInputs resultStart arityF).IsStandardForm :=
+  straightLine_isStandardForm (transferResultsToInputs_isStraightLine resultStart arityF)
 
 section RegisterIsolation
 
@@ -182,6 +190,10 @@ theorem clearRegisters_isStraightLine (maxReg : ℕ) :
   | zero => simp only [List.range_zero, List.all_nil]
   | succ k ih => simp only [List.range_succ, List.all_append, ih, List.all_cons, List.all_nil,
       Function.comp_apply, Instr.isNonJumping, Bool.and_self]
+
+theorem clearRegisters_isStandardForm (maxReg : ℕ) :
+    (Program.clearRegisters maxReg).IsStandardForm :=
+  straightLine_isStandardForm (clearRegisters_isStraightLine maxReg)
 
 theorem copyRegisterRange_writesTo (srcStart dstStart count : ℕ)
     (instr : Instr) (hinstr : instr ∈ Program.copyRegisterRange srcStart dstStart count) :
