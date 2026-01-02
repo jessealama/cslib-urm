@@ -162,6 +162,17 @@ theorem straightLineFinalState_eq_of_halted {p : Program} (hsl : p.isStraightLin
     c.state = straightLineFinalState hsl s :=
   Steps.halts_unique hsteps hhalted (straightLineFinalState_spec hsl s).1 (straightLineFinalState_spec hsl s).2.1 ▸ rfl
 
+/-- When p1 is straight-line, the intermediate state equals straightLineFinalState.
+    This combines suffix_of_concat_state with straightLineFinalState_eq_of_halted. -/
+theorem straightLine_suffix_of_concat_state {p1 p2 : Program} {s : State} {c : Config}
+    (hsl : p1.isStraightLine = true)
+    (hsteps : Steps (p1.concat p2) ⟨0, s⟩ c) (hhalted : c.isHalted (p1.concat p2))
+    (h1 : p1.IsStandardForm) :
+    suffix_of_concat_state hsteps hhalted h1 = straightLineFinalState hsl s := by
+  have hsteps_left := suffix_of_concat_steps_left hsteps hhalted h1
+  exact straightLineFinalState_eq_of_halted hsl s ⟨p1.length, suffix_of_concat_state hsteps hhalted h1⟩
+    hsteps_left (by simp)
+
 theorem clearRegisters_exec (maxReg : ℕ) (s : State) :
     ∃ c, Steps (Program.clearRegisters maxReg) ⟨0, s⟩ c ∧
          c.isHalted (Program.clearRegisters maxReg) ∧

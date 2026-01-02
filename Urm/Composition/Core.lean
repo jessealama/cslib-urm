@@ -333,6 +333,27 @@ theorem suffix_of_concat_from_zero {p1 p2 : Program} {s : State} {c : Config}
     obtain ⟨c', hsteps_p2, hhalted_p2, _⟩ := Steps.of_concat_right h_suffix hhalted hc_pc
     exact ⟨c', hsteps_p2, hhalted_p2⟩
 
+/-- Extract just the intermediate state from a concatenated program execution.
+    This is the state after p1 halts, before p2 begins. -/
+noncomputable def suffix_of_concat_state {p1 p2 : Program} {s : State} {c : Config}
+    (hsteps : Steps (p1.concat p2) ⟨0, s⟩ c) (hhalted : c.isHalted (p1.concat p2))
+    (h1 : p1.IsStandardForm) : State :=
+  (suffix_of_concat_from_zero hsteps hhalted h1).choose
+
+/-- Steps in p1 reaching the intermediate state. -/
+theorem suffix_of_concat_steps_left {p1 p2 : Program} {s : State} {c : Config}
+    (hsteps : Steps (p1.concat p2) ⟨0, s⟩ c) (hhalted : c.isHalted (p1.concat p2))
+    (h1 : p1.IsStandardForm) :
+    Steps p1 ⟨0, s⟩ ⟨p1.length, suffix_of_concat_state hsteps hhalted h1⟩ :=
+  (suffix_of_concat_from_zero hsteps hhalted h1).choose_spec.1
+
+/-- p2 halts when starting from the intermediate state. -/
+theorem suffix_of_concat_halts_right {p1 p2 : Program} {s : State} {c : Config}
+    (hsteps : Steps (p1.concat p2) ⟨0, s⟩ c) (hhalted : c.isHalted (p1.concat p2))
+    (h1 : p1.IsStandardForm) :
+    ∃ c', Steps p2 ⟨0, suffix_of_concat_state hsteps hhalted h1⟩ c' ∧ c'.isHalted p2 :=
+  (suffix_of_concat_from_zero hsteps hhalted h1).choose_spec.2
+
 theorem Halts.suffix_of_concat_sf {p1 p2 : Program} {inputs : List ℕ}
     (hH : Halts (p1.concat p2) inputs) (h1 : p1.IsStandardForm) :
     ∃ s : State, Halts p1 inputs ∧ (∀ hP1 : Halts p1 inputs, s = (Classical.choose hP1).state) ∧

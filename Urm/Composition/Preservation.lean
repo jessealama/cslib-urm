@@ -90,19 +90,22 @@ private theorem gPhase_preserves_register_aux (base n : ℕ) (pG : Program) (j :
     (hhalted : c'.isHalted (gPhase base n pG j)) (hstate_eq : c'.state = s')
     (r : ℕ) (hr_above_base : r > base) (hr_not_dst : r ≠ base + n + 1 + j) :
     s'.read r = s.read r := by
-  obtain ⟨sClear, hClear_steps, ⟨_, hRest_steps, hRest_halted⟩⟩ :=
-    suffix_of_concat_from_zero hsteps hhalted (clearRegisters_isStandardForm base)
-  obtain ⟨sCopy, hCopy_steps, ⟨_, hPGT_steps, hPGT_halted⟩⟩ :=
-    suffix_of_concat_from_zero hRest_steps hRest_halted (copyRegisterRange_isStandardForm (base + 1) 0 n)
-  obtain ⟨sPG, hPG_steps, ⟨cT, hT_steps, hT_halted⟩⟩ :=
-    suffix_of_concat_from_zero hPGT_steps hPGT_halted hpG_sf
+  -- Decompose gPhase = clear.concat(copy.concat(pG.concat(transfer)))
+  let sClear := suffix_of_concat_state hsteps hhalted (clearRegisters_isStandardForm base)
+  have hClear_steps := suffix_of_concat_steps_left hsteps hhalted (clearRegisters_isStandardForm base)
+  obtain ⟨_, hRest_steps, hRest_halted⟩ := suffix_of_concat_halts_right hsteps hhalted (clearRegisters_isStandardForm base)
+  let sCopy := suffix_of_concat_state hRest_steps hRest_halted (copyRegisterRange_isStandardForm (base + 1) 0 n)
+  have hCopy_steps := suffix_of_concat_steps_left hRest_steps hRest_halted (copyRegisterRange_isStandardForm (base + 1) 0 n)
+  obtain ⟨_, hPGT_steps, hPGT_halted⟩ := suffix_of_concat_halts_right hRest_steps hRest_halted (copyRegisterRange_isStandardForm (base + 1) 0 n)
+  let sPG := suffix_of_concat_state hPGT_steps hPGT_halted hpG_sf
+  have hPG_steps := suffix_of_concat_steps_left hPGT_steps hPGT_halted hpG_sf
+  obtain ⟨cT, hT_steps, hT_halted⟩ := suffix_of_concat_halts_right hPGT_steps hPGT_halted hpG_sf
+  -- Use straightLine helpers to characterize intermediate states
   have hClear_preserves : sClear.read r = s.read r := by
-    rw [show sClear = _ from straightLineFinalState_eq_of_halted (clearRegisters_isStraightLine base) s
-      ⟨_, sClear⟩ hClear_steps (by simp)]
+    simp only [sClear, straightLine_suffix_of_concat_state (clearRegisters_isStraightLine base) hsteps hhalted]
     exact clearRegisters_preserves_above' base s r (by omega)
   have hCopy_preserves : sCopy.read r = sClear.read r := by
-    rw [show sCopy = _ from straightLineFinalState_eq_of_halted (copyRegisterRange_isStraightLine (base + 1) 0 n)
-      sClear ⟨_, sCopy⟩ hCopy_steps (by simp)]
+    simp only [sCopy, straightLine_suffix_of_concat_state (copyRegisterRange_isStraightLine (base + 1) 0 n) hRest_steps hRest_halted]
     exact copyRegisterRange_preserves (base + 1) 0 n sClear r (Or.inr (by omega))
   have hPG_preserves : sPG.read r = sCopy.read r :=
     Steps.preserves_high_register hPG_steps r (Nat.lt_of_le_of_lt hpG_max (by omega))
