@@ -28,11 +28,10 @@ theorem gPhase_halts_from_saved_inputs {base n : ℕ} {pG : Program} {i : ℕ} {
   obtain ⟨cCopy, hCopy_steps', hCopy_halted', hCopy_pc⟩ := straightLine_halts_from_state hCopy_sl cClear.state
   have hCopy_state_sCopy : cCopy.state = sCopy := by
     rw [straightLineFinalState_eq_of_halted hCopy_sl cClear.state cCopy hCopy_steps' hCopy_halted', hsCopy_eq]
+  have hCopy_config_eq : cCopy = ⟨(copyRegisterRange (base + 1) 0 n).length, sCopy⟩ := by
+    ext <;> simp only [hCopy_pc, hCopy_state_sCopy]
   have hCopy_steps : Steps (copyRegisterRange (base + 1) 0 n) ⟨0, cClear.state⟩
-      ⟨(copyRegisterRange (base + 1) 0 n).length, sCopy⟩ := by
-    have : cCopy = ⟨(copyRegisterRange (base + 1) 0 n).length, sCopy⟩ := by
-      ext <;> simp only [hCopy_pc, hCopy_state_sCopy]
-    rw [← this]; exact hCopy_steps'
+      ⟨(copyRegisterRange (base + 1) 0 n).length, sCopy⟩ := hCopy_config_eq ▸ hCopy_steps'
   have hCopy_halted : (⟨(copyRegisterRange (base + 1) 0 n).length, sCopy⟩ : Config).isHalted
       (copyRegisterRange (base + 1) 0 n) := by simp [Config.isHalted]
   have hInputs_restored : ∀ j : ℕ, (hj : j < n) → sCopy.read j = inputs ⟨j, hj⟩ := fun j hj => by
@@ -86,14 +85,12 @@ theorem gPhase_writes_result {base n : ℕ} {pG : Program} {j : ℕ} {inputs : F
   have hT_result : cT.state.read (base + n + 1 + j) = sPG.read 0 := by
     let tr := executeSingleTransfer 0 (base + n + 1 + j) sPG
     simp only [Steps.halts_unique hT_steps hT_halted tr.steps tr.halted, tr.dst_eq]
-  have hc'_state_eq : c'.state = cT.state := by
-    have hPGT := Steps.chain_concat hPG_steps (by simp [Config.isHalted]) rfl hT_steps hT_halted
-    have hCopyPGT := Steps.chain_concat hCopy_steps (by simp [Config.isHalted]) rfl hPGT_steps hPGT_halted
-    have hClearRest := Steps.chain_concat hClear_steps (by simp [Config.isHalted]) rfl hRest_steps hRest_halted
-    rw [Steps.halts_unique hsteps hhalted hClearRest.1 hClearRest.2,
-        Steps.halts_unique hRest_steps hRest_halted hCopyPGT.1 hCopyPGT.2,
-        Steps.halts_unique hPGT_steps hPGT_halted hPGT.1 hPGT.2]
-  rw [hc'_state_eq, hT_result, hR0_after_pG]
+  have hPGT := Steps.chain_concat hPG_steps (by simp [Config.isHalted]) rfl hT_steps hT_halted
+  have hCopyPGT := Steps.chain_concat hCopy_steps (by simp [Config.isHalted]) rfl hPGT_steps hPGT_halted
+  have hClearRest := Steps.chain_concat hClear_steps (by simp [Config.isHalted]) rfl hRest_steps hRest_halted
+  simp only [Steps.halts_unique hsteps hhalted hClearRest.1 hClearRest.2,
+      Steps.halts_unique hRest_steps hRest_halted hCopyPGT.1 hCopyPGT.2,
+      Steps.halts_unique hPGT_steps hPGT_halted hPGT.1 hPGT.2, hT_result, hR0_after_pG]
 
 theorem allGPhases_halts_from_saved_inputs {m n base : ℕ} {pGs : Fin m → Program} {inputs : Fin n → ℕ}
     (hpGs_sf : ∀ i, (pGs i).IsStandardForm) (hpGs_max : ∀ i, (pGs i).maxRegister ≤ base) (hn_le_base : n ≤ base + 1)
@@ -138,11 +135,10 @@ theorem finalPhase_halts_from_results {m n base : ℕ} {pF : Program} {results :
   obtain ⟨cTransfer, hTransfer_steps', hTransfer_halted', hTransfer_pc⟩ := straightLine_halts_from_state hTransfer_sl cClear.state
   have hTransfer_state_sTransfer : cTransfer.state = sTransfer := by
     rw [straightLineFinalState_eq_of_halted hTransfer_sl cClear.state cTransfer hTransfer_steps' hTransfer_halted', hsTransfer_eq]
+  have hTransfer_config_eq : cTransfer = ⟨(transferResultsToInputs (base + n + 1) m).length, sTransfer⟩ := by
+    ext <;> simp only [hTransfer_pc, hTransfer_state_sTransfer]
   have hTransfer_steps : Steps (transferResultsToInputs (base + n + 1) m) ⟨0, cClear.state⟩
-      ⟨(transferResultsToInputs (base + n + 1) m).length, sTransfer⟩ := by
-    have : cTransfer = ⟨(transferResultsToInputs (base + n + 1) m).length, sTransfer⟩ := by
-      ext <;> simp only [hTransfer_pc, hTransfer_state_sTransfer]
-    rw [← this]; exact hTransfer_steps'
+      ⟨(transferResultsToInputs (base + n + 1) m).length, sTransfer⟩ := hTransfer_config_eq ▸ hTransfer_steps'
   have hTransfer_halted : (⟨(transferResultsToInputs (base + n + 1) m).length, sTransfer⟩ : Config).isHalted
       (transferResultsToInputs (base + n + 1) m) := by simp [Config.isHalted]
   have hInputs_set : ∀ j : ℕ, (hj : j < m) → sTransfer.read j = results ⟨j, hj⟩ := fun j hj => by
@@ -186,10 +182,8 @@ theorem allGPhases_suffix_preserves_earlier_results {m n base : ℕ} {pGs : Fin 
         (hpGs_sf _) (hpGs_max _) hn_le_base (by omega) s sFirst ⟨_, sFirst⟩ hFirst_steps (by simp [Config.isHalted]) rfl
       have hRest_preserves := allGPhases_suffix_preserves_earlier_results hpGs_sf hpGs_max hn_le_base
         (start + 1) k (by omega) sFirst cRest hRest_steps hRest_halted
-      have hc'_eq_cRest : c'.state = cRest.state := by
-        have hChain := Steps.chain_concat hFirst_steps (by simp [Config.isHalted]) rfl hRest_steps hRest_halted
-        rw [Steps.halts_unique hsteps hhalted hChain.1 hChain.2]
-      rw [hc'_eq_cRest, hRest_preserves, hFirst_preserves]
+      have hChain := Steps.chain_concat hFirst_steps (by simp [Config.isHalted]) rfl hRest_steps hRest_halted
+      simp only [Steps.halts_unique hsteps hhalted hChain.1 hChain.2, hRest_preserves, hFirst_preserves]
 termination_by m - start
 decreasing_by simp_wf; omega
 
@@ -259,15 +253,15 @@ theorem allGPhases_saves_result {m n : ℕ} [NeZero m] {pF : Program} {pGs : Fin
       rw [hstate_eq', hSave_state_sSave, hAfterSave]
     · obtain ⟨sSave', hSave_steps'', cPrefix, hPrefix_steps, hPrefix_halted⟩ :=
         suffix_of_concat_from_zero hSavePrefixI_steps (by simp [Config.isHalted]) hSave_sf
-      have hsSave'_eq : sSave' = sSave := by
-        have : sSave' = cSave.state := congrArg Config.state
-          (Steps.halts_unique hSave_steps'' (by simp [Config.isHalted]) hSave_steps' hSave_halted')
-        rw [this, hSave_state_sSave]
+      have hsSave'_eq_cSave : sSave' = cSave.state := congrArg Config.state
+        (Steps.halts_unique hSave_steps'' (by simp [Config.isHalted]) hSave_steps' hSave_halted')
+      have hsSave'_eq : sSave' = sSave := by rw [hsSave'_eq_cSave, hSave_state_sSave]
       conv at hPrefix_steps => rw [hsSave'_eq]
-      have hcPrefix_state : cPrefix.state = sSavePrefixI := by
-        have hPrefix_steps' : Steps (allGPhases_prefix m n base pGs i.val) ⟨0, cSave.state⟩ cPrefix := hSave_state_sSave ▸ hPrefix_steps
-        have hChain := Steps.chain_concat hSave_steps' hSave_halted' hSave_pc' hPrefix_steps' hPrefix_halted
-        exact (congrArg Config.state (Steps.halts_unique hSavePrefixI_steps (by simp [Config.isHalted]) hChain.1 hChain.2)).symm
+      have hPrefix_steps' : Steps (allGPhases_prefix m n base pGs i.val) ⟨0, cSave.state⟩ cPrefix :=
+        hSave_state_sSave ▸ hPrefix_steps
+      have hPrefixChain := Steps.chain_concat hSave_steps' hSave_halted' hSave_pc' hPrefix_steps' hPrefix_halted
+      have hcPrefix_state : cPrefix.state = sSavePrefixI :=
+        (congrArg Config.state (Steps.halts_unique hSavePrefixI_steps (by simp [Config.isHalted]) hPrefixChain.1 hPrefixChain.2)).symm
       rw [← hcPrefix_state, allGPhases_prefix_preserves_saved_inputs m n base pGs hGs_sf hpGs_max hn_le_base
         i.val (Nat.le_of_lt i.isLt) sSave cPrefix.state cPrefix hPrefix_steps hPrefix_halted rfl
         (base + 1 + k) (by omega) (by omega), hAfterSave]
@@ -276,13 +270,13 @@ theorem allGPhases_saves_result {m n : ℕ} [NeZero m] {pF : Program} {pGs : Fin
     sSavePrefixI hSaved_i cGPhase_i hGPhase_i_steps hGPhase_i_halted
   have hSuffix_preserves := allGPhases_suffix_preserves_earlier_results hGs_sf hpGs_max hn_le_base
     (i.val + 1) i.val (by omega) sSavePrefix cSuffix hSuffix_steps hSuffix_halted
-  have hsSavePrefix_eq_cGPhase : sSavePrefix = cGPhase_i.state := by
-    have hChain := Steps.chain_concat hSavePrefixI_steps (by simp [Config.isHalted]) rfl hGPhase_i_steps hGPhase_i_halted
-    exact congrArg Config.state (Steps.halts_unique hSavePrefix_steps (by simp [Config.isHalted]) hChain.1 hChain.2)
+  have hGPhaseChain := Steps.chain_concat hSavePrefixI_steps (by simp [Config.isHalted]) rfl hGPhase_i_steps hGPhase_i_halted
+  have hsSavePrefix_eq_cGPhase : sSavePrefix = cGPhase_i.state :=
+    congrArg Config.state (Steps.halts_unique hSavePrefix_steps (by simp [Config.isHalted]) hGPhaseChain.1 hGPhaseChain.2)
+  have hSuffixChain := Steps.chain_concat hSavePrefix_steps hSavePrefixI_halted rfl hSuffix_steps hSuffix_halted
   have hc_eq_cSuffix : c.state = cSuffix.state := by
     rw [hSavePrefix_eq] at hsteps hhalted
-    have hChain := Steps.chain_concat hSavePrefix_steps hSavePrefixI_halted rfl hSuffix_steps hSuffix_halted
-    simp only [Steps.halts_unique hsteps hhalted hChain.1 hChain.2]
+    simp only [Steps.halts_unique hsteps hhalted hSuffixChain.1 hSuffixChain.2]
   rw [← hstate_eq, hc_eq_cSuffix, hSuffix_preserves, hsSavePrefix_eq_cGPhase, hGPhase_i_result,
       (hGs_spec i inputs).2 hGPhase_halts_i (hGs_dom i)]
 
