@@ -24,10 +24,17 @@ property ensures they remain valid.
 - `Program.isStandardForm`: decidable check for standard form (Bool)
 - `Program.IsStandardForm`: Prop version of standard form
 - `URMComputableSF`: computability by a standard-form program
+- `Program.Equiv`: behavioral equivalence (same partial function)
+
+## Notation
+
+- `p ~ q`: program equivalence (both compute the same partial function)
 
 ## Main results
 
 - `straightLine_isStandardForm`: straight-line programs are standard form
+- `Program.equiv_toStandardForm`: every program is equivalent to its standard form
+- `Program.Equiv.equivalence`: program equivalence is an equivalence relation
 
 ## References
 
@@ -458,12 +465,50 @@ theorem Result.toStandardForm {p : Program} {inputs : List ℕ}
     Result p inputs hp = Result p.toStandardForm inputs hq := by
   simp only [Result, State.output, Result.toStandardForm_state hp hq]
 
+/-! ## Program Equivalence
+
+Two programs are equivalent if they compute the same partial function:
+they halt on exactly the same inputs and produce the same results. -/
+
+/-- Two programs are equivalent if they compute the same partial function. -/
+def Program.Equiv (p q : Program) : Prop :=
+  ∀ inputs, (Halts p inputs ↔ Halts q inputs) ∧
+    ∀ hp hq, Result p inputs hp = Result q inputs hq
+
+/-- Notation for program equivalence. -/
+scoped infix:50 " ~ " => Program.Equiv
+
+/-- Program equivalence is reflexive. -/
+@[refl]
+theorem Program.Equiv.refl (p : Program) : p ~ p :=
+  fun _ => ⟨Iff.rfl, fun _ _ => rfl⟩
+
+/-- Program equivalence is symmetric. -/
+@[symm]
+theorem Program.Equiv.symm {p q : Program} (h : p ~ q) : q ~ p :=
+  fun inputs => ⟨(h inputs).1.symm, fun hq hp => ((h inputs).2 hp hq).symm⟩
+
+/-- Program equivalence is transitive. -/
+@[trans]
+theorem Program.Equiv.trans {p q r : Program} (hpq : p ~ q) (hqr : q ~ r) : p ~ r :=
+  fun inputs =>
+    ⟨(hpq inputs).1.trans (hqr inputs).1,
+     fun hp hr =>
+       let hq := (hpq inputs).1.mp hp
+       ((hpq inputs).2 hp hq).trans ((hqr inputs).2 hq hr)⟩
+
+/-- Program equivalence is an equivalence relation. -/
+theorem Program.Equiv.equivalence : Equivalence Program.Equiv :=
+  ⟨Equiv.refl, Equiv.symm, Equiv.trans⟩
+
+/-- A program is equivalent to its standard form. -/
+theorem Program.equiv_toStandardForm (p : Program) : p ~ p.toStandardForm :=
+  fun _ => ⟨Halts.toStandardForm_iff, fun hp hq => Result.toStandardForm hp hq⟩
+
 /-- Every program has a behaviorally equivalent standard form program. -/
 theorem exists_standardForm_equiv (p : Program) :
-    ∃ q : Program, q.IsStandardForm ∧
-      (∀ inputs, (Halts p inputs ↔ Halts q inputs) ∧ ∀ hp hq, Result p inputs hp = Result q inputs hq) :=
-  ⟨p.toStandardForm, Program.toStandardForm_isStandardForm p,
-   fun _ => ⟨Halts.toStandardForm_iff, fun hp hq => Result.toStandardForm hp hq⟩⟩
+    ∃ q : Program, q.IsStandardForm ∧ p ~ q :=
+  ⟨p.toStandardForm, Program.toStandardForm_isStandardForm p, p.equiv_toStandardForm⟩
 
 /-- Standard form computability implies general computability (trivial direction). -/
 theorem URMComputableSF.toComputable {n : ℕ} {f : (Fin n → ℕ) → Part ℕ}
