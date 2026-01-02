@@ -77,6 +77,10 @@ theorem halted_no_step {c c' : Config} (hhalted : c.isHalted p) : ¬Step p c c' 
   intro hstep
   cases hstep <;> simp_all [Config.isHalted, Program.getInstr]
 
+/-- If a step exists from config c, then c.pc < p.length (contrapositive of halted_no_step). -/
+theorem pc_lt_length {c c' : Config} (hstep : Step p c c') : c.pc < p.length := by
+  by_contra hc; exact halted_no_step (Nat.not_lt.mp hc) hstep
+
 end Step
 
 namespace Steps

@@ -266,8 +266,7 @@ theorem straightLine_zeros_register {p : Program} (hsl : p.isStraightLine = true
   induction hsteps using Relation.ReflTransGen.head_induction_on with
   | refl => rfl
   | @head a' c' hstep hrest ih =>
-    have ha'_pc_lt : a'.pc < p.length := by
-      by_contra hc; exact Step.halted_no_step (Nat.not_lt.mp hc) hstep
+    have ha'_pc_lt := Step.pc_lt_length hstep
     have hc'_pc_gt : c'.pc > k := by
       cases hstep with
       | zero _ | succ _ | trans _ | jump_ne _ _ => simp only []; omega

@@ -176,13 +176,7 @@ theorem Steps.concat_right {c c' : Config}
   induction hsteps using Relation.ReflTransGen.head_induction_on with
   | refl => exact Relation.ReflTransGen.refl
   | @head a b hstep hrest ih =>
-    -- hstep : Step p2 a b
-    -- Need: a.pc < p2.length (since a can step)
-    have hpc : a.pc < p2.length := by
-      by_contra hc
-      simp only [not_lt] at hc
-      exact Step.halted_no_step hc hstep
-    have hstep' := Step.concat_right (p1 := p1) hpc hstep
+    have hstep' := Step.concat_right (p1 := p1) (Step.pc_lt_length hstep) hstep
     exact Relation.ReflTransGen.head hstep' ih
 
 /-- Multi-step in the second part of a concatenated program (interior version).
@@ -194,11 +188,7 @@ theorem Steps.concat_right_interior {c c' : Config}
   induction hsteps using Relation.ReflTransGen.head_induction_on with
   | refl => exact Relation.ReflTransGen.refl
   | @head a b hstep hrest ih =>
-    have hpc : a.pc < p2.length := by
-      by_contra hc
-      simp only [not_lt] at hc
-      exact Step.halted_no_step hc hstep
-    have hstep' := Step.concat_right (p1 := p1) hpc hstep
+    have hstep' := Step.concat_right (p1 := p1) (Step.pc_lt_length hstep) hstep
     exact Relation.ReflTransGen.head hstep' ih
 
 /-- Multi-step from within p1 (interior version, no halting required).
@@ -209,12 +199,7 @@ theorem Steps.concat_left_prefix_interior {c c' : Config}
   induction hsteps using Relation.ReflTransGen.head_induction_on with
   | refl => exact Relation.ReflTransGen.refl
   | @head a b hstep hrest ih =>
-    have hpc : a.pc < p1.length := by
-      by_contra hc
-      simp only [not_lt] at hc
-      exact Step.halted_no_step hc hstep
-    have hstep' : Step (p1.concat p2) a b := Step.concat_left hpc hstep
-    exact Relation.ReflTransGen.head hstep' ih
+    exact Relation.ReflTransGen.head (Step.concat_left (Step.pc_lt_length hstep) hstep) ih
 
 /-- Multi-step from within p1 stays in p1 until halting.
 If we execute Steps in p1 from c to a halted config c', then the same path exists in p1.concat p2. -/
