@@ -246,10 +246,8 @@ theorem instr_at_loopCheck (n : ℕ) (pF pG : Program) :
     (primitiveRecursionProgram n pF pG).getInstr (prLoopCheckPC n pF pG) =
       some (Instr.J (prCounterReg n pF pG) (prSavedYReg n pF pG) (prOutputPC n pF pG)) := by
   simp only [primitiveRecursionProgram, getInstr, prLoopCheckPC, prLoopCheck,
-    List.getElem?_append, List.length_append, prSetupPhase_length, prBaseCasePhase_length,
-    prLoopCheck_length, prLoopBody_length, prOutputPhase_length]
-  simp only [prSetupPhaseLength, prBaseCasePhaseLength, prBaseCasePrologueLength,
-    prLoopBodyLength, prLoopPrologueLength, prLoopEpilogueLength]
+    List.getElem?_append, List.length_append, prSetupPhase_length, prBaseCasePhase_length]
+  simp only [prSetupPhaseLength, prBaseCasePhaseLength, prBaseCasePrologueLength]
   simp only [List.length] at *
   split_ifs with h1 h2 h3 h4
   · omega
