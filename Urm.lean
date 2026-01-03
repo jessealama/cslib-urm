@@ -3,6 +3,8 @@
 import Urm.Basic
 import Urm.Execution
 import Urm.Shift
+import Urm.Embeddings
 import Urm.Computable
 import Urm.Composition.Basic
+import Urm.Minimization.Basic
 import Urm.Examples

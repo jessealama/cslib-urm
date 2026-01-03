@@ -63,12 +63,6 @@ theorem shift_unshift (σ : State) (offset : ℕ) :
   funext r
   simp only [unshift, shift, Nat.le_add_left, ↓reduceIte, Nat.add_sub_cancel]
 
-theorem unshift_shift (σ : State) (offset : ℕ) (r : ℕ) (hr : offset ≤ r) :
-    (σ.unshift offset).shift offset r = σ r := by
-  simp only [shift, unshift, hr, ↓reduceIte]
-  congr 1
-  omega
-
 /-! ### Read interaction with shifting -/
 
 @[simp]
@@ -142,11 +136,6 @@ theorem shift_unshift (c : Config) (offset : ℕ) :
     (c.shift offset).unshift offset = c := by
   simp only [shift, unshift, State.shift_unshift]
 
-/-- A config equals its shift iff offset is 0 or we use unshift to recover. -/
-theorem eq_unshift_of_shift (c c' : Config) (offset : ℕ) (h : c' = c.shift offset) :
-    c = c'.unshift offset := by
-  simp [h]
-
 end Config
 
 /-! ## Program Shifting Properties -/
@@ -208,14 +197,6 @@ private theorem foldl_max_add_aux (offset : ℕ) (init : ℕ) (p : Program) :
     simp only [List.foldl_cons]
     have : max (init + offset) (hd.maxRegister + offset) = max init hd.maxRegister + offset := by omega
     rw [this, ih]
-
-/-- Specialization for init = 0. -/
-private theorem foldl_max_add_zero (offset : ℕ) (p : Program) :
-    p.foldl (fun acc instr => max acc (instr.maxRegister + offset)) offset =
-    p.foldl (fun acc instr => max acc instr.maxRegister) 0 + offset := by
-  have h := foldl_max_add_aux offset 0 p
-  simp at h
-  exact h
 
 /-- The maxRegister of a shifted nonempty program equals the original maxRegister plus offset. -/
 theorem maxRegister_shiftRegisters (offset : ℕ) (p : Program) (hp : p ≠ []) :
@@ -579,5 +560,16 @@ theorem Halts.shift_from_state {p : Program} {inputs : List ℕ} {σ : State}
     | refl => rfl
     | head hstep _ => exact absurd hstep (Step.halted_no_step hd_halted)
   rw [hd_eq_choose]; rfl
+
+/-- If a program halts from a state agreeing with inputs on all relevant registers,
+    then it halts on those inputs. -/
+theorem Halts.of_agreeing_state {p : Program} {inputs : List ℕ} {s : State} {c : Config}
+    (hsteps : Steps p ⟨0, s⟩ c) (hhalted : c.isHalted p)
+    (hagree : ∀ r, r ≤ p.maxRegister → s.read r = (State.fromInputs inputs).read r) :
+    Halts p inputs := by
+  have hagree' : s.agreeOn (State.fromInputs inputs) 0 p.maxRegister := fun r _ hhi => hagree r hhi
+  have hpc_eq : (⟨0, s⟩ : Config).pc = (Config.init inputs).pc := rfl
+  obtain ⟨c', hsteps', hpc', _⟩ := Steps.agreeOn hsteps hpc_eq hagree'
+  exact ⟨c', hsteps', by simp only [Config.isHalted] at hhalted ⊢; omega⟩
 
 end Urm

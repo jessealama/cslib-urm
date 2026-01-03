@@ -81,6 +81,44 @@ theorem halted_no_step {c c' : Config} (hhalted : c.isHalted p) : ¬Step p c c' 
 theorem pc_lt_length {c c' : Config} (hstep : Step p c c') : c.pc < p.length := by
   by_contra hc; exact halted_no_step (Nat.not_lt.mp hc) hstep
 
+/-- If an instruction is at position i, its maxRegister is at most p.maxRegister. -/
+private theorem instr_maxRegister_le {i : ℕ} {instr : Instr}
+    (h : p.getInstr i = some instr) : instr.maxRegister ≤ p.maxRegister := by
+  simp only [Program.getInstr] at h
+  have hi : i < p.length := by by_contra hc; simp only [not_lt] at hc; simp [List.getElem?_eq_none hc] at h
+  have foldl_ge_init : ∀ (init : ℕ) (l : List Instr), init ≤ l.foldl (fun acc i => max acc i.maxRegister) init := by
+    intro init l; induction l generalizing init with
+    | nil => exact Nat.le_refl _
+    | cons h t iht => exact Nat.le_trans (Nat.le_max_left _ _) (iht _)
+  have foldl_mono : ∀ (a b : ℕ) (l : List Instr), a ≤ b →
+      l.foldl (fun acc i => max acc i.maxRegister) a ≤ l.foldl (fun acc i => max acc i.maxRegister) b := by
+    intro a b l hab; induction l generalizing a b with
+    | nil => exact hab
+    | cons h t iht => simp only [List.foldl_cons]; apply iht; omega
+  induction p generalizing i instr with
+  | nil => simp at h
+  | cons hd tl ih =>
+    simp only [Program.maxRegister, List.foldl_cons]
+    cases i with
+    | zero =>
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at h; subst h
+      exact Nat.le_trans (Nat.le_max_right 0 _) (foldl_ge_init _ _)
+    | succ j =>
+      simp only [List.getElem?_cons_succ] at h
+      have hj : j < tl.length := by simp at hi; omega
+      have ih' := ih h hj; simp only [Program.maxRegister] at ih'
+      exact Nat.le_trans ih' (foldl_mono 0 _ tl (Nat.zero_le _))
+
+/-- A step preserves any register above p.maxRegister (cannot be read or written). -/
+theorem preserves_high_register {c c' : Config} (hstep : Step p c c') (r : ℕ)
+    (hr : p.maxRegister < r) : c'.state.read r = c.state.read r := by
+  cases hstep with
+  | zero h | succ h | trans h =>
+    have hinstr := instr_maxRegister_le h
+    simp only [Instr.maxRegister] at hinstr
+    simp only [State.read, State.write]; exact Function.update_of_ne (by omega) _ _
+  | jump_eq _ _ | jump_ne _ _ => rfl
+
 end Step
 
 namespace Steps
@@ -153,6 +191,13 @@ theorem deterministic_continuation {init c c' : Config}
       subst heq
       exact ih hrest'
 
+/-- Multi-step execution preserves any register above p.maxRegister. -/
+theorem preserves_high_register {c c' : Config} (hsteps : Steps p c c') (r : ℕ)
+    (hr : p.maxRegister < r) : c'.state.read r = c.state.read r := by
+  induction hsteps using Relation.ReflTransGen.head_induction_on with
+  | refl => rfl
+  | head hstep _ ih => rw [ih]; exact Step.preserves_high_register hstep r hr
+
 end Steps
 
 /-- A program halts on given inputs if there exists a halted configuration reachable from
@@ -211,10 +256,93 @@ theorem add {m n : ℕ} {c₁ c₂ c₃ : Config}
     simp only [Nat.succ_add]
     exact succ hstep (ih h2)
 
-end StepsN
+/-- Steps implies there exists some n for StepsN. -/
+theorem fromSteps {c c' : Config} (h : Steps p c c') : ∃ n, StepsN p n c c' := by
+  induction h using Relation.ReflTransGen.head_induction_on with
+  | refl => exact ⟨0, StepsN.zero c'⟩
+  | head hstep _ ih =>
+    obtain ⟨m, hstepsN⟩ := ih
+    exact ⟨m + 1, StepsN.succ hstep hstepsN⟩
 
-/-- A program halts in n steps if it reaches a halted configuration in exactly n steps. -/
-def HaltsIn (n : ℕ) (inputs : List ℕ) : Prop :=
-  ∃ c, StepsN p n (Config.init inputs) c ∧ c.isHalted p
+/-- If StepsN 0, then the configs are equal. -/
+theorem zero_inv {c c' : Config} (h : StepsN p 0 c c') : c' = c := by
+  cases h; rfl
+
+/-- If StepsN with n > 0, decompose into first step. -/
+theorem succ_inv {c c' : Config} (hn : n ≠ 0) (h : StepsN p n c c') :
+    ∃ c'' m, Step p c c'' ∧ StepsN p m c'' c' ∧ n = m + 1 := by
+  cases h with
+  | zero => exact absurd rfl hn
+  | succ hstep hrest => exact ⟨_, _, hstep, hrest, rfl⟩
+
+/-- Step counts are unique when reaching a halted configuration.
+    If StepsN p n1 c final and StepsN p n2 c final with final halted, then n1 = n2. -/
+theorem stepsN_unique_halted : ∀ {c final : Config} {n1 n2 : ℕ},
+    StepsN p n1 c final → StepsN p n2 c final → final.isHalted p → n1 = n2 := by
+  intro c final n1
+  induction n1 generalizing c with
+  | zero =>
+    intro n2 h1 h2 h_halted
+    -- n1 = 0 means c = final
+    cases h1
+    -- final is halted, so n2 must also be 0
+    cases h2 with
+    | zero => rfl
+    | succ hstep _ => exact absurd hstep (Step.halted_no_step h_halted)
+  | succ n1' ih =>
+    intro n2 h1 h2 h_halted
+    -- n1 > 0, decompose h1
+    cases h1 with
+    | succ hstep1 hrest1 =>
+      cases h2 with
+      | zero =>
+        -- n2 = 0 means c = final, but c can step - contradiction
+        exact absurd hstep1 (Step.halted_no_step h_halted)
+      | succ hstep2 hrest2 =>
+        -- Both step, by determinism they go to same config
+        have heq : _ = _ := Step.deterministic hstep1 hstep2
+        subst heq
+        have h_eq := ih hrest1 hrest2 h_halted
+        omega
+
+/-- Split a step count path at an intermediate point that is on the deterministic path to a halted config.
+    Returns step counts for both segments. -/
+theorem split_at_intermediate {init mid final : Config} {n : ℕ}
+    (h_total : StepsN p n init final)
+    (h_mid : Steps p init mid)
+    (h_halted : final.isHalted p) :
+    ∃ m1 m2, StepsN p m1 init mid ∧ StepsN p m2 mid final ∧ m1 + m2 = n := by
+  -- Get step count for first segment
+  obtain ⟨m1, hm1⟩ := fromSteps h_mid
+  -- Get steps from mid to final using deterministic continuation
+  have h_mid_to_final : Steps p mid final :=
+    Steps.deterministic_continuation h_mid h_total.toSteps h_halted
+  -- Get step count for second segment
+  obtain ⟨m2, hm2⟩ := fromSteps h_mid_to_final
+  use m1, m2, hm1, hm2
+  -- The combined path has step count m1 + m2
+  have h_combined : StepsN p (m1 + m2) init final := add hm1 hm2
+  -- By uniqueness, n = m1 + m2
+  exact stepsN_unique_halted h_combined h_total h_halted
+
+/-- If we take at least one step to reach mid, then remaining steps to halted final is strictly less. -/
+theorem split_strictly_smaller {init mid final : Config} {n : ℕ}
+    (h_total : StepsN p n init final)
+    (h_mid : Steps p init mid)
+    (h_halted : final.isHalted p)
+    (h_moved : init ≠ mid) :
+    ∃ m, m < n ∧ StepsN p m mid final := by
+  obtain ⟨m1, m2, hm1, hm2, heq⟩ := split_at_intermediate h_total h_mid h_halted
+  use m2, ?_, hm2
+  -- Need m2 < n, i.e., m2 < m1 + m2, i.e., m1 > 0
+  have hm1_pos : m1 > 0 := by
+    by_contra hm1_zero
+    push_neg at hm1_zero
+    have hm1_eq_zero : m1 = 0 := Nat.le_zero.mp hm1_zero
+    have : mid = init := zero_inv (hm1_eq_zero ▸ hm1)
+    exact h_moved this.symm
+  omega
+
+end StepsN
 
 end Urm
