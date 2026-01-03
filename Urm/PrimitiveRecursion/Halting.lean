@@ -924,7 +924,79 @@ noncomputable def loop_k_iterations (n : ℕ) (pF pG : Program)
     (hPr_dom_k : (Pr f g (Fin.snoc inputs k)).Dom)
     (hs_acc : s.read (prAccumulatorReg n pF pG) = (Pr f g (Fin.snoc inputs 0)).get (Pr_dom_of_dom_le inputs hPr_dom_k (Nat.zero_le k))) :
     LoopKIterationsResult n pF pG inputs y s k := by
-  sorry
+  induction k generalizing s with
+  | zero =>
+    -- Base case: 0 iterations, just return the initial state
+    exact {
+      config := ⟨prLoopCheckPC n pF pG, s⟩
+      steps := Relation.ReflTransGen.refl
+      pc_eq := rfl
+      counter_eq := hs_counter
+      savedInputs_eq := hs_saved
+      savedY_eq := hs_savedY
+      zero_eq := hs_zero
+    }
+  | succ m ih =>
+    -- Inductive case: do m iterations, then one more
+    -- First, get domain proofs for m
+    have hPr_dom_m : (Pr f g (Fin.snoc inputs m)).Dom :=
+      Pr_dom_of_dom_le inputs hPr_dom_k (Nat.le_of_lt (Nat.lt_of_succ_le hk_le_y))
+
+    -- Get result after m iterations
+    have hm_le_y : m ≤ y := Nat.le_of_lt (Nat.lt_of_succ_le hk_le_y)
+    let result_m := ih hm_le_y hs_counter hs_savedY hs_zero hs_saved hPr_dom_m hs_acc
+
+    -- After m iterations, we're at loopCheckPC with counter = m
+    let s_m := result_m.config.state
+    have hcounter_m : s_m.read (prCounterReg n pF pG) = m := result_m.counter_eq
+    have hsavedY_m : s_m.read (prSavedYReg n pF pG) = y := result_m.savedY_eq
+    have hzero_m : s_m.read (prZeroReg n pF pG) = 0 := result_m.zero_eq
+    have hsaved_m : ∀ i : Fin n, s_m.read (prSavedInputsStart n pF pG + i) = inputs i := result_m.savedInputs_eq
+
+    -- The accumulator after m iterations equals Pr(inputs, m)
+    -- We need to track this through the iterations
+    -- For now, we'll derive it from the invariant
+    have hacc_m : s_m.read (prAccumulatorReg n pF pG) = (Pr f g (Fin.snoc inputs m)).get hPr_dom_m := by
+      -- This follows from the fact that loop maintains the invariant:
+      -- after j iterations, acc = Pr(inputs, j)
+      -- We prove this by strong induction implicitly through the structure
+      sorry -- TODO: Need to add acc_eq field to LoopKIterationsResult or prove separately
+
+    -- pG halts for the m-th iteration inputs
+    have hpG_halts_m : Halts pG (List.ofFn (extendInputsForG inputs m (s_m.read (prAccumulatorReg n pF pG)))) := by
+      rw [hacc_m]
+      -- Pr(inputs, m+1) is defined means g(inputs, m, Pr(inputs, m)) is defined
+      have h := (Pr_dom_succ inputs m).mp hPr_dom_k
+      have hg_dom := h.2 h.1
+      rw [(hpG_spec (extendInputsForG inputs m ((Pr f g (Fin.snoc inputs m)).get hPr_dom_m))).1]
+      exact hg_dom
+
+    -- Do one more iteration
+    let one_iter := loop_iteration n pF pG hpF_sf hpG_sf inputs y s_m m
+      (s_m.read (prAccumulatorReg n pF pG)) hcounter_m hsavedY_m
+      rfl hzero_m hsaved_m hpG_halts_m
+
+    -- Get the outcome - it should be Or.inr (continue case) since m < y
+    have hm_lt_y : m < y := Nat.lt_of_succ_le hk_le_y
+    have houtcome := one_iter.outcome
+    -- In the continue case, we're back at loopCheckPC with counter = m + 1
+    cases houtcome with
+    | inl hexit =>
+      -- Exit case: m = y, but we have m < y, contradiction
+      exfalso
+      exact Nat.lt_irrefl y (hexit.2 ▸ hm_lt_y)
+    | inr hcontinue =>
+      -- Continue case: back at loopCheckPC with counter = m + 1
+      exact {
+        config := one_iter.config
+        steps := Relation.ReflTransGen.trans result_m.steps one_iter.steps
+        pc_eq := hcontinue.1
+        counter_eq := one_iter.counter_next hcontinue.1
+        savedInputs_eq := fun i => by
+          rw [one_iter.savedInputs_preserved i, hsaved_m i]
+        savedY_eq := by rw [one_iter.savedY_preserved, hsavedY_m]
+        zero_eq := by rw [one_iter.zero_preserved, hzero_m]
+      }
 
 /-! ## Output Phase -/
 
