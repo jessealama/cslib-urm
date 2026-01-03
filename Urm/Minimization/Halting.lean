@@ -794,7 +794,7 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
       have hnum_pos : numSteps > 0 := by
         by_contra hnum_zero
         push_neg at hnum_zero
-        have hc''_eq : c'' = ⟨pFOffset n pF + k, state''⟩ := StepsN.zero_inv (Nat.le_zero.mp hnum_zero) hstepsN
+        have hc''_eq : c'' = ⟨pFOffset n pF + k, state''⟩ := StepsN.zero_inv ((Nat.le_zero.mp hnum_zero) ▸ hstepsN)
         have hc''_pc : c''.pc = pFOffset n pF + k := by rw [hc''_eq]
         omega
       -- Decompose into first step + rest
@@ -893,7 +893,7 @@ noncomputable def loop_halts_exit_gen_aux (n : ℕ) (pF : Program) (hpF_sf : pF.
   -- Show loopStartPC is not halted (contradiction if numSteps = 0)
   if hNumSteps : numSteps = 0 then
     absurd hhalted (by
-      have hcFinal_eq : cFinal = ⟨loopStartPC n, s⟩ := StepsN.zero_inv hNumSteps hstepsN
+      have hcFinal_eq : cFinal = ⟨loopStartPC n, s⟩ := StepsN.zero_inv (hNumSteps ▸ hstepsN)
       rw [hcFinal_eq]
       simp only [Config.isHalted, minimizeProgram_length, loopStartPC, setupPhaseLength,
         outputPC, pFOffset, loopPrologueLength]

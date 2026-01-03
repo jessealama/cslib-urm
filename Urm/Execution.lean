@@ -265,8 +265,8 @@ theorem fromSteps {c c' : Config} (h : Steps p c c') : ∃ n, StepsN p n c c' :=
     exact ⟨m + 1, StepsN.succ hstep hstepsN⟩
 
 /-- If StepsN 0, then the configs are equal. -/
-theorem zero_inv {c c' : Config} (hzero : n = 0) (h : StepsN p n c c') : c' = c := by
-  subst hzero; cases h; rfl
+theorem zero_inv {c c' : Config} (h : StepsN p 0 c c') : c' = c := by
+  cases h; rfl
 
 /-- If StepsN with n > 0, decompose into first step. -/
 theorem succ_inv {c c' : Config} (hn : n ≠ 0) (h : StepsN p n c c') :
@@ -339,8 +339,7 @@ theorem split_strictly_smaller {init mid final : Config} {n : ℕ}
     by_contra hm1_zero
     push_neg at hm1_zero
     have hm1_eq_zero : m1 = 0 := Nat.le_zero.mp hm1_zero
-    -- m1 = 0 means init = mid
-    have : mid = init := zero_inv hm1_eq_zero hm1
+    have : mid = init := zero_inv (hm1_eq_zero ▸ hm1)
     exact h_moved this.symm
   omega
 
