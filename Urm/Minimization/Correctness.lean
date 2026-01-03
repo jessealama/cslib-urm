@@ -151,15 +151,8 @@ theorem minimizeProgram_result (n : ℕ) (pF : Program)
       have hk_lt_k' : k < k' := hk'_gt
       -- By μ_min, for y' < k', f returns non-zero
       obtain ⟨v, hv_eq, hv_ne0⟩ := μ_min hDom hk_lt_k'
-      -- But f(k) = Part.some 0
       rw [hf_k_zero] at hv_eq
-      -- Part.some v = Part.some 0 implies v = 0
-      have hv_zero : v = 0 := by
-        rw [Part.eq_some_iff] at hv_eq
-        have hv_mem : v ∈ Part.some 0 := hv_eq
-        simp only [Part.mem_some_iff] at hv_mem
-        exact hv_mem
-      exact hv_ne0 hv_zero
+      exact hv_ne0 (Part.some_inj.mp hv_eq.symm)
 
   -- Combine: Result = k = k' = (μ f inputs).get hDom
   rw [hResult_eq_k, hk_eq_k']
