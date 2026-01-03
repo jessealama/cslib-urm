@@ -561,4 +561,15 @@ theorem Halts.shift_from_state {p : Program} {inputs : List ℕ} {σ : State}
     | head hstep _ => exact absurd hstep (Step.halted_no_step hd_halted)
   rw [hd_eq_choose]; rfl
 
+/-- If a program halts from a state agreeing with inputs on all relevant registers,
+    then it halts on those inputs. -/
+theorem Halts.of_agreeing_state {p : Program} {inputs : List ℕ} {s : State} {c : Config}
+    (hsteps : Steps p ⟨0, s⟩ c) (hhalted : c.isHalted p)
+    (hagree : ∀ r, r ≤ p.maxRegister → s.read r = (State.fromInputs inputs).read r) :
+    Halts p inputs := by
+  have hagree' : s.agreeOn (State.fromInputs inputs) 0 p.maxRegister := fun r _ hhi => hagree r hhi
+  have hpc_eq : (⟨0, s⟩ : Config).pc = (Config.init inputs).pc := rfl
+  obtain ⟨c', hsteps', hpc', _⟩ := Steps.agreeOn hsteps hpc_eq hagree'
+  exact ⟨c', hsteps', by simp only [Config.isHalted] at hhalted ⊢; omega⟩
+
 end Urm

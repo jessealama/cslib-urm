@@ -307,4 +307,110 @@ theorem clearRegistersFrom_preserves (start count : ℕ) (s : State) (r : ℕ)
   simp only [Instr.writesTo, ne_eq, Option.some.injEq]
   omega
 
+/-! ## clearRegisters and copyRegisterRange
+
+These are straight-line program building blocks used by both Composition and Minimization. -/
+
+namespace Program
+
+/-- Clear registers 0 to maxReg. -/
+def clearRegisters (maxReg : ℕ) : Program := (List.range (maxReg + 1)).map Instr.Z
+
+/-- Copy a range of registers: copies count registers starting at srcStart to dstStart. -/
+def copyRegisterRange (srcStart dstStart count : ℕ) : Program :=
+  (List.range count).map fun i => Instr.T (srcStart + i) (dstStart + i)
+
+end Program
+
+@[simp]
+theorem clearRegisters_length (maxReg : ℕ) :
+    (Program.clearRegisters maxReg).length = maxReg + 1 := by simp [Program.clearRegisters]
+
+@[simp]
+theorem copyRegisterRange_length (srcStart dstStart count : ℕ) :
+    (Program.copyRegisterRange srcStart dstStart count).length = count := by
+  simp [Program.copyRegisterRange]
+
+theorem clearRegisters_isStraightLine (maxReg : ℕ) :
+    (Program.clearRegisters maxReg).isStraightLine = true := by
+  simp only [Program.clearRegisters, Program.isStraightLine, List.all_map]
+  induction maxReg + 1 with
+  | zero => simp only [List.range_zero, List.all_nil]
+  | succ k ih => simp only [List.range_succ, List.all_append, ih, List.all_cons, List.all_nil,
+      Function.comp_apply, Instr.isNonJumping, Bool.and_self]
+
+theorem copyRegisterRange_isStraightLine (srcStart dstStart count : ℕ) :
+    (Program.copyRegisterRange srcStart dstStart count).isStraightLine = true := by
+  simp only [Program.copyRegisterRange, Program.isStraightLine, List.all_map, List.all_eq_true]
+  intro i _; simp [Instr.isNonJumping]
+
+theorem copyRegisterRange_writesTo (srcStart dstStart count : ℕ)
+    (instr : Instr) (hinstr : instr ∈ Program.copyRegisterRange srcStart dstStart count) :
+    ∃ i < count, instr.writesTo = some (dstStart + i) := by
+  simp only [Program.copyRegisterRange, List.mem_map, List.mem_range] at hinstr
+  obtain ⟨i, hi, hinstr_eq⟩ := hinstr; exact ⟨i, hi, by simp [← hinstr_eq, Instr.writesTo]⟩
+
+theorem copyRegisterRange_preserves_outside (srcStart dstStart count : ℕ)
+    (r : ℕ) (hr : r < dstStart ∨ r ≥ dstStart + count) :
+    ∀ instr, instr ∈ Program.copyRegisterRange srcStart dstStart count → instr.writesTo ≠ some r := by
+  intro instr hinstr; obtain ⟨i, hi, hwrites⟩ := copyRegisterRange_writesTo srcStart dstStart count instr hinstr
+  rw [hwrites]; simp only [ne_eq, Option.some.injEq]; omega
+
+/-- clearRegisters preserves registers above maxReg. -/
+theorem clearRegisters_preserves_above (maxReg : ℕ) (s : State) (r : ℕ) (hr : r > maxReg) :
+    (straightLineFinalState (clearRegisters_isStraightLine maxReg) s).read r = s.read r := by
+  have hsl := clearRegisters_isStraightLine maxReg
+  have ⟨hsteps, _, _⟩ := straightLineFinalState_spec hsl s
+  apply Steps.straightLine_preserves hsl hsteps
+  intro instr hmem
+  simp only [Program.clearRegisters, List.mem_map, List.mem_range] at hmem
+  obtain ⟨i, hi, rfl⟩ := hmem
+  simp only [Instr.writesTo, ne_eq, Option.some.injEq]; omega
+
+/-! ## straightLine_transfer_result
+
+Helper for reasoning about T instructions in straight-line programs. -/
+
+/-- Helper: after a T instruction executes, we can reach the next pc with the transfer done. -/
+private theorem straightLine_transfer_after_exec {p : Program} (_hsl : p.isStraightLine = true)
+    (s : State) (k src dst : ℕ) (hk : k < p.length) (hwrite : p[k] = Instr.T src dst)
+    (c_k : Config) (hsteps_k : Steps p ⟨0, s⟩ c_k) (hpc_k : c_k.pc = k) :
+    ∃ c, Steps p ⟨0, s⟩ c ∧ c.pc = k + 1 ∧ c.state.read dst = c_k.state.read src := by
+  have hinstr : p.getInstr k = some (Instr.T src dst) := by simp only [Program.getInstr, List.getElem?_eq_getElem hk, hwrite]
+  have hinstr' : p.getInstr c_k.pc = some (Instr.T src dst) := hpc_k ▸ hinstr
+  let c_next : Config := ⟨c_k.pc + 1, c_k.state.write dst (c_k.state.read src)⟩
+  refine ⟨c_next, Relation.ReflTransGen.tail hsteps_k (Step.trans hinstr'), by simp [c_next, hpc_k], by simp [c_next]⟩
+
+/-- For a straight-line program with a T instruction at position k, the final state has
+    the transfer result if no later instruction overwrites the destination. -/
+theorem straightLine_transfer_result {p : Program} (hsl : p.isStraightLine = true)
+    (s : State) (k src dst : ℕ) (hk : k < p.length) (hwrite : p[k] = Instr.T src dst)
+    (hnowrite : ∀ j (hj : j < p.length), k < j → (p[j]'hj).writesTo ≠ some dst) :
+    ∃ s_before : State,
+      (∃ c, Steps p ⟨0, s⟩ c ∧ c.pc = k ∧ c.state = s_before) ∧
+      (straightLineFinalState hsl s).read dst = s_before.read src := by
+  obtain ⟨c_k, hsteps_k, hpc_k⟩ := straightLine_state_at_pc hsl s k (Nat.le_of_lt hk)
+  refine ⟨c_k.state, ⟨c_k, hsteps_k, hpc_k, rfl⟩, ?_⟩
+  have ⟨hsteps_final, hhalted, _⟩ := straightLineFinalState_spec hsl s
+  obtain ⟨c_after_k, hsteps_to_after_k, _, hval⟩ :=
+    straightLine_transfer_after_exec hsl s k src dst hk hwrite c_k hsteps_k hpc_k
+  let final := Classical.choose (straightLine_halts_from_state hsl s)
+  have hsteps_suffix := Steps.deterministic_continuation hsteps_to_after_k hsteps_final hhalted
+  show (Classical.choose (straightLine_halts_from_state hsl s)).state.read dst = c_k.state.read src
+  suffices h : ∀ a b, a.pc > k → Steps p a b → b.isHalted p → b.state.read dst = a.state.read dst by
+    rw [h c_after_k final (by omega) hsteps_suffix hhalted, hval]
+  intro a b hpc_gt hsteps hhalted_b
+  induction hsteps using Relation.ReflTransGen.head_induction_on with
+  | refl => rfl
+  | @head a' c' hstep hrest ih =>
+    have ha'_pc_lt := Step.pc_lt_length hstep
+    have hc'_pc_gt : c'.pc > k := by
+      cases hstep with
+      | zero _ | succ _ | trans _ | jump_ne _ _ => simp only []; omega
+      | jump_eq h heq' =>
+        simp only [Program.isStraightLine, List.all_eq_true] at hsl
+        exact absurd (hsl _ ((List.getElem?_eq_some_iff.mp h).2 ▸ List.getElem_mem ha'_pc_lt)) (by simp [Instr.isNonJumping])
+    rw [ih hc'_pc_gt]; apply Step.straightLine_preserves hsl hstep; intro instr hinstr
+    rw [← (List.getElem?_eq_some_iff.mp hinstr).2]; exact hnowrite a'.pc ha'_pc_lt hpc_gt
+
 end Urm

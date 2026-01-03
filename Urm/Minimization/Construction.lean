@@ -5,7 +5,7 @@ Authors: Jesse Alama
 -/
 
 import Urm.Minimization.Base
-import Urm.Composition.Core
+import Urm.Concat
 
 /-! # Program Construction for Minimization
 

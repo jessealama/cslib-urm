@@ -5,7 +5,6 @@ Authors: Jesse Alama
 -/
 
 import Urm.Minimization.StandardForm
-import Urm.Composition.Preservation
 
 /-! # Preservation Lemmas for Minimization
 

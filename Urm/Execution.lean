@@ -81,6 +81,44 @@ theorem halted_no_step {c c' : Config} (hhalted : c.isHalted p) : ¬Step p c c' 
 theorem pc_lt_length {c c' : Config} (hstep : Step p c c') : c.pc < p.length := by
   by_contra hc; exact halted_no_step (Nat.not_lt.mp hc) hstep
 
+/-- If an instruction is at position i, its maxRegister is at most p.maxRegister. -/
+private theorem instr_maxRegister_le {i : ℕ} {instr : Instr}
+    (h : p.getInstr i = some instr) : instr.maxRegister ≤ p.maxRegister := by
+  simp only [Program.getInstr] at h
+  have hi : i < p.length := by by_contra hc; simp only [not_lt] at hc; simp [List.getElem?_eq_none hc] at h
+  have foldl_ge_init : ∀ (init : ℕ) (l : List Instr), init ≤ l.foldl (fun acc i => max acc i.maxRegister) init := by
+    intro init l; induction l generalizing init with
+    | nil => exact Nat.le_refl _
+    | cons h t iht => exact Nat.le_trans (Nat.le_max_left _ _) (iht _)
+  have foldl_mono : ∀ (a b : ℕ) (l : List Instr), a ≤ b →
+      l.foldl (fun acc i => max acc i.maxRegister) a ≤ l.foldl (fun acc i => max acc i.maxRegister) b := by
+    intro a b l hab; induction l generalizing a b with
+    | nil => exact hab
+    | cons h t iht => simp only [List.foldl_cons]; apply iht; omega
+  induction p generalizing i instr with
+  | nil => simp at h
+  | cons hd tl ih =>
+    simp only [Program.maxRegister, List.foldl_cons]
+    cases i with
+    | zero =>
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at h; subst h
+      exact Nat.le_trans (Nat.le_max_right 0 _) (foldl_ge_init _ _)
+    | succ j =>
+      simp only [List.getElem?_cons_succ] at h
+      have hj : j < tl.length := by simp at hi; omega
+      have ih' := ih h hj; simp only [Program.maxRegister] at ih'
+      exact Nat.le_trans ih' (foldl_mono 0 _ tl (Nat.zero_le _))
+
+/-- A step preserves any register above p.maxRegister (cannot be read or written). -/
+theorem preserves_high_register {c c' : Config} (hstep : Step p c c') (r : ℕ)
+    (hr : p.maxRegister < r) : c'.state.read r = c.state.read r := by
+  cases hstep with
+  | zero h | succ h | trans h =>
+    have hinstr := instr_maxRegister_le h
+    simp only [Instr.maxRegister] at hinstr
+    simp only [State.read, State.write]; exact Function.update_of_ne (by omega) _ _
+  | jump_eq _ _ | jump_ne _ _ => rfl
+
 end Step
 
 namespace Steps
@@ -152,6 +190,13 @@ theorem deterministic_continuation {init c c' : Config}
       have heq : _ = _ := Step.deterministic hstep_c hstep_c'
       subst heq
       exact ih hrest'
+
+/-- Multi-step execution preserves any register above p.maxRegister. -/
+theorem preserves_high_register {c c' : Config} (hsteps : Steps p c c') (r : ℕ)
+    (hr : p.maxRegister < r) : c'.state.read r = c.state.read r := by
+  induction hsteps using Relation.ReflTransGen.head_induction_on with
+  | refl => rfl
+  | head hstep _ ih => rw [ih]; exact Step.preserves_high_register hstep r hr
 
 end Steps
 

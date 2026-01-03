@@ -5,6 +5,7 @@ Authors: Jesse Alama
 -/
 
 import Urm.Minimization.Preservation
+import Urm.Shift
 
 /-! # Halting Proofs for Minimization
 

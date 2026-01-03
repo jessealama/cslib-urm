@@ -17,28 +17,10 @@ namespace Urm
 
 namespace Program
 
-def clearRegisters (maxReg : ℕ) : Program := (List.range (maxReg + 1)).map Instr.Z
-
-def copyRegisterRange (srcStart dstStart count : ℕ) : Program :=
-  (List.range count).map fun i => Instr.T (srcStart + i) (dstStart + i)
-
 def transferResultsToInputs (resultStart arityF : ℕ) : Program :=
   (List.range arityF).map fun i => Instr.T (resultStart + i) i
 
 end Program
-
-@[simp]
-theorem clearRegisters_length (maxReg : ℕ) :
-    (Program.clearRegisters maxReg).length = maxReg + 1 := by simp [Program.clearRegisters]
-
-@[simp]
-theorem copyRegisterRange_length (srcStart dstStart count : ℕ) :
-    (Program.copyRegisterRange srcStart dstStart count).length = count := by simp [Program.copyRegisterRange]
-
-theorem copyRegisterRange_isStraightLine (srcStart dstStart count : ℕ) :
-    (Program.copyRegisterRange srcStart dstStart count).isStraightLine = true := by
-  simp only [Program.copyRegisterRange, Program.isStraightLine, List.all_map, List.all_eq_true]
-  intro i _; simp [Instr.isNonJumping]
 
 theorem copyRegisterRange_isStandardForm (srcStart dstStart count : ℕ) :
     (Program.copyRegisterRange srcStart dstStart count).IsStandardForm :=
@@ -57,63 +39,6 @@ theorem transferResultsToInputs_isStraightLine (resultStart arityF : ℕ) :
 theorem transferResultsToInputs_isStandardForm (resultStart arityF : ℕ) :
     (Program.transferResultsToInputs resultStart arityF).IsStandardForm :=
   straightLine_isStandardForm (transferResultsToInputs_isStraightLine resultStart arityF)
-
-section RegisterIsolation
-
-variable {p : Program}
-
-theorem Program.instr_maxRegister_le {i : ℕ} {instr : Instr}
-    (h : p.getInstr i = some instr) : instr.maxRegister ≤ p.maxRegister := by
-  simp only [Program.getInstr] at h
-  have hi : i < p.length := by by_contra hc; simp only [not_lt] at hc; simp [List.getElem?_eq_none hc] at h
-  have foldl_ge_init : ∀ (init : ℕ) (l : List Instr), init ≤ l.foldl (fun acc i => max acc i.maxRegister) init := by
-    intro init l; induction l generalizing init with
-    | nil => exact Nat.le_refl _
-    | cons h t iht => exact Nat.le_trans (Nat.le_max_left _ _) (iht _)
-  have foldl_mono : ∀ (a b : ℕ) (l : List Instr), a ≤ b →
-      l.foldl (fun acc i => max acc i.maxRegister) a ≤ l.foldl (fun acc i => max acc i.maxRegister) b := by
-    intro a b l hab; induction l generalizing a b with
-    | nil => exact hab
-    | cons h t iht => simp only [List.foldl_cons]; apply iht; exact max_le_max hab (Nat.le_refl _)
-  induction p generalizing i instr with
-  | nil => simp at h
-  | cons hd tl ih =>
-    simp only [Program.maxRegister, List.foldl_cons]
-    cases i with
-    | zero =>
-      simp only [List.getElem?_cons_zero, Option.some.injEq] at h; subst h
-      exact Nat.le_trans (Nat.le_max_right 0 _) (foldl_ge_init _ _)
-    | succ j =>
-      simp only [List.getElem?_cons_succ] at h
-      have hj : j < tl.length := by simp at hi; omega
-      have ih' := ih h hj; simp only [Program.maxRegister] at ih'
-      exact Nat.le_trans ih' (foldl_mono 0 _ tl (Nat.zero_le _))
-
-theorem Step.preserves_high_register {c c' : Config} (hstep : Step p c c') (r : ℕ)
-    (hr : p.maxRegister < r) : c'.state.read r = c.state.read r := by
-  cases hstep with
-  | zero h | succ h | trans h =>
-    have hinstr := Program.instr_maxRegister_le h
-    simp only [Instr.maxRegister] at hinstr
-    simp only [State.read, State.write]; exact Function.update_of_ne (by omega) _ _
-  | jump_eq _ _ | jump_ne _ _ => rfl
-
-theorem Steps.preserves_high_register {c c' : Config} (hsteps : Steps p c c') (r : ℕ)
-    (hr : p.maxRegister < r) : c'.state.read r = c.state.read r := by
-  induction hsteps using Relation.ReflTransGen.head_induction_on with
-  | refl => rfl
-  | head hstep _ ih => rw [ih]; exact Step.preserves_high_register hstep r hr
-
-end RegisterIsolation
-
-theorem Halts.of_agreeing_state {p : Program} {inputs : List ℕ} {s : State} {c : Config}
-    (hsteps : Steps p ⟨0, s⟩ c) (hhalted : c.isHalted p)
-    (hagree : ∀ r, r ≤ p.maxRegister → s.read r = (State.fromInputs inputs).read r) :
-    Halts p inputs := by
-  have hagree' : s.agreeOn (State.fromInputs inputs) 0 p.maxRegister := fun r _ hhi => hagree r hhi
-  have hpc_eq : (⟨0, s⟩ : Config).pc = (Config.init inputs).pc := rfl
-  obtain ⟨c', hsteps', hpc', _⟩ := Steps.agreeOn hsteps hpc_eq hagree'
-  exact ⟨c', hsteps', by simp only [Config.isHalted] at hhalted ⊢; omega⟩
 
 def Part.sequence {α : Type*} : {n : ℕ} → (Fin n → Part α) → Part (Fin n → α)
   | 0, _ => Part.some Fin.elim0
@@ -183,29 +108,9 @@ theorem Halts.prefix_of_concat_sf {p1 p2 : Program} {inputs : List ℕ}
     (hH : Halts (p1.concat p2) inputs) (h1 : p1.IsStandardForm) : Halts p1 inputs := by
   obtain ⟨cH, hsteps, hhalted⟩ := hH; exact prefix_of_concat_from_zero hsteps hhalted h1
 
-theorem clearRegisters_isStraightLine (maxReg : ℕ) :
-    (Program.clearRegisters maxReg).isStraightLine = true := by
-  simp only [Program.clearRegisters, Program.isStraightLine, List.all_map]
-  induction maxReg + 1 with
-  | zero => simp only [List.range_zero, List.all_nil]
-  | succ k ih => simp only [List.range_succ, List.all_append, ih, List.all_cons, List.all_nil,
-      Function.comp_apply, Instr.isNonJumping, Bool.and_self]
-
 theorem clearRegisters_isStandardForm (maxReg : ℕ) :
     (Program.clearRegisters maxReg).IsStandardForm :=
   straightLine_isStandardForm (clearRegisters_isStraightLine maxReg)
-
-theorem copyRegisterRange_writesTo (srcStart dstStart count : ℕ)
-    (instr : Instr) (hinstr : instr ∈ Program.copyRegisterRange srcStart dstStart count) :
-    ∃ i < count, instr.writesTo = some (dstStart + i) := by
-  simp only [Program.copyRegisterRange, List.mem_map, List.mem_range] at hinstr
-  obtain ⟨i, hi, hinstr_eq⟩ := hinstr; exact ⟨i, hi, by simp [← hinstr_eq, Instr.writesTo]⟩
-
-theorem copyRegisterRange_preserves_outside (srcStart dstStart count : ℕ)
-    (r : ℕ) (hr : r < dstStart ∨ r ≥ dstStart + count) :
-    ∀ instr, instr ∈ Program.copyRegisterRange srcStart dstStart count → instr.writesTo ≠ some r := by
-  intro instr hinstr; obtain ⟨i, hi, hwrites⟩ := copyRegisterRange_writesTo srcStart dstStart count instr hinstr
-  rw [hwrites]; simp only [ne_eq, Option.some.injEq]; omega
 
 theorem transferResultsToInputs_writesTo (resultStart arityF : ℕ)
     (instr : Instr) (hinstr : instr ∈ Program.transferResultsToInputs resultStart arityF) :
@@ -217,45 +122,6 @@ theorem transferResultsToInputs_preserves_outside (resultStart arityF : ℕ) (r 
     ∀ instr, instr ∈ Program.transferResultsToInputs resultStart arityF → instr.writesTo ≠ some r := by
   intro instr hinstr; obtain ⟨i, hi, hwrites⟩ := transferResultsToInputs_writesTo resultStart arityF instr hinstr
   rw [hwrites]; simp only [ne_eq, Option.some.injEq]; omega
-
-theorem straightLine_transfer_after_exec {p : Program} (_hsl : p.isStraightLine = true)
-    (s : State) (k src dst : ℕ) (hk : k < p.length) (hwrite : p[k] = Instr.T src dst)
-    (c_k : Config) (hsteps_k : Steps p ⟨0, s⟩ c_k) (hpc_k : c_k.pc = k) :
-    ∃ c, Steps p ⟨0, s⟩ c ∧ c.pc = k + 1 ∧ c.state.read dst = c_k.state.read src := by
-  have hinstr : p.getInstr k = some (Instr.T src dst) := by simp only [Program.getInstr, List.getElem?_eq_getElem hk, hwrite]
-  have hinstr' : p.getInstr c_k.pc = some (Instr.T src dst) := hpc_k ▸ hinstr
-  let c_next : Config := ⟨c_k.pc + 1, c_k.state.write dst (c_k.state.read src)⟩
-  refine ⟨c_next, Relation.ReflTransGen.tail hsteps_k (Step.trans hinstr'), by simp [c_next, hpc_k], by simp [c_next]⟩
-
-theorem straightLine_transfer_result {p : Program} (hsl : p.isStraightLine = true)
-    (s : State) (k src dst : ℕ) (hk : k < p.length) (hwrite : p[k] = Instr.T src dst)
-    (hnowrite : ∀ j (hj : j < p.length), k < j → (p[j]'hj).writesTo ≠ some dst) :
-    ∃ s_before : State,
-      (∃ c, Steps p ⟨0, s⟩ c ∧ c.pc = k ∧ c.state = s_before) ∧
-      (straightLineFinalState hsl s).read dst = s_before.read src := by
-  obtain ⟨c_k, hsteps_k, hpc_k⟩ := straightLine_state_at_pc hsl s k (Nat.le_of_lt hk)
-  refine ⟨c_k.state, ⟨c_k, hsteps_k, hpc_k, rfl⟩, ?_⟩
-  have ⟨hsteps_final, hhalted, _⟩ := straightLineFinalState_spec hsl s
-  obtain ⟨c_after_k, hsteps_to_after_k, _, hval⟩ :=
-    straightLine_transfer_after_exec hsl s k src dst hk hwrite c_k hsteps_k hpc_k
-  let final := Classical.choose (straightLine_halts_from_state hsl s)
-  have hsteps_suffix := Steps.deterministic_continuation hsteps_to_after_k hsteps_final hhalted
-  show (Classical.choose (straightLine_halts_from_state hsl s)).state.read dst = c_k.state.read src
-  suffices h : ∀ a b, a.pc > k → Steps p a b → b.isHalted p → b.state.read dst = a.state.read dst by
-    rw [h c_after_k final (by omega) hsteps_suffix hhalted, hval]
-  intro a b hpc_gt hsteps hhalted_b
-  induction hsteps using Relation.ReflTransGen.head_induction_on with
-  | refl => rfl
-  | @head a' c' hstep hrest ih =>
-    have ha'_pc_lt := Step.pc_lt_length hstep
-    have hc'_pc_gt : c'.pc > k := by
-      cases hstep with
-      | zero h | succ h | trans h | jump_ne h _ => simp only []; omega
-      | jump_eq h heq' =>
-        simp only [Program.isStraightLine, List.all_eq_true] at hsl
-        exact absurd (hsl _ ((List.getElem?_eq_some_iff.mp h).2 ▸ List.getElem_mem ha'_pc_lt)) (by simp [Instr.isNonJumping])
-    rw [ih hc'_pc_gt]; apply Step.straightLine_preserves hsl hstep; intro instr hinstr
-    rw [← (List.getElem?_eq_some_iff.mp hinstr).2]; exact hnowrite a'.pc ha'_pc_lt hpc_gt
 
 section Continuation
 
