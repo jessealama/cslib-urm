@@ -377,8 +377,8 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
   -- Show that c_pF'.pc = pF.length (since pF is standard form)
   have hhalted_pF' : c_pF'.isHalted pF := by
     unfold Config.isHalted; rw [← hpc_pF']; exact hhalted_pF
-  have hpc_pF'_length : c_pF'.pc = pF.length := by
-    exact hpF_sf.pc_eq_length_of_halted hsteps_pF' (Nat.zero_le _) hhalted_pF'
+  have hpc_pF'_length : c_pF'.pc = pF.length :=
+    hpF_sf.pc_eq_length_of_halted hsteps_pF' (Nat.zero_le _) hhalted_pF'
 
   -- Simplify the lifted steps: we go from pFOffset to pFOffset + pF.length
   -- Note: c₂.state = c_prologue.state by definition
