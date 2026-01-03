@@ -54,43 +54,57 @@ def savedInputsStart (n : ℕ) (pF : Program) : ℕ :=
 
 /-! ## Register distinctness lemmas -/
 
-theorem counterReg_gt_base (n : ℕ) (pF : Program) :
+@[simp] theorem counterReg_gt_base (n : ℕ) (pF : Program) :
     minimizationBase n pF < counterReg n pF := by
   simp only [counterReg]; omega
 
-theorem zeroReg_gt_counterReg (n : ℕ) (pF : Program) :
+@[simp] theorem zeroReg_gt_counterReg (n : ℕ) (pF : Program) :
     counterReg n pF < zeroReg n pF := by
   simp only [counterReg, zeroReg]; omega
 
-theorem zeroReg_gt_base (n : ℕ) (pF : Program) :
+@[simp] theorem zeroReg_gt_base (n : ℕ) (pF : Program) :
     minimizationBase n pF < zeroReg n pF := by
   simp only [zeroReg]; omega
 
-theorem savedInputsStart_gt_base (n : ℕ) (pF : Program) :
+@[simp] theorem savedInputsStart_gt_base (n : ℕ) (pF : Program) :
     minimizationBase n pF < savedInputsStart n pF := by
   simp only [savedInputsStart]; omega
 
+@[simp] theorem counterReg_ne_zeroReg (n : ℕ) (pF : Program) :
+    counterReg n pF ≠ zeroReg n pF := Nat.ne_of_lt (zeroReg_gt_counterReg n pF)
+
+@[simp] theorem zeroReg_ne_counterReg (n : ℕ) (pF : Program) :
+    zeroReg n pF ≠ counterReg n pF := (counterReg_ne_zeroReg n pF).symm
+
 /-! ## Saved inputs don't overlap with working space -/
 
-theorem savedInputsStart_gt_n (n : ℕ) (pF : Program) :
+@[simp] theorem savedInputsStart_gt_n (n : ℕ) (pF : Program) :
     n ≤ savedInputsStart n pF := by
   simp only [savedInputsStart]; have := minimizationBase_ge_n n pF; omega
 
-theorem savedInput_reg_distinct (n : ℕ) (pF : Program) (i : Fin n) :
+@[simp] theorem savedInput_reg_distinct (n : ℕ) (pF : Program) (i : Fin n) :
     savedInputsStart n pF + i ≠ i.val := by
   simp only [savedInputsStart]; have := minimizationBase_ge_n n pF; omega
 
+@[simp] theorem savedInputs_ne_counterReg (n : ℕ) (pF : Program) (i : Fin n) :
+    savedInputsStart n pF + i ≠ counterReg n pF := by
+  simp only [savedInputsStart, counterReg, minimizationBase]; omega
+
+@[simp] theorem counterReg_ne_savedInputs (n : ℕ) (pF : Program) (i : Fin n) :
+    counterReg n pF ≠ savedInputsStart n pF + i :=
+  (savedInputs_ne_counterReg n pF i).symm
+
 /-! ## pF doesn't touch high registers -/
 
-theorem pF_doesnt_touch_savedInputs (n : ℕ) (pF : Program) (i : Fin n) :
+@[simp] theorem pF_doesnt_touch_savedInputs (n : ℕ) (pF : Program) (i : Fin n) :
     pF.maxRegister < savedInputsStart n pF + i := by
   simp only [savedInputsStart]; have := minimizationBase_ge_pF n pF; omega
 
-theorem pF_doesnt_touch_counter (n : ℕ) (pF : Program) :
+@[simp] theorem pF_doesnt_touch_counter (n : ℕ) (pF : Program) :
     pF.maxRegister < counterReg n pF := by
   simp only [counterReg]; have := minimizationBase_ge_pF n pF; omega
 
-theorem pF_doesnt_touch_zeroReg (n : ℕ) (pF : Program) :
+@[simp] theorem pF_doesnt_touch_zeroReg (n : ℕ) (pF : Program) :
     pF.maxRegister < zeroReg n pF := by
   simp only [zeroReg]; have := minimizationBase_ge_pF n pF; omega
 

@@ -90,24 +90,24 @@ def minimizeProgram (n : ℕ) (pF : Program) : Program :=
 
 /-! ## Length lemmas -/
 
-theorem setupPhase_length (n : ℕ) (pF : Program) :
+@[simp] theorem setupPhase_length (n : ℕ) (pF : Program) :
     (setupPhase n pF).length = setupPhaseLength n := by
   simp only [setupPhase, setupPhaseLength, List.length_append, copyRegisterRange_length, List.length]
 
-theorem loopPrologue_length (n : ℕ) (pF : Program) :
+@[simp] theorem loopPrologue_length (n : ℕ) (pF : Program) :
     (loopPrologue n pF).length = loopPrologueLength n pF := by
   simp only [loopPrologue, loopPrologueLength, List.length_append,
     clearRegisters_length, copyRegisterRange_length, List.length]
 
-theorem loopEpilogue_length (n : ℕ) (pF : Program) :
+@[simp] theorem loopEpilogue_length (n : ℕ) (pF : Program) :
     (loopEpilogue n pF).length = 3 := by
   simp only [loopEpilogue, List.length]
 
-theorem outputPhase_length (n : ℕ) (pF : Program) :
+@[simp] theorem outputPhase_length (n : ℕ) (pF : Program) :
     (outputPhase n pF).length = 1 := by
   simp only [outputPhase, List.length]
 
-theorem minimizeProgram_length (n : ℕ) (pF : Program) :
+@[simp] theorem minimizeProgram_length (n : ℕ) (pF : Program) :
     (minimizeProgram n pF).length = outputPC n pF + 1 := by
   simp only [minimizeProgram, outputPC, pFOffset, List.length_append,
     setupPhase_length, loopPrologue_length, shiftJumps_length,
@@ -135,7 +135,7 @@ theorem outputPC_eq (n : ℕ) (pF : Program) :
 def loopBody (n : ℕ) (pF : Program) : Program :=
   loopPrologue n pF ++ pF.shiftJumps (pFOffset n pF) ++ loopEpilogue n pF
 
-theorem loopBody_length (n : ℕ) (pF : Program) :
+@[simp] theorem loopBody_length (n : ℕ) (pF : Program) :
     (loopBody n pF).length = loopPrologueLength n pF + pF.length + 3 := by
   simp only [loopBody, List.length_append, loopPrologue_length,
     shiftJumps_length, loopEpilogue_length]
@@ -152,56 +152,38 @@ They eliminate repeated simp chains in Halting.lean. -/
 /-- PC at start of loop epilogue. -/
 def epilogueStartPC (n : ℕ) (pF : Program) : ℕ := pFOffset n pF + pF.length
 
-theorem instr_at_epilogue_J0 (n : ℕ) (pF : Program) :
-    (minimizeProgram n pF).getInstr (epilogueStartPC n pF) =
-      some (Instr.J 0 (zeroReg n pF) (outputPC n pF)) := by
+/-- Helper for epilogue instruction proofs: the common setup. -/
+private theorem epilogue_instr_setup (n : ℕ) (pF : Program) (k : ℕ) (hk : k < 3) :
+    (minimizeProgram n pF).getInstr (epilogueStartPC n pF + k) =
+      (loopEpilogue n pF)[k]? := by
   simp only [minimizeProgram, getInstr, epilogueStartPC, pFOffset, setupPhaseLength, loopPrologueLength,
     List.getElem?_append, List.length_append, setupPhase_length, loopPrologue_length,
     shiftJumps_length, loopEpilogue_length]
-  -- Navigate through the nested append conditionals
-  have h1 : ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length < n + 2) := by omega
-  have h2 : ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length <
-      n + 2 + (minimizationBase n pF + 1 + n + 1)) := by omega
-  have h3 : ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length <
-      n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length) := by omega
-  have h4 : n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length <
-      n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 := by omega
-  simp only [h1, h2, h3, h4, ite_true, ite_false, Nat.sub_self, loopEpilogue, List.getElem?_cons_zero]
+  simp only [show ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + k < n + 2) by omega,
+    show ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + k <
+      n + 2 + (minimizationBase n pF + 1 + n + 1)) by omega,
+    show ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + k <
+      n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length) by omega,
+    show n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + k <
+      n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 by omega,
+    show n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + k -
+      (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length) = k by omega,
+    ite_true, ite_false]
+
+theorem instr_at_epilogue_J0 (n : ℕ) (pF : Program) :
+    (minimizeProgram n pF).getInstr (epilogueStartPC n pF) =
+      some (Instr.J 0 (zeroReg n pF) (outputPC n pF)) := by
+  rw [show epilogueStartPC n pF = epilogueStartPC n pF + 0 from rfl,
+      epilogue_instr_setup n pF 0 (by omega), loopEpilogue]; rfl
 
 theorem instr_at_epilogue_S (n : ℕ) (pF : Program) :
     (minimizeProgram n pF).getInstr (epilogueStartPC n pF + 1) =
       some (Instr.S (counterReg n pF)) := by
-  simp only [minimizeProgram, getInstr, epilogueStartPC, pFOffset, setupPhaseLength, loopPrologueLength,
-    List.getElem?_append, List.length_append, setupPhase_length, loopPrologue_length,
-    shiftJumps_length, loopEpilogue_length]
-  have h1 : ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 1 < n + 2) := by omega
-  have h2 : ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 1 <
-      n + 2 + (minimizationBase n pF + 1 + n + 1)) := by omega
-  have h3 : ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 1 <
-      n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length) := by omega
-  have h4 : n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 1 <
-      n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 := by omega
-  have h5 : n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 1 -
-      (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length) = 1 := by omega
-  simp only [h1, h2, h3, h4, ite_true, ite_false, h5, loopEpilogue,
-    List.getElem?_cons_succ, List.getElem?_cons_zero]
+  rw [epilogue_instr_setup n pF 1 (by omega), loopEpilogue]; rfl
 
 theorem instr_at_epilogue_J1 (n : ℕ) (pF : Program) :
     (minimizeProgram n pF).getInstr (epilogueStartPC n pF + 2) =
       some (Instr.J (zeroReg n pF) (zeroReg n pF) (loopStartPC n)) := by
-  simp only [minimizeProgram, getInstr, epilogueStartPC, pFOffset, setupPhaseLength, loopPrologueLength,
-    List.getElem?_append, List.length_append, setupPhase_length, loopPrologue_length,
-    shiftJumps_length, loopEpilogue_length]
-  have h1 : ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 2 < n + 2) := by omega
-  have h2 : ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 2 <
-      n + 2 + (minimizationBase n pF + 1 + n + 1)) := by omega
-  have h3 : ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 2 <
-      n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length) := by omega
-  have h4 : n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 2 <
-      n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 := by omega
-  have h5 : n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 2 -
-      (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length) = 2 := by omega
-  simp only [h1, h2, h3, h4, ite_true, ite_false, h5, loopEpilogue,
-    List.getElem?_cons_succ, List.getElem?_cons_zero]
+  rw [epilogue_instr_setup n pF 2 (by omega), loopEpilogue]; rfl
 
 end Urm

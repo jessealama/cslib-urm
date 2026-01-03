@@ -32,30 +32,6 @@ theorem pF_preserves_high_reg (pF : Program) (s s' : State)
   subst hstate_eq
   exact Steps.preserves_high_register hsteps r hr
 
-/-- pF execution preserves the counter register. -/
-theorem pF_preserves_counter (n : ℕ) (pF : Program) (s s' : State)
-    (_hpF_max : pF.maxRegister ≤ minimizationBase n pF)
-    (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') (_hhalted : c'.isHalted pF)
-    (hstate_eq : c'.state = s') :
-    s'.read (counterReg n pF) = s.read (counterReg n pF) :=
-  pF_preserves_high_reg pF s s' c' hsteps hstate_eq _ (pF_doesnt_touch_counter n pF)
-
-/-- pF execution preserves the zero register. -/
-theorem pF_preserves_zeroReg (n : ℕ) (pF : Program) (s s' : State)
-    (_hpF_max : pF.maxRegister ≤ minimizationBase n pF)
-    (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') (_hhalted : c'.isHalted pF)
-    (hstate_eq : c'.state = s') :
-    s'.read (zeroReg n pF) = s.read (zeroReg n pF) :=
-  pF_preserves_high_reg pF s s' c' hsteps hstate_eq _ (pF_doesnt_touch_zeroReg n pF)
-
-/-- pF execution preserves saved input registers. -/
-theorem pF_preserves_savedInputs (n : ℕ) (pF : Program) (s s' : State)
-    (_hpF_max : pF.maxRegister ≤ minimizationBase n pF)
-    (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') (_hhalted : c'.isHalted pF)
-    (hstate_eq : c'.state = s') (i : Fin n) :
-    s'.read (savedInputsStart n pF + i) = s.read (savedInputsStart n pF + i) :=
-  pF_preserves_high_reg pF s s' c' hsteps hstate_eq _ (pF_doesnt_touch_savedInputs n pF i)
-
 /-! ## Setup Phase Results -/
 
 /-- Setup phase is a straight-line program. -/
@@ -363,33 +339,6 @@ theorem loopPrologue_preserves_high_register (n : ℕ) (pF : Program)
   have ⟨hsteps', hhalted', _⟩ := straightLineFinalState_spec hsl s
   rw [Steps.halts_unique hsteps hhalted hsteps' hhalted']
   exact Steps.straightLine_preserves hsl hsteps' hnowrite
-
-/-- Loop prologue preserves counter register. -/
-theorem loopPrologue_preserves_counter (n : ℕ) (pF : Program)
-    (s : State) (c' : Config)
-    (hsteps : Steps (loopPrologue n pF) ⟨0, s⟩ c')
-    (hhalted : c'.isHalted (loopPrologue n pF)) :
-    c'.state.read (counterReg n pF) = s.read (counterReg n pF) :=
-  loopPrologue_preserves_high_register n pF s c' hsteps hhalted (counterReg n pF)
-    (by simp [counterReg, minimizationBase]; omega)
-
-/-- Loop prologue preserves zero register. -/
-theorem loopPrologue_preserves_zeroReg (n : ℕ) (pF : Program)
-    (s : State) (c' : Config)
-    (hsteps : Steps (loopPrologue n pF) ⟨0, s⟩ c')
-    (hhalted : c'.isHalted (loopPrologue n pF)) :
-    c'.state.read (zeroReg n pF) = s.read (zeroReg n pF) :=
-  loopPrologue_preserves_high_register n pF s c' hsteps hhalted (zeroReg n pF)
-    (by simp [zeroReg, minimizationBase]; omega)
-
-/-- Loop prologue preserves saved inputs. -/
-theorem loopPrologue_preserves_savedInputs (n : ℕ) (pF : Program)
-    (s : State) (c' : Config)
-    (hsteps : Steps (loopPrologue n pF) ⟨0, s⟩ c')
-    (hhalted : c'.isHalted (loopPrologue n pF)) (i : Fin n) :
-    c'.state.read (savedInputsStart n pF + i) = s.read (savedInputsStart n pF + i) :=
-  loopPrologue_preserves_high_register n pF s c' hsteps hhalted (savedInputsStart n pF + i)
-    (by simp [savedInputsStart, minimizationBase]; omega)
 
 /-- Loop prologue clears registers in range [n+1, minimizationBase n pF].
     This is because clearRegisters zeros these registers and subsequent

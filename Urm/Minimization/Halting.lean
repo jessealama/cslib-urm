@@ -226,14 +226,17 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
     have := loopPrologue_sets_counter_input n pF s c_prologue hsteps_prologue hhalted_prologue
     rw [this, hs_counter]
   have hcounter_after_prologue : c_prologue.state.read (counterReg n pF) = k := by
-    have := loopPrologue_preserves_counter n pF s c_prologue hsteps_prologue hhalted_prologue
+    have := loopPrologue_preserves_high_register n pF s c_prologue hsteps_prologue hhalted_prologue
+      (counterReg n pF) (counterReg_gt_base n pF)
     rw [this, hs_counter]
   have hzero_after_prologue : c_prologue.state.read (zeroReg n pF) = 0 := by
-    have := loopPrologue_preserves_zeroReg n pF s c_prologue hsteps_prologue hhalted_prologue
+    have := loopPrologue_preserves_high_register n pF s c_prologue hsteps_prologue hhalted_prologue
+      (zeroReg n pF) (zeroReg_gt_base n pF)
     rw [this, hs_zero]
   have hsaved_after_prologue : ∀ i : Fin n, c_prologue.state.read (savedInputsStart n pF + i) = inputs i := by
     intro i
-    have := loopPrologue_preserves_savedInputs n pF s c_prologue hsteps_prologue hhalted_prologue i
+    have := loopPrologue_preserves_high_register n pF s c_prologue hsteps_prologue hhalted_prologue
+      (savedInputsStart n pF + i) (by have := savedInputsStart_gt_base n pF; omega)
     rw [this]
     exact hs_saved i
   -- Lift prologue steps to minimizeProgram
@@ -398,16 +401,18 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
   -- loopEpilogue = [J 0 zeroReg outputPC, S counter, J zeroReg zeroReg loopStartPC]
 
   -- Preservation: zeroReg and counter are unchanged by pF
-  have hpF_max : pF.maxRegister ≤ minimizationBase n pF := minimizationBase_ge_pF n pF
   have hzero_after_pF : c_pF'.state.read (zeroReg n pF) = 0 := by
-    have h := pF_preserves_zeroReg n pF c_prologue.state c_pF'.state hpF_max c_pF' hsteps_pF' hhalted_pF' rfl
+    have h := pF_preserves_high_reg pF c_prologue.state c_pF'.state c_pF' hsteps_pF' rfl
+      (zeroReg n pF) (pF_doesnt_touch_zeroReg n pF)
     rw [h, hzero_after_prologue]
   have hcounter_after_pF : c_pF'.state.read (counterReg n pF) = k := by
-    have h := pF_preserves_counter n pF c_prologue.state c_pF'.state hpF_max c_pF' hsteps_pF' hhalted_pF' rfl
+    have h := pF_preserves_high_reg pF c_prologue.state c_pF'.state c_pF' hsteps_pF' rfl
+      (counterReg n pF) (pF_doesnt_touch_counter n pF)
     rw [h, hcounter_after_prologue]
   have hsaved_after_pF : ∀ i : Fin n, c_pF'.state.read (savedInputsStart n pF + i) = inputs i := by
     intro i
-    have h := pF_preserves_savedInputs n pF c_prologue.state c_pF'.state hpF_max c_pF' hsteps_pF' hhalted_pF' rfl i
+    have h := pF_preserves_high_reg pF c_prologue.state c_pF'.state c_pF' hsteps_pF' rfl
+      (savedInputsStart n pF + i) (pF_doesnt_touch_savedInputs n pF i)
     rw [h, hsaved_after_prologue]
 
   -- The pF result is in R[0]
@@ -900,20 +905,16 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
         rw [hembed, Program.getInstr_shiftJumps, hpF_instr]; rfl
       -- Match on the instruction type to handle each case
       have hm_lt : m < numSteps := by omega
+      -- Helper: use Step.deterministic to determine c_mid from expected step
+      have hk1_le : k + 1 ≤ pF.length := Nat.succ_le_of_lt hk_lt
       match instr with
       | Instr.Z r =>
         have hpF_step : Step pF ⟨k, state''⟩ ⟨k + 1, state''.write r 0⟩ := Step.zero hpF_instr
         have hmin_instr' : (minimizeProgram n pF).getInstr (pFOffset n pF + k) = some (Instr.Z r) := by
           rw [hmin_instr]; rfl
-        -- c_mid = ⟨pFOffset + k + 1, state''.write r 0⟩
-        have hc_mid_eq : c_mid = ⟨pFOffset n pF + k + 1, state''.write r 0⟩ := by
-          cases hfirst_step with
-          | zero h => rw [hmin_instr'] at h; injection h with hr; injection hr with hr'; simp only [hr']
-          | succ h => rw [hmin_instr'] at h; injection h with hc; cases hc
-          | trans h => rw [hmin_instr'] at h; injection h with hc; cases hc
-          | jump_eq h _ => rw [hmin_instr'] at h; injection h with hc; cases hc
-          | jump_ne h _ => rw [hmin_instr'] at h; injection h with hc; cases hc
-        have hk1_le : k + 1 ≤ pF.length := Nat.succ_le_of_lt hk_lt
+        have hexpected : Step (minimizeProgram n pF) ⟨pFOffset n pF + k, state''⟩
+            ⟨pFOffset n pF + k + 1, state''.write r 0⟩ := Step.zero hmin_instr'
+        have hc_mid_eq := Step.deterministic hfirst_step hexpected
         have hrest_steps' : StepsN (minimizeProgram n pF) m ⟨pFOffset n pF + (k + 1), state''.write r 0⟩ c'' := by
           rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
         obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt (k + 1) (state''.write r 0) c'' hk1_le
@@ -923,14 +924,9 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
         have hpF_step : Step pF ⟨k, state''⟩ ⟨k + 1, state''.write r (state''.read r + 1)⟩ := Step.succ hpF_instr
         have hmin_instr' : (minimizeProgram n pF).getInstr (pFOffset n pF + k) = some (Instr.S r) := by
           rw [hmin_instr]; rfl
-        have hc_mid_eq : c_mid = ⟨pFOffset n pF + k + 1, state''.write r (state''.read r + 1)⟩ := by
-          cases hfirst_step with
-          | zero h => rw [hmin_instr'] at h; injection h with hc; cases hc
-          | succ h => rw [hmin_instr'] at h; injection h with hr; injection hr with hr'; simp only [hr']
-          | trans h => rw [hmin_instr'] at h; injection h with hc; cases hc
-          | jump_eq h _ => rw [hmin_instr'] at h; injection h with hc; cases hc
-          | jump_ne h _ => rw [hmin_instr'] at h; injection h with hc; cases hc
-        have hk1_le : k + 1 ≤ pF.length := Nat.succ_le_of_lt hk_lt
+        have hexpected : Step (minimizeProgram n pF) ⟨pFOffset n pF + k, state''⟩
+            ⟨pFOffset n pF + k + 1, state''.write r (state''.read r + 1)⟩ := Step.succ hmin_instr'
+        have hc_mid_eq := Step.deterministic hfirst_step hexpected
         have hrest_steps' : StepsN (minimizeProgram n pF) m ⟨pFOffset n pF + (k + 1), state''.write r (state''.read r + 1)⟩ c'' := by
           rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
         obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt (k + 1) (state''.write r (state''.read r + 1)) c'' hk1_le
@@ -940,14 +936,9 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
         have hpF_step : Step pF ⟨k, state''⟩ ⟨k + 1, state''.write r (state''.read m')⟩ := Step.trans hpF_instr
         have hmin_instr' : (minimizeProgram n pF).getInstr (pFOffset n pF + k) = some (Instr.T m' r) := by
           rw [hmin_instr]; rfl
-        have hc_mid_eq : c_mid = ⟨pFOffset n pF + k + 1, state''.write r (state''.read m')⟩ := by
-          cases hfirst_step with
-          | zero h => rw [hmin_instr'] at h; injection h with hc; cases hc
-          | succ h => rw [hmin_instr'] at h; injection h with hc; cases hc
-          | trans h => rw [hmin_instr'] at h; injection h with ht; injection ht with hm' hr'; simp only [hm', hr']
-          | jump_eq h _ => rw [hmin_instr'] at h; injection h with hc; cases hc
-          | jump_ne h _ => rw [hmin_instr'] at h; injection h with hc; cases hc
-        have hk1_le : k + 1 ≤ pF.length := Nat.succ_le_of_lt hk_lt
+        have hexpected : Step (minimizeProgram n pF) ⟨pFOffset n pF + k, state''⟩
+            ⟨pFOffset n pF + k + 1, state''.write r (state''.read m')⟩ := Step.trans hmin_instr'
+        have hc_mid_eq := Step.deterministic hfirst_step hexpected
         have hrest_steps' : StepsN (minimizeProgram n pF) m ⟨pFOffset n pF + (k + 1), state''.write r (state''.read m')⟩ c'' := by
           rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
         obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt (k + 1) (state''.write r (state''.read m')) c'' hk1_le
@@ -956,22 +947,16 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
       | Instr.J m' r' q =>
         have hmin_instr' : (minimizeProgram n pF).getInstr (pFOffset n pF + k) = some (Instr.J m' r' (q + pFOffset n pF)) := by
           rw [hmin_instr]; rfl
-        -- q ≤ pF.length by standard form
         have hq_le : q ≤ pF.length := by
           have hbounded := hpF_sf.getInstr_hasBoundedJump hpF_instr
           simp only [Instr.hasBoundedJump, decide_eq_true_eq] at hbounded
           exact hbounded
-        -- Case on whether registers are equal
         by_cases heq : state''.read m' = state''.read r'
         · -- Equal: jump to q
           have hpF_step : Step pF ⟨k, state''⟩ ⟨q, state''⟩ := Step.jump_eq hpF_instr heq
-          have hc_mid_eq : c_mid = ⟨q + pFOffset n pF, state''⟩ := by
-            cases hfirst_step with
-            | zero h => rw [hmin_instr'] at h; injection h with hc; cases hc
-            | succ h => rw [hmin_instr'] at h; injection h with hc; cases hc
-            | trans h => rw [hmin_instr'] at h; injection h with hc; cases hc
-            | jump_eq h heq' => rw [hmin_instr'] at h; injection h with hj; injection hj with hm' hr' hq'; simp only [hq']
-            | jump_ne h hne => rw [hmin_instr'] at h; injection h with hj; injection hj with hm' hr' hq'; simp only [hm', hr'] at heq; exact absurd heq hne
+          have hexpected : Step (minimizeProgram n pF) ⟨pFOffset n pF + k, state''⟩
+              ⟨q + pFOffset n pF, state''⟩ := Step.jump_eq hmin_instr' heq
+          have hc_mid_eq := Step.deterministic hfirst_step hexpected
           have hrest_steps' : StepsN (minimizeProgram n pF) m ⟨pFOffset n pF + q, state''⟩ c'' := by
             rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2; omega
           obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt q state'' c'' hq_le
@@ -979,14 +964,9 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
           exact ⟨c_pF, Relation.ReflTransGen.head hpF_step hpF_steps, hpF_pc⟩
         · -- Not equal: proceed to k + 1
           have hpF_step : Step pF ⟨k, state''⟩ ⟨k + 1, state''⟩ := Step.jump_ne hpF_instr heq
-          have hc_mid_eq : c_mid = ⟨pFOffset n pF + k + 1, state''⟩ := by
-            cases hfirst_step with
-            | zero h => rw [hmin_instr'] at h; injection h with hc; cases hc
-            | succ h => rw [hmin_instr'] at h; injection h with hc; cases hc
-            | trans h => rw [hmin_instr'] at h; injection h with hc; cases hc
-            | jump_eq h heq' => rw [hmin_instr'] at h; injection h with hj; injection hj with hm' hr' hq'; simp only [hm', hr'] at heq; exact absurd heq' heq
-            | jump_ne h _ => rfl
-          have hk1_le : k + 1 ≤ pF.length := Nat.succ_le_of_lt hk_lt
+          have hexpected : Step (minimizeProgram n pF) ⟨pFOffset n pF + k, state''⟩
+              ⟨pFOffset n pF + k + 1, state''⟩ := Step.jump_ne hmin_instr' heq
+          have hc_mid_eq := Step.deterministic hfirst_step hexpected
           have hrest_steps' : StepsN (minimizeProgram n pF) m ⟨pFOffset n pF + (k + 1), state''⟩ c'' := by
             rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
           obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt (k + 1) state'' c'' hk1_le
