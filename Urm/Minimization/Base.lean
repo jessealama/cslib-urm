@@ -73,9 +73,6 @@ def savedInputsStart (n : ℕ) (pF : Program) : ℕ :=
 @[simp] theorem counterReg_ne_zeroReg (n : ℕ) (pF : Program) :
     counterReg n pF ≠ zeroReg n pF := Nat.ne_of_lt (zeroReg_gt_counterReg n pF)
 
-@[simp] theorem zeroReg_ne_counterReg (n : ℕ) (pF : Program) :
-    zeroReg n pF ≠ counterReg n pF := (counterReg_ne_zeroReg n pF).symm
-
 /-! ## Saved inputs don't overlap with working space -/
 
 @[simp] theorem savedInputsStart_gt_n (n : ℕ) (pF : Program) :
@@ -89,10 +86,6 @@ def savedInputsStart (n : ℕ) (pF : Program) : ℕ :=
 @[simp] theorem savedInputs_ne_counterReg (n : ℕ) (pF : Program) (i : Fin n) :
     savedInputsStart n pF + i ≠ counterReg n pF := by
   simp only [savedInputsStart, counterReg, minimizationBase]; omega
-
-@[simp] theorem counterReg_ne_savedInputs (n : ℕ) (pF : Program) (i : Fin n) :
-    counterReg n pF ≠ savedInputsStart n pF + i :=
-  (savedInputs_ne_counterReg n pF i).symm
 
 /-! ## pF doesn't touch high registers -/
 

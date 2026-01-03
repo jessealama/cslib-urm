@@ -132,8 +132,6 @@ theorem μ_dom_below {n : ℕ} {f : (Fin (n + 1) → ℕ) → Part ℕ} {inputs 
   rw [Part.eq_some_iff] at hv
   exact Part.dom_iff_mem.mpr ⟨v, hv⟩
 
-/-! ## Helper Lemmas -/
-
 /-- extendInputs at index i < n returns the original input. -/
 @[simp] theorem extendInputs_castSucc {n : ℕ} (inputs : Fin n → ℕ) (y : ℕ) (i : Fin n) :
     extendInputs inputs y (Fin.castSucc i) = inputs i := by

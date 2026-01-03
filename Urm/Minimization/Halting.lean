@@ -5,6 +5,7 @@ Authors: Jesse Alama
 -/
 
 import Urm.Minimization.Preservation
+import Urm.Embeddings
 import Urm.Shift
 
 /-! # Halting Proofs for Minimization
@@ -21,102 +22,7 @@ namespace Urm
 
 open Program
 
-/-! ## Execution at Offset Helpers -/
-
-/-- A single Step in p corresponds to a Step in P when p is embedded at offset k in P.
-    Requires p to be straight-line (no jumps) so the PC offset is preserved correctly. -/
-theorem Step.at_offset {p P : Program} {c c' : Config} (k : ℕ)
-    (hsl : p.isStraightLine = true)
-    (hembed : ∀ i, i < p.length → P.getInstr (k + i) = p.getInstr i)
-    (hstep : Step p c c')
-    (hpc_bound : c.pc < p.length) :
-    Step P ⟨k + c.pc, c.state⟩ ⟨k + c'.pc, c'.state⟩ := by
-  have hinstr : P.getInstr (k + c.pc) = p.getInstr c.pc := hembed c.pc hpc_bound
-  cases hstep with
-  | zero h =>
-    have h' : P.getInstr (k + c.pc) = some (Instr.Z _) := hinstr ▸ h
-    have hstep' : Step P ⟨k + c.pc, c.state⟩ ⟨k + c.pc + 1, c.state.write _ 0⟩ := Step.zero h'
-    simp only [Nat.add_assoc] at hstep'; exact hstep'
-  | succ h =>
-    have h' : P.getInstr (k + c.pc) = some (Instr.S _) := hinstr ▸ h
-    have hstep' : Step P ⟨k + c.pc, c.state⟩ ⟨k + c.pc + 1, _⟩ := Step.succ h'
-    simp only [Nat.add_assoc] at hstep'; exact hstep'
-  | trans h =>
-    have h' : P.getInstr (k + c.pc) = some (Instr.T _ _) := hinstr ▸ h
-    have hstep' : Step P ⟨k + c.pc, c.state⟩ ⟨k + c.pc + 1, _⟩ := Step.trans h'
-    simp only [Nat.add_assoc] at hstep'; exact hstep'
-  | jump_eq h _ =>
-    -- Can't happen: straight-line programs have no jumps
-    have ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.mp h
-    simp only [Program.isStraightLine, List.all_eq_true] at hsl
-    exact absurd (hsl _ (heq ▸ List.getElem_mem hlt)) (by simp [Instr.isNonJumping])
-  | jump_ne h _ =>
-    -- Can't happen: straight-line programs have no jumps
-    have ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.mp h
-    simp only [Program.isStraightLine, List.all_eq_true] at hsl
-    exact absurd (hsl _ (heq ▸ List.getElem_mem hlt)) (by simp [Instr.isNonJumping])
-
-/-- Steps in a straight-line p lift to Steps in P at offset k. -/
-theorem Steps.straightLine_at_offset {p P : Program} {c c' : Config} (k : ℕ)
-    (hsl : p.isStraightLine = true)
-    (hembed : ∀ i, i < p.length → P.getInstr (k + i) = p.getInstr i)
-    (hsteps : Steps p c c') :
-    Steps P ⟨k + c.pc, c.state⟩ ⟨k + c'.pc, c'.state⟩ := by
-  induction hsteps using Relation.ReflTransGen.head_induction_on with
-  | refl => exact Relation.ReflTransGen.refl
-  | @head a b hstep _ ih =>
-    have hpc_bound := Step.pc_lt_length hstep
-    have hstep' := Step.at_offset k hsl hembed hstep hpc_bound
-    exact Relation.ReflTransGen.head hstep' ih
-
-/-! ## Embedding Lemmas -/
-
-/-- A step in p lifts to a step in P when p.shiftJumps(offset) is embedded at offset in P. -/
-theorem Step.shiftJumps_at_offset {p P : Program} {c c' : Config} (offset : ℕ)
-    (hembed : ∀ i, i < p.length → P.getInstr (offset + i) = (p.shiftJumps offset).getInstr i)
-    (hstep : Step p c c')
-    (hpc_bound : c.pc < p.length) :
-    Step P ⟨offset + c.pc, c.state⟩ ⟨offset + c'.pc, c'.state⟩ := by
-  have hinstr_eq : P.getInstr (offset + c.pc) = (p.shiftJumps offset).getInstr c.pc :=
-    hembed c.pc hpc_bound
-  match hstep with
-  | .zero (n := n) h =>
-    have h' : P.getInstr (offset + c.pc) = some (Instr.Z n) := by
-      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
-    have hstep' : Step P ⟨offset + c.pc, c.state⟩ ⟨offset + c.pc + 1, c.state.write n 0⟩ := Step.zero h'
-    simp only [Nat.add_assoc] at hstep'; exact hstep'
-  | .succ (n := n) h =>
-    have h' : P.getInstr (offset + c.pc) = some (Instr.S n) := by
-      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
-    have hstep' : Step P ⟨offset + c.pc, c.state⟩ ⟨offset + c.pc + 1, _⟩ := Step.succ h'
-    simp only [Nat.add_assoc] at hstep'; exact hstep'
-  | .trans (m := m) (n := n) h =>
-    have h' : P.getInstr (offset + c.pc) = some (Instr.T m n) := by
-      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
-    have hstep' : Step P ⟨offset + c.pc, c.state⟩ ⟨offset + c.pc + 1, _⟩ := Step.trans h'
-    simp only [Nat.add_assoc] at hstep'; exact hstep'
-  | .jump_eq (m := m) (n := n) (q := q) h heq =>
-    have h' : P.getInstr (offset + c.pc) = some (Instr.J m n (q + offset)) := by
-      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
-    have hstep' := @Step.jump_eq P ⟨offset + c.pc, c.state⟩ m n (q + offset) h' heq
-    simp only [Nat.add_comm q offset] at hstep'; exact hstep'
-  | .jump_ne (m := m) (n := n) (q := q) h hne =>
-    have h' : P.getInstr (offset + c.pc) = some (Instr.J m n (q + offset)) := by
-      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
-    have hstep' : Step P ⟨offset + c.pc, c.state⟩ ⟨offset + c.pc + 1, c.state⟩ := Step.jump_ne h' hne
-    simp only [Nat.add_assoc] at hstep'; exact hstep'
-
-/-- Steps in p lift to steps in P when p.shiftJumps(offset) is embedded at offset in P. -/
-theorem Steps.shiftJumps_at_offset {p P : Program} {c c' : Config} (offset : ℕ)
-    (hembed : ∀ i, i < p.length → P.getInstr (offset + i) = (p.shiftJumps offset).getInstr i)
-    (hsteps : Steps p c c') :
-    Steps P ⟨offset + c.pc, c.state⟩ ⟨offset + c'.pc, c'.state⟩ := by
-  induction hsteps using Relation.ReflTransGen.head_induction_on with
-  | refl => exact Relation.ReflTransGen.refl
-  | @head a b hstep _ ih =>
-    have hpc_bound := Step.pc_lt_length hstep
-    have hstep' := Step.shiftJumps_at_offset offset hembed hstep hpc_bound
-    exact Relation.ReflTransGen.head hstep' ih
+/-! ## Minimization-Specific Embedding Lemmas -/
 
 /-- loopPrologue is embedded in minimizeProgram at offset loopStartPC n. -/
 theorem loopPrologue_embed (n : ℕ) (pF : Program) :
@@ -1201,8 +1107,6 @@ theorem loop_k_iterations (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandardForm)
   let res := loop_k_iterations_strong n pF hpF_sf inputs s k hs_counter hs_zero hs_saved hf_halts_below hf_nonzero_below
   exact ⟨res.config, res.steps, res.pc_eq, res.counter_eq⟩
 
-/-! ## Helper Lemmas for Main Halting Theorem -/
-
 /-- setupPhase instructions are embedded at the start of minimizeProgram. -/
 theorem setupPhase_embed (n : ℕ) (pF : Program) :
     ∀ i, i < (setupPhase n pF).length →
@@ -1258,8 +1162,6 @@ theorem outputPhase_halts (n : ℕ) (pF : Program) (s : State) :
   have hread : s'.read 0 = s.read (counterReg n pF) := by
     simp only [s', State.write, State.read, Function.update_self]
   exact ⟨⟨outputPC n pF + 1, s'⟩, Relation.ReflTransGen.single hstep, hhalted, hread⟩
-
-/-! ## Setup Phase Helper -/
 
 /-- Result of executing the setup phase: state at loopStartPC with invariants. -/
 structure SetupPhaseResult (n : ℕ) (pF : Program) (inputs : Fin n → ℕ) where
