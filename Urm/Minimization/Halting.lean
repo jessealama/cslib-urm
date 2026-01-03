@@ -683,7 +683,6 @@ structure LoopExitResultGen (n : ℕ) (pF : Program) (inputs : Fin n → ℕ) (s
 theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandardForm)
     (inputs : Fin n → ℕ) (s : State) (counter : ℕ)
     (hs_counter : s.read (counterReg n pF) = counter)
-    (hs_zero : s.read (zeroReg n pF) = 0)
     (hs_saved : ∀ i : Fin n, s.read (savedInputsStart n pF + i) = inputs i)
     (hHalts : ∃ c, Steps (minimizeProgram n pF) ⟨loopStartPC n, s⟩ c ∧ c.isHalted (minimizeProgram n pF)) :
     Halts pF (List.ofFn (extendInputs inputs counter)) := by
@@ -1055,7 +1054,7 @@ noncomputable def loop_halts_exit_gen_aux (n : ℕ) (pF : Program) (hpF_sf : pF.
     -- pF halts on current counter (follows from minimizeProgram halting)
     let hpF_halts_counter : Halts pF (List.ofFn (extendInputs inputs startCounter)) :=
       pF_halts_from_minimizeProgram_halts n pF hpF_sf inputs s startCounter
-        hs_counter hs_zero hs_saved ⟨cFinal, hstepsN.toSteps, hhalted⟩
+        hs_counter hs_saved ⟨cFinal, hstepsN.toSteps, hhalted⟩
 
     -- Execute one loop iteration
     let iter := loop_iteration n pF hpF_sf inputs s startCounter
