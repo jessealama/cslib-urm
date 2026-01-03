@@ -34,7 +34,6 @@ property ensures they remain valid.
 
 - `straightLine_isStandardForm`: straight-line programs are standard form
 - `Program.equiv_toStandardForm`: every program is equivalent to its standard form
-- `Program.Equiv.equivalence`: program equivalence is an equivalence relation
 
 ## References
 
@@ -497,18 +496,9 @@ theorem Program.Equiv.trans {p q r : Program} (hpq : p ~ q) (hqr : q ~ r) : p ~ 
        let hq := (hpq inputs).1.mp hp
        ((hpq inputs).2 hp hq).trans ((hqr inputs).2 hq hr)⟩
 
-/-- Program equivalence is an equivalence relation. -/
-theorem Program.Equiv.equivalence : Equivalence Program.Equiv :=
-  ⟨Equiv.refl, Equiv.symm, Equiv.trans⟩
-
 /-- A program is equivalent to its standard form. -/
 theorem Program.equiv_toStandardForm (p : Program) : p ~ p.toStandardForm :=
   fun _ => ⟨Halts.toStandardForm_iff, fun hp hq => Result.toStandardForm hp hq⟩
-
-/-- Every program has a behaviorally equivalent standard form program. -/
-theorem exists_standardForm_equiv (p : Program) :
-    ∃ q : Program, q.IsStandardForm ∧ p ~ q :=
-  ⟨p.toStandardForm, Program.toStandardForm_isStandardForm p, p.equiv_toStandardForm⟩
 
 /-- Standard form computability implies general computability (trivial direction). -/
 theorem URMComputableSF.toComputable {n : ℕ} {f : (Fin n → ℕ) → Part ℕ}
@@ -529,10 +519,5 @@ theorem URMComputable.toSF {n : ℕ} {f : (Fin n → ℕ) → Part ℕ}
     have hp : Halts p (List.ofFn inputs) := Halts.toStandardForm_iff.mpr hHalts
     rw [← Result.toStandardForm hp hHalts]
     exact (hspec inputs).2 hp hDom
-
-/-- URM computability and standard form computability are equivalent. -/
-theorem URMComputable_iff_URMComputableSF {n : ℕ} {f : (Fin n → ℕ) → Part ℕ} :
-    URMComputable n f ↔ URMComputableSF n f :=
-  ⟨URMComputable.toSF, URMComputableSF.toComputable⟩
 
 end Urm

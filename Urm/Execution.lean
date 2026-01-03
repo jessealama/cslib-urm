@@ -301,12 +301,4 @@ theorem split_strictly_smaller {init mid final : Config} {n : ℕ}
 
 end StepsN
 
-/-- Steps and StepsN are equivalent (modulo step count). -/
-theorem Steps_iff_StepsN {c c' : Config} : Steps p c c' ↔ ∃ n, StepsN p n c c' :=
-  ⟨StepsN.fromSteps, fun ⟨_, h⟩ => h.toSteps⟩
-
-/-- A program halts in n steps if it reaches a halted configuration in exactly n steps. -/
-def HaltsIn (n : ℕ) (inputs : List ℕ) : Prop :=
-  ∃ c, StepsN p n (Config.init inputs) c ∧ c.isHalted p
-
 end Urm

@@ -63,12 +63,6 @@ theorem shift_unshift (σ : State) (offset : ℕ) :
   funext r
   simp only [unshift, shift, Nat.le_add_left, ↓reduceIte, Nat.add_sub_cancel]
 
-theorem unshift_shift (σ : State) (offset : ℕ) (r : ℕ) (hr : offset ≤ r) :
-    (σ.unshift offset).shift offset r = σ r := by
-  simp only [shift, unshift, hr, ↓reduceIte]
-  congr 1
-  omega
-
 /-! ### Read interaction with shifting -/
 
 @[simp]
@@ -142,11 +136,6 @@ theorem shift_unshift (c : Config) (offset : ℕ) :
     (c.shift offset).unshift offset = c := by
   simp only [shift, unshift, State.shift_unshift]
 
-/-- A config equals its shift iff offset is 0 or we use unshift to recover. -/
-theorem eq_unshift_of_shift (c c' : Config) (offset : ℕ) (h : c' = c.shift offset) :
-    c = c'.unshift offset := by
-  simp [h]
-
 end Config
 
 /-! ## Program Shifting Properties -/
@@ -208,14 +197,6 @@ private theorem foldl_max_add_aux (offset : ℕ) (init : ℕ) (p : Program) :
     simp only [List.foldl_cons]
     have : max (init + offset) (hd.maxRegister + offset) = max init hd.maxRegister + offset := by omega
     rw [this, ih]
-
-/-- Specialization for init = 0. -/
-private theorem foldl_max_add_zero (offset : ℕ) (p : Program) :
-    p.foldl (fun acc instr => max acc (instr.maxRegister + offset)) offset =
-    p.foldl (fun acc instr => max acc instr.maxRegister) 0 + offset := by
-  have h := foldl_max_add_aux offset 0 p
-  simp at h
-  exact h
 
 /-- The maxRegister of a shifted nonempty program equals the original maxRegister plus offset. -/
 theorem maxRegister_shiftRegisters (offset : ℕ) (p : Program) (hp : p ≠ []) :
