@@ -42,48 +42,24 @@ theorem minimizeProgram_result (n : ℕ) (pF : Program)
     (hHalts : Halts (minimizeProgram n pF) (List.ofFn inputs))
     (hDom : (μ f inputs).Dom) :
     Result (minimizeProgram n pF) (List.ofFn inputs) hHalts = (μ f inputs).get hDom := by
-  -- Step 1: Execute setup phase
-  have hsl_setup : (setupPhase n pF).isStraightLine = true := by
-    simp only [setupPhase, Program.isStraightLine, List.all_append, List.all_cons, List.all_nil,
-      Bool.and_true, Bool.and_eq_true]
-    exact ⟨copyRegisterRange_isStraightLine 0 (savedInputsStart n pF) n, rfl, rfl⟩
-  let initState := State.fromInputs (List.ofFn inputs)
-  obtain ⟨cSetup, hSetup_steps, hSetup_halted, hSetup_pc⟩ := straightLine_halts_from_state hsl_setup initState
-
-  have hSetup_steps_lifted : Steps (minimizeProgram n pF) ⟨0, initState⟩
-      ⟨(setupPhase n pF).length, cSetup.state⟩ := by
-    have hembed := setupPhase_embed n pF
-    have h := Steps.straightLine_at_offset 0 hsl_setup hembed hSetup_steps
-    simp only [Nat.zero_add] at h
-    have hpc_eq : cSetup.pc = (setupPhase n pF).length := hSetup_pc
-    rw [hpc_eq] at h; exact h
-
-  have hSetup_counter : cSetup.state.read (counterReg n pF) = 0 :=
-    setupPhase_counter_zero n pF inputs initState rfl cSetup hSetup_steps hSetup_halted
-  have hSetup_zero : cSetup.state.read (zeroReg n pF) = 0 :=
-    setupPhase_zeroReg_zero n pF inputs initState rfl cSetup hSetup_steps hSetup_halted
-  have hSetup_saved : ∀ i : Fin n, cSetup.state.read (savedInputsStart n pF + i) = inputs i :=
-    fun i => setupPhase_saves_inputs n pF inputs initState rfl cSetup hSetup_steps hSetup_halted i
-
-  have hSetup_pc_loopStart : (setupPhase n pF).length = loopStartPC n := by
-    simp only [loopStartPC, setupPhase_length]
+  -- Step 1: Execute setup phase using helper
+  let setup := executeSetupPhase n pF inputs
 
   -- Step 2: Get halting from loopStartPC
   -- Keep hHalts intact by using a copy
   have hHalts' := hHalts
   obtain ⟨cFinal, hFinal_steps, hFinal_halted⟩ := hHalts'
 
-  have hLoopHalts : ∃ c, Steps (minimizeProgram n pF) ⟨loopStartPC n, cSetup.state⟩ c ∧
+  have hLoopHalts : ∃ c, Steps (minimizeProgram n pF) ⟨loopStartPC n, setup.state⟩ c ∧
       c.isHalted (minimizeProgram n pF) := by
-    have hInit_eq : Config.init (List.ofFn inputs) = ⟨0, initState⟩ := rfl
+    have hInit_eq : Config.init (List.ofFn inputs) = ⟨0, State.fromInputs (List.ofFn inputs)⟩ := rfl
     rw [hInit_eq] at hFinal_steps
-    have hContinuation := Steps.deterministic_continuation hSetup_steps_lifted hFinal_steps hFinal_halted
-    rw [hSetup_pc_loopStart] at hContinuation
+    have hContinuation := Steps.deterministic_continuation setup.steps hFinal_steps hFinal_halted
     exact ⟨cFinal, hContinuation, hFinal_halted⟩
 
   -- Step 3: Use loop_halts_exit to get the exit result
-  let exitResult := loop_halts_exit n pF hpF_sf inputs cSetup.state
-      hSetup_counter hSetup_zero hSetup_saved hLoopHalts
+  let exitResult := loop_halts_exit n pF hpF_sf inputs setup.state
+      setup.counter_eq setup.zero_eq setup.saved_eq hLoopHalts
 
   -- exitResult gives us k where pF(k) = 0 and pF(j) ≠ 0 for j < k
   let k := exitResult.k
@@ -97,19 +73,19 @@ theorem minimizeProgram_result (n : ℕ) (pF : Program)
 
   -- Step 5: Show that cOutput is the halted config for hHalts (by uniqueness)
   -- Total execution: init → setup → loop → output
-  have hTotal : Steps (minimizeProgram n pF) ⟨0, initState⟩ cOutput := by
-    have h1 : Steps (minimizeProgram n pF) ⟨0, initState⟩ ⟨loopStartPC n, cSetup.state⟩ := by
-      convert hSetup_steps_lifted using 2; exact hSetup_pc_loopStart.symm
-    have h2 : Steps (minimizeProgram n pF) ⟨loopStartPC n, cSetup.state⟩ exitResult.config := exitResult.steps
+  have hTotal : Steps (minimizeProgram n pF) ⟨0, State.fromInputs (List.ofFn inputs)⟩ cOutput := by
+    have h1 : Steps (minimizeProgram n pF) ⟨0, State.fromInputs (List.ofFn inputs)⟩
+        ⟨loopStartPC n, setup.state⟩ := setup.steps
+    have h2 : Steps (minimizeProgram n pF) ⟨loopStartPC n, setup.state⟩ exitResult.config := exitResult.steps
     have h3 : Steps (minimizeProgram n pF) ⟨outputPC n pF, exitResult.config.state⟩ cOutput := hOutput_steps
-    have h2' : Steps (minimizeProgram n pF) ⟨loopStartPC n, cSetup.state⟩
+    have h2' : Steps (minimizeProgram n pF) ⟨loopStartPC n, setup.state⟩
         ⟨outputPC n pF, exitResult.config.state⟩ := by
       convert h2 using 2; exact exitResult.pc_eq.symm
     exact h1.trans (h2'.trans h3)
 
   -- By uniqueness of halting, cFinal = cOutput
   have hFinal_eq_Output : cFinal = cOutput := by
-    have hInit_eq : Config.init (List.ofFn inputs) = ⟨0, initState⟩ := rfl
+    have hInit_eq : Config.init (List.ofFn inputs) = ⟨0, State.fromInputs (List.ofFn inputs)⟩ := rfl
     rw [hInit_eq] at hFinal_steps
     exact Steps.halts_unique hFinal_steps hFinal_halted hTotal hOutput_halted
 

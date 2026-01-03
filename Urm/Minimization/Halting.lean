@@ -208,11 +208,7 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
     LoopIterationResult n pF inputs s k := by
   -- Phase 1: Execute loopPrologue (straight-line)
   -- After loopPrologue: R[0..n-1] = saved inputs, R[n] = k
-  have hsl_prologue : (loopPrologue n pF).isStraightLine = true := by
-    simp only [loopPrologue, Program.isStraightLine, List.all_append, List.all_cons, List.all_nil, Bool.and_true]
-    simp only [Bool.and_eq_true]
-    exact ⟨⟨clearRegisters_isStraightLine (minimizationBase n pF),
-             copyRegisterRange_isStraightLine (savedInputsStart n pF) 0 n⟩, rfl⟩
+  have hsl_prologue := loopPrologue_isStraightLine n pF
   -- Get loopPrologue execution (use Classical.choose since we're defining data)
   let hPrologue := straightLine_halts_from_state hsl_prologue s
   let c_prologue := Classical.choose hPrologue
@@ -703,12 +699,8 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
   have hcFinal_pc : cFinal.pc = (minimizeProgram n pF).length :=
     hminSF.pc_eq_length_of_halted hsteps_final hpc_bound hhalted_final
 
-  -- Step 1: Show loopPrologue is straight-line and halts at pFOffset
-  have hsl_prologue : (loopPrologue n pF).isStraightLine = true := by
-    simp only [loopPrologue, Program.isStraightLine, List.all_append, List.all_cons, List.all_nil,
-      Bool.and_true, Bool.and_eq_true]
-    exact ⟨⟨clearRegisters_isStraightLine (minimizationBase n pF),
-            copyRegisterRange_isStraightLine (savedInputsStart n pF) 0 n⟩, rfl⟩
+  -- Step 1: loopPrologue is straight-line and halts at pFOffset
+  have hsl_prologue := loopPrologue_isStraightLine n pF
 
   -- Execute loopPrologue to get state at pFOffset
   obtain ⟨cPrologue, hPrologue_steps, hPrologue_halted, hPrologue_pc⟩ :=
@@ -1326,6 +1318,61 @@ theorem outputPhase_halts (n : ℕ) (pF : Program) (s : State) :
     simp only [s', State.write, State.read, Function.update_self]
   exact ⟨⟨outputPC n pF + 1, s'⟩, Relation.ReflTransGen.single hstep, hhalted, hread⟩
 
+/-! ## Setup Phase Helper -/
+
+/-- Result of executing the setup phase: state at loopStartPC with invariants. -/
+structure SetupPhaseResult (n : ℕ) (pF : Program) (inputs : Fin n → ℕ) where
+  /-- State after setup phase -/
+  state : State
+  /-- Steps from initial config to loopStartPC -/
+  steps : Steps (minimizeProgram n pF) ⟨0, State.fromInputs (List.ofFn inputs)⟩
+      ⟨loopStartPC n, state⟩
+  /-- Counter is initialized to 0 -/
+  counter_eq : state.read (counterReg n pF) = 0
+  /-- Zero register is initialized to 0 -/
+  zero_eq : state.read (zeroReg n pF) = 0
+  /-- Saved inputs contain original inputs -/
+  saved_eq : ∀ i : Fin n, state.read (savedInputsStart n pF + i) = inputs i
+
+/-- Execute setup phase and establish invariants.
+    This factors out the common setup code used by minimizeProgram_halts,
+    minimizeProgram_halts_imp_dom, and minimizeProgram_result. -/
+noncomputable def executeSetupPhase (n : ℕ) (pF : Program) (inputs : Fin n → ℕ) :
+    SetupPhaseResult n pF inputs :=
+  let hsl_setup := setupPhase_isStraightLine n pF
+  let initState := State.fromInputs (List.ofFn inputs)
+  let hExists := straightLine_halts_from_state hsl_setup initState
+  let cSetup := Classical.choose hExists
+  let hSpec := Classical.choose_spec hExists
+  let hSetup_steps := hSpec.1
+  let hSetup_halted := hSpec.2.1
+  let hSetup_pc := hSpec.2.2
+
+  -- Lift setup steps to minimizeProgram
+  let hSetup_steps_lifted : Steps (minimizeProgram n pF) ⟨0, initState⟩
+      ⟨(setupPhase n pF).length, cSetup.state⟩ := by
+    have hembed := setupPhase_embed n pF
+    have h := Steps.straightLine_at_offset 0 hsl_setup hembed hSetup_steps
+    simp only [Nat.zero_add] at h
+    rw [hSetup_pc] at h; exact h
+
+  -- Establish invariants
+  let hSetup_counter : cSetup.state.read (counterReg n pF) = 0 :=
+    setupPhase_counter_zero n pF inputs initState rfl cSetup hSetup_steps hSetup_halted
+  let hSetup_zero : cSetup.state.read (zeroReg n pF) = 0 :=
+    setupPhase_zeroReg_zero n pF inputs initState rfl cSetup hSetup_steps hSetup_halted
+  let hSetup_saved : ∀ i : Fin n, cSetup.state.read (savedInputsStart n pF + i) = inputs i :=
+    fun i => setupPhase_saves_inputs n pF inputs initState rfl cSetup hSetup_steps hSetup_halted i
+
+  -- PC after setup = loopStartPC
+  let hSetup_pc_loopStart : (setupPhase n pF).length = loopStartPC n := by
+    simp only [loopStartPC, setupPhase_length]
+
+  ⟨cSetup.state, by rw [← hSetup_pc_loopStart]; exact hSetup_steps_lifted,
+   hSetup_counter, hSetup_zero, hSetup_saved⟩
+
+/-! ## Main Halting Theorems -/
+
 /-- If μ f is defined, then minimizeProgram halts. -/
 theorem minimizeProgram_halts (n : ℕ) (pF : Program)
     (hpF_sf : pF.IsStandardForm)
@@ -1367,38 +1414,12 @@ theorem minimizeProgram_halts (n : ℕ) (pF : Program)
     rw [Part.get_eq_of_mem hv_eq]
     exact hv_ne0
 
-  -- Step 3: Execute setup phase (straight-line)
-  have hsl_setup : (setupPhase n pF).isStraightLine = true := by
-    simp only [setupPhase, Program.isStraightLine, List.all_append, List.all_cons, List.all_nil,
-      Bool.and_true, Bool.and_eq_true]
-    exact ⟨copyRegisterRange_isStraightLine 0 (savedInputsStart n pF) n, rfl, rfl⟩
-  let initState := State.fromInputs (List.ofFn inputs)
-  obtain ⟨cSetup, hSetup_steps, hSetup_halted, hSetup_pc⟩ := straightLine_halts_from_state hsl_setup initState
-
-  -- Lift setup steps to minimizeProgram
-  have hSetup_steps_lifted : Steps (minimizeProgram n pF) ⟨0, initState⟩
-      ⟨(setupPhase n pF).length, cSetup.state⟩ := by
-    have hembed := setupPhase_embed n pF
-    have h := Steps.straightLine_at_offset 0 hsl_setup hembed hSetup_steps
-    simp only [Nat.zero_add] at h
-    have hpc_eq : cSetup.pc = (setupPhase n pF).length := hSetup_pc
-    rw [hpc_eq] at h; exact h
-
-  -- After setup: invariants hold
-  have hSetup_counter : cSetup.state.read (counterReg n pF) = 0 :=
-    setupPhase_counter_zero n pF inputs initState rfl cSetup hSetup_steps hSetup_halted
-  have hSetup_zero : cSetup.state.read (zeroReg n pF) = 0 :=
-    setupPhase_zeroReg_zero n pF inputs initState rfl cSetup hSetup_steps hSetup_halted
-  have hSetup_saved : ∀ i : Fin n, cSetup.state.read (savedInputsStart n pF + i) = inputs i :=
-    fun i => setupPhase_saves_inputs n pF inputs initState rfl cSetup hSetup_steps hSetup_halted i
-
-  -- PC after setup = loopStartPC
-  have hSetup_pc_loopStart : (setupPhase n pF).length = loopStartPC n := by
-    simp only [loopStartPC, setupPhase_length]
+  -- Step 3: Execute setup phase using helper
+  let setup := executeSetupPhase n pF inputs
 
   -- Step 4: Execute k loop iterations
-  let resK := loop_k_iterations_strong n pF hpF_sf inputs cSetup.state k
-    hSetup_counter hSetup_zero hSetup_saved hpF_halts_below hpF_nonzero_below
+  let resK := loop_k_iterations_strong n pF hpF_sf inputs setup.state k
+    setup.counter_eq setup.zero_eq setup.saved_eq hpF_halts_below hpF_nonzero_below
 
   -- Step 5: Execute final iteration (k-th) where f returns 0
   let iterK := loop_iteration n pF hpF_sf inputs resK.config.state k
@@ -1419,12 +1440,12 @@ theorem minimizeProgram_halts (n : ℕ) (pF : Program)
   obtain ⟨cOutput, hOutput_steps, hOutput_halted, _⟩ := outputPhase_halts n pF iterK.config.state
 
   -- Step 7: Chain all steps
-  have hTotal : Steps (minimizeProgram n pF) ⟨0, initState⟩ cOutput := by
+  have hTotal : Steps (minimizeProgram n pF) ⟨0, State.fromInputs (List.ofFn inputs)⟩ cOutput := by
     -- Setup: from initial state to loopStartPC
-    have h1 : Steps (minimizeProgram n pF) ⟨0, initState⟩ ⟨loopStartPC n, cSetup.state⟩ := by
-      rw [← hSetup_pc_loopStart]; exact hSetup_steps_lifted
+    have h1 : Steps (minimizeProgram n pF) ⟨0, State.fromInputs (List.ofFn inputs)⟩
+        ⟨loopStartPC n, setup.state⟩ := setup.steps
     -- K iterations: from loopStartPC to resK.config
-    have h2 : Steps (minimizeProgram n pF) ⟨loopStartPC n, cSetup.state⟩ resK.config := resK.steps
+    have h2 : Steps (minimizeProgram n pF) ⟨loopStartPC n, setup.state⟩ resK.config := resK.steps
     -- resK.config is at loopStartPC with state resK.config.state
     have hresK_eq : resK.config = ⟨loopStartPC n, resK.config.state⟩ := by
       ext; exact resK.pc_eq; rfl
@@ -1452,53 +1473,27 @@ theorem minimizeProgram_halts_imp_dom (n : ℕ) (pF : Program)
     (inputs : Fin n → ℕ)
     (hHalts : Halts (minimizeProgram n pF) (List.ofFn inputs)) :
     (μ f inputs).Dom := by
-  -- Step 1: Execute setup phase (straight-line, always halts)
-  have hsl_setup : (setupPhase n pF).isStraightLine = true := by
-    simp only [setupPhase, Program.isStraightLine, List.all_append, List.all_cons, List.all_nil,
-      Bool.and_true, Bool.and_eq_true]
-    exact ⟨copyRegisterRange_isStraightLine 0 (savedInputsStart n pF) n, rfl, rfl⟩
-  let initState := State.fromInputs (List.ofFn inputs)
-  obtain ⟨cSetup, hSetup_steps, hSetup_halted, hSetup_pc⟩ := straightLine_halts_from_state hsl_setup initState
-
-  -- Lift setup steps to minimizeProgram
-  have hSetup_steps_lifted : Steps (minimizeProgram n pF) ⟨0, initState⟩
-      ⟨(setupPhase n pF).length, cSetup.state⟩ := by
-    have hembed := setupPhase_embed n pF
-    have h := Steps.straightLine_at_offset 0 hsl_setup hembed hSetup_steps
-    simp only [Nat.zero_add] at h
-    rw [hSetup_pc] at h; exact h
-
-  -- After setup: invariants hold
-  have hSetup_counter : cSetup.state.read (counterReg n pF) = 0 :=
-    setupPhase_counter_zero n pF inputs initState rfl cSetup hSetup_steps hSetup_halted
-  have hSetup_zero : cSetup.state.read (zeroReg n pF) = 0 :=
-    setupPhase_zeroReg_zero n pF inputs initState rfl cSetup hSetup_steps hSetup_halted
-  have hSetup_saved : ∀ i : Fin n, cSetup.state.read (savedInputsStart n pF + i) = inputs i :=
-    fun i => setupPhase_saves_inputs n pF inputs initState rfl cSetup hSetup_steps hSetup_halted i
-
-  -- PC after setup = loopStartPC
-  have hSetup_pc_loopStart : (setupPhase n pF).length = loopStartPC n := by
-    simp only [loopStartPC, setupPhase_length]
+  -- Step 1: Execute setup phase using helper
+  let setup := executeSetupPhase n pF inputs
 
   -- Step 2: Get halting from loopStartPC
   obtain ⟨cFinal, hFinal_steps, hFinal_halted⟩ := hHalts
   -- cFinal is reachable from initial config, so also from loopStartPC
-  -- We need Steps from ⟨loopStartPC, cSetup.state⟩ to cFinal (halted)
+  -- We need Steps from ⟨loopStartPC, setup.state⟩ to cFinal (halted)
 
-  have hLoopHalts : ∃ c, Steps (minimizeProgram n pF) ⟨loopStartPC n, cSetup.state⟩ c ∧
+  have hLoopHalts : ∃ c, Steps (minimizeProgram n pF) ⟨loopStartPC n, setup.state⟩ c ∧
       c.isHalted (minimizeProgram n pF) := by
-    -- We have Steps from init to cSetup (at loopStartPC)
+    -- We have Steps from init to setup.state (at loopStartPC)
     -- We have Steps from init to cFinal (halted)
-    -- By deterministic_continuation, Steps from cSetup to cFinal
-    have hInit_eq : Config.init (List.ofFn inputs) = ⟨0, initState⟩ := rfl
+    -- By deterministic_continuation, Steps from setup to cFinal
+    have hInit_eq : Config.init (List.ofFn inputs) = ⟨0, State.fromInputs (List.ofFn inputs)⟩ := rfl
     rw [hInit_eq] at hFinal_steps
-    have hContinuation := Steps.deterministic_continuation hSetup_steps_lifted hFinal_steps hFinal_halted
-    rw [hSetup_pc_loopStart] at hContinuation
+    have hContinuation := Steps.deterministic_continuation setup.steps hFinal_steps hFinal_halted
     exact ⟨cFinal, hContinuation, hFinal_halted⟩
 
   -- Step 3: Use loop_halts_exit to extract the witness k
-  let exitResult := loop_halts_exit n pF hpF_sf inputs cSetup.state
-      hSetup_counter hSetup_zero hSetup_saved hLoopHalts
+  let exitResult := loop_halts_exit n pF hpF_sf inputs setup.state
+      setup.counter_eq setup.zero_eq setup.saved_eq hLoopHalts
 
   -- Step 4: Use μ_dom_iff with witness k
   rw [μ_dom_iff]
