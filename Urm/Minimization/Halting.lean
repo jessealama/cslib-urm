@@ -177,7 +177,7 @@ theorem pF_shiftJumps_embed (n : ℕ) (pF : Program) :
 
 /-- One complete loop iteration: from loopStart with counter = k,
     execute loop body once, either exit (if f returns 0) or return to loopStart with counter = k+1. -/
-structure LoopIterationResult (n : ℕ) (pF : Program) (s : State) (k : ℕ) where
+structure LoopIterationResult (n : ℕ) (pF : Program) (inputs : Fin n → ℕ) (s : State) (k : ℕ) where
   /-- Final configuration after one iteration -/
   config : Config
   /-- Steps taken during this iteration -/
@@ -187,6 +187,14 @@ structure LoopIterationResult (n : ℕ) (pF : Program) (s : State) (k : ℕ) whe
   /-- Either we exited to output, or we're back at loop start with incremented counter -/
   outcome : (config.pc = outputPC n pF ∧ pF_result = 0) ∨
             (config.pc = loopStartPC n ∧ config.state.read (counterReg n pF) = k + 1 ∧ pF_result ≠ 0)
+  /-- In continue case, zeroReg is preserved from initial state -/
+  zero_preserved : pF_result ≠ 0 → config.state.read (zeroReg n pF) = s.read (zeroReg n pF)
+  /-- In continue case, savedInputs are preserved from initial state -/
+  saved_preserved : pF_result ≠ 0 → ∀ i : Fin n, config.state.read (savedInputsStart n pF + i) = s.read (savedInputsStart n pF + i)
+  /-- The halting hypothesis for pF on extended inputs -/
+  hf_halts : Halts pF (List.ofFn (extendInputs inputs k))
+  /-- pF_result equals the Result from pF execution -/
+  pF_result_eq : pF_result = Result pF (List.ofFn (extendInputs inputs k)) hf_halts
 
 /-- Execute one loop iteration when starting at loopStart. -/
 noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandardForm)
@@ -195,7 +203,7 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
     (hs_zero : s.read (zeroReg n pF) = 0)
     (hs_saved : ∀ i : Fin n, s.read (savedInputsStart n pF + i) = inputs i)
     (hf_halts : Halts pF (List.ofFn (extendInputs inputs k))) :
-    LoopIterationResult n pF s k := by
+    LoopIterationResult n pF inputs s k := by
   -- Phase 1: Execute loopPrologue (straight-line)
   -- After loopPrologue: R[0..n-1] = saved inputs, R[n] = k
   have hsl_prologue : (loopPrologue n pF).isStraightLine = true := by
@@ -354,6 +362,15 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
   have hspec_pF' := Classical.choose_spec hagree_result
   let hsteps_pF' := hspec_pF'.1
   let hpc_pF' := hspec_pF'.2.1
+  have hagree_pF' : c_pF.state.agreeOn c_pF'.state 0 pF.maxRegister := hspec_pF'.2.2
+
+  -- pF_result_eq proof: connect c_pF'.state.read 0 to Result pF ... hf_halts
+  -- Result pF ... hf_halts = (Classical.choose hf_halts).state.output = c_pF.state.read 0
+  -- By agreeOn, c_pF.state.read 0 = c_pF'.state.read 0
+  have hpF_result_eq : c_pF'.state.read 0 = Result pF (List.ofFn (extendInputs inputs k)) hf_halts := by
+    have h_agree_at_0 := hagree_pF' 0 (Nat.zero_le 0) (Nat.zero_le _)
+    simp only [Result, State.output]
+    exact h_agree_at_0.symm
 
   -- Lift pF steps to minimizeProgram using shiftJumps_at_offset
   have hembed_pF := pF_shiftJumps_embed n pF
@@ -436,7 +453,9 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
         ⟨outputPC n pF, c_pF'.state⟩ := Step.jump_eq hJ0_instr heq_zero
     have hsteps_exit := Relation.ReflTransGen.single hstep_J0
     have hsteps_total := Relation.ReflTransGen.trans hsteps_to_epilogue hsteps_exit
-    exact ⟨⟨outputPC n pF, c_pF'.state⟩, hsteps_total, pF_result, Or.inl ⟨rfl, hresult⟩⟩
+    -- zero_preserved and saved_preserved are vacuously true since pF_result = 0
+    exact ⟨⟨outputPC n pF, c_pF'.state⟩, hsteps_total, pF_result, Or.inl ⟨rfl, hresult⟩,
+           fun h => absurd hresult h, fun h => absurd hresult h, hf_halts, hpF_result_eq⟩
 
   · -- Case: pF returned non-zero, continue loop
     -- Execute J 0 zeroReg outputPC (doesn't jump since R[0] ≠ R[zeroReg])
@@ -513,7 +532,26 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
       simp only [State.read] at hcounter_after_pF
       omega
 
-    exact ⟨⟨loopStartPC n, state_after_S⟩, hsteps_total, pF_result, Or.inr ⟨rfl, hcounter_k1, hresult⟩⟩
+    -- Preservation: writing to counterReg doesn't affect zeroReg or savedInputs
+    have hzero_preserved : state_after_S.read (zeroReg n pF) = s.read (zeroReg n pF) := by
+      have hne : zeroReg n pF ≠ counterReg n pF := Nat.ne_of_gt (zeroReg_gt_counterReg n pF)
+      calc state_after_S.read (zeroReg n pF)
+          = c_pF'.state.read (zeroReg n pF) := by
+            simp only [state_after_S, State.write, State.read, Function.update_of_ne hne]
+        _ = 0 := hzero_after_pF
+        _ = s.read (zeroReg n pF) := hs_zero.symm
+    have hsaved_preserved : ∀ i : Fin n, state_after_S.read (savedInputsStart n pF + i) = s.read (savedInputsStart n pF + i) := by
+      intro i
+      have hne : savedInputsStart n pF + ↑i ≠ counterReg n pF := by
+        simp only [savedInputsStart, counterReg, minimizationBase]; omega
+      calc state_after_S.read (savedInputsStart n pF + ↑i)
+          = c_pF'.state.read (savedInputsStart n pF + ↑i) := by
+            simp only [state_after_S, State.write, State.read, Function.update_of_ne hne]
+        _ = inputs i := hsaved_after_pF i
+        _ = s.read (savedInputsStart n pF + ↑i) := (hs_saved i).symm
+
+    exact ⟨⟨loopStartPC n, state_after_S⟩, hsteps_total, pF_result, Or.inr ⟨rfl, hcounter_k1, hresult⟩,
+           fun _ => hzero_preserved, fun _ => hsaved_preserved, hf_halts, hpF_result_eq⟩
 
 /-- The pF_result from loop_iteration equals the Result of running pF.
     This connects the internal construction to the abstract Result function. -/
@@ -524,45 +562,37 @@ theorem loop_iteration_pF_result_eq_Result (n : ℕ) (pF : Program) (hpF_sf : pF
     (hs_saved : ∀ i : Fin n, s.read (savedInputsStart n pF + i) = inputs i)
     (hf_halts : Halts pF (List.ofFn (extendInputs inputs k))) :
     (loop_iteration n pF hpF_sf inputs s k hs_counter hs_zero hs_saved hf_halts).pF_result =
-    Result pF (List.ofFn (extendInputs inputs k)) hf_halts := by
-  -- Unfold loop_iteration and Result to connect them
-  -- Both use Classical.choose on halting configurations
-  -- The agreeOn property ensures register 0 values match
-  unfold loop_iteration
-  simp only
-  -- The Result is (Classical.choose hf_halts).state.output = (Classical.choose hf_halts).state.read 0
-  -- The pF_result is c_pF'.state.read 0 where c_pF' agrees with Classical.choose hf_halts on 0..maxRegister
-  -- Since 0 is in this range, they're equal
-  sorry
+    Result pF (List.ofFn (extendInputs inputs k)) hf_halts :=
+  (loop_iteration n pF hpF_sf inputs s k hs_counter hs_zero hs_saved hf_halts).pF_result_eq
 
 /-! ## Loop Iteration Preservation Lemmas -/
 
 /-- When loop_iteration returns with continue (non-zero result), zeroReg is preserved.
-    This requires accessing internal facts about loop_iteration's construction. -/
+    This follows from the zero_preserved field of LoopIterationResult. -/
 theorem loop_iteration_preserves_zeroReg (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandardForm)
     (inputs : Fin n → ℕ) (s : State) (k : ℕ)
     (hs_counter : s.read (counterReg n pF) = k)
     (hs_zero : s.read (zeroReg n pF) = 0)
     (hs_saved : ∀ i : Fin n, s.read (savedInputsStart n pF + i) = inputs i)
     (hf_halts : Halts pF (List.ofFn (extendInputs inputs k)))
-    (iter : LoopIterationResult n pF s k := loop_iteration n pF hpF_sf inputs s k hs_counter hs_zero hs_saved hf_halts)
+    (iter : LoopIterationResult n pF inputs s k := loop_iteration n pF hpF_sf inputs s k hs_counter hs_zero hs_saved hf_halts)
     (hcontinue : iter.pF_result ≠ 0) :
     iter.config.state.read (zeroReg n pF) = 0 := by
-  sorry
+  rw [iter.zero_preserved hcontinue, hs_zero]
 
 /-- When loop_iteration returns with continue (non-zero result), savedInputs are preserved.
-    This requires accessing internal facts about loop_iteration's construction. -/
+    This follows from the saved_preserved field of LoopIterationResult. -/
 theorem loop_iteration_preserves_savedInputs (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandardForm)
     (inputs : Fin n → ℕ) (s : State) (k : ℕ)
     (hs_counter : s.read (counterReg n pF) = k)
     (hs_zero : s.read (zeroReg n pF) = 0)
     (hs_saved : ∀ i : Fin n, s.read (savedInputsStart n pF + i) = inputs i)
     (hf_halts : Halts pF (List.ofFn (extendInputs inputs k)))
-    (iter : LoopIterationResult n pF s k := loop_iteration n pF hpF_sf inputs s k hs_counter hs_zero hs_saved hf_halts)
+    (iter : LoopIterationResult n pF inputs s k := loop_iteration n pF hpF_sf inputs s k hs_counter hs_zero hs_saved hf_halts)
     (hcontinue : iter.pF_result ≠ 0) :
     ∀ i : Fin n, iter.config.state.read (savedInputsStart n pF + i) = inputs i := by
   intro i
-  sorry
+  rw [iter.saved_preserved hcontinue i, hs_saved i]
 
 /-! ## Main Halting Theorem -/
 
