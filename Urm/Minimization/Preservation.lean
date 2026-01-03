@@ -449,4 +449,54 @@ theorem loopPrologue_preserves_savedInputs (n : ℕ) (pF : Program)
   rw [Steps.halts_unique hsteps hhalted hsteps' hhalted']
   exact Steps.straightLine_preserves hsl hsteps' hnowrite
 
+/-- Loop prologue clears registers in range [n+1, minimizationBase n pF].
+    This is because clearRegisters zeros these registers and subsequent
+    instructions (copyRegisterRange and T) only write to registers 0..n. -/
+theorem loopPrologue_clears_high_registers (n : ℕ) (pF : Program)
+    (s : State) (c' : Config)
+    (hsteps : Steps (loopPrologue n pF) ⟨0, s⟩ c')
+    (hhalted : c'.isHalted (loopPrologue n pF))
+    (r : ℕ) (hr_ge : n + 1 ≤ r) (hr_le : r ≤ minimizationBase n pF) :
+    c'.state.read r = 0 := by
+  have hsl : (loopPrologue n pF).isStraightLine = true := by
+    simp only [loopPrologue, Program.isStraightLine, List.all_append, List.all_cons, List.all_nil, Bool.and_true]
+    simp only [Bool.and_eq_true]
+    refine ⟨⟨clearRegisters_isStraightLine (minimizationBase n pF),
+             copyRegisterRange_isStraightLine (savedInputsStart n pF) 0 n⟩, rfl⟩
+  -- Instruction at index r in loopPrologue is Z r (from clearRegisters)
+  have hr_lt_prologue : r < (loopPrologue n pF).length := by
+    simp only [loopPrologue, List.length_append, clearRegisters_length, copyRegisterRange_length,
+      List.length]; omega
+  have hwrite : (loopPrologue n pF)[r]'hr_lt_prologue = Instr.Z r := by
+    simp only [loopPrologue, List.getElem_append, List.length_append, clearRegisters_length,
+      copyRegisterRange_length]
+    split_ifs with h1 h2
+    · simp only [Program.clearRegisters, List.getElem_map, List.getElem_range]
+    · omega  -- h1 false means r ≥ base + 1 + n, but r ≤ base
+    · omega  -- h2 false means r ≥ base + 1, but r ≤ base
+  -- No later instruction writes to r
+  have hnowrite : ∀ j (hj : j < (loopPrologue n pF).length), r < j →
+      ((loopPrologue n pF)[j]'hj).writesTo ≠ some r := by
+    intro j hj hrj
+    simp only [loopPrologue, List.length_append, clearRegisters_length, copyRegisterRange_length,
+      List.length] at hj
+    simp only [loopPrologue, List.getElem_append, List.length_append, clearRegisters_length,
+      copyRegisterRange_length]
+    split_ifs with h1 h2
+    · -- j in clearRegisters range, writes to j ≠ r since j > r
+      simp only [Program.clearRegisters, List.getElem_map, List.getElem_range,
+                 Instr.writesTo, ne_eq, Option.some.injEq]
+      omega
+    · -- j in copyRegisterRange, writes to some k < n < r
+      simp only [Program.copyRegisterRange, List.getElem_map, List.getElem_range,
+                 Instr.writesTo, ne_eq, Option.some.injEq, Nat.zero_add]
+      omega
+    · -- j in [T counterReg n], writes to n < n + 1 ≤ r
+      have hj_suffix : j - ((minimizationBase n pF + 1) + n) = 0 := by omega
+      simp only [hj_suffix, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
+      omega
+  have ⟨hsteps', hhalted', _⟩ := straightLineFinalState_spec hsl s
+  rw [Steps.halts_unique hsteps hhalted hsteps' hhalted']
+  exact straightLine_zeros_register hsl s r r hr_lt_prologue hwrite hnowrite
+
 end Urm

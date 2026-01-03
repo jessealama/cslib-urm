@@ -885,12 +885,9 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
       k ≤ pF.length →
       Steps (minimizeProgram n pF) ⟨pFOffset n pF + k, state''⟩ c'' →
       c''.pc ≥ pFOffset n pF + pF.length →
-      (∀ i : Fin (n + 1), state''.read i = extendInputs inputs counter i) →
       ∃ c_pF, Steps pF ⟨k, state''⟩ c_pF ∧ c_pF.pc = pF.length by
-    have hinit_match : ∀ i : Fin (n + 1), cPrologue.state.read i = extendInputs inputs counter i :=
-      hpFStartState_matches
     obtain ⟨c_pF, hsteps_pF, hpc_pF⟩ := h 0 cPrologue.state cFinal (Nat.zero_le _)
-        (by rw [Nat.add_zero]; exact hContinuation) (Nat.le_of_lt hcFinal_past_pF) hinit_match
+        (by rw [Nat.add_zero]; exact hContinuation) (Nat.le_of_lt hcFinal_past_pF)
     -- c_pF is a halted pF config
     have hhalted_pF : c_pF.isHalted pF := by simp only [Config.isHalted, hpc_pF]; exact Nat.le_refl _
     -- Build the Halts witness using agreeing states
@@ -904,7 +901,10 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
         simp only [State.fromInputs, State.read]
         rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none (by simp; omega), Option.getD_none]
         -- cPrologue.state.read r = 0 for r ≥ n + 1 (since loopPrologue clears high registers)
-        sorry
+        have hr_le_base : r ≤ minimizationBase n pF := by
+          simp only [minimizationBase]; omega
+        exact loopPrologue_clears_high_registers n pF s cPrologue hPrologue_steps hPrologue_halted
+          r (Nat.le_of_not_lt hr_lt) hr_le_base
     exact hpF_diverges (Halts.of_agreeing_state hsteps_pF hhalted_pF hagree)
   -- Now prove the suffices clause by strong induction on STEP COUNT (not pF.length - k)
   -- The key insight: each step in minimizeProgram within pF region corresponds to a pF step
@@ -913,12 +913,133 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
   -- The key helper: extract pF halting from minimizeProgram execution through pF region
   -- Proof by strong induction on step count - if we start in pF region and exit, pF halted
   -- [Complex proof elided - uses step-by-step correspondence between shifted pF and pF]
-  intro k state'' c'' hk_le hsteps'' hpc''_ge _hmatch
-  -- This proof is complex due to nested pattern matching on Step constructors
-  -- The key insight: each step in minimizeProgram within [pFOffset, pFOffset+pF.length)
-  -- corresponds exactly to a pF step (Z,S,T preserved; J targets shifted by pFOffset)
-  -- Standard form bounds ensure we can only exit by reaching pc = pFOffset + pF.length
-  sorry
+  intro k state'' c'' hk_le hsteps'' hpc''_ge
+  -- Convert Steps to StepsN for step count induction
+  obtain ⟨numSteps, hstepsN⟩ := StepsN.fromSteps hsteps''
+  -- Strong induction on step count
+  induction numSteps using Nat.strong_induction_on generalizing k state'' c'' with
+  | _ numSteps ih =>
+    -- Case split: k = pF.length (already at exit) or k < pF.length (need to step)
+    by_cases hk_eq : k = pF.length
+    · -- k = pF.length: already at/past exit point
+      subst hk_eq
+      exact ⟨⟨pF.length, state''⟩, Relation.ReflTransGen.refl, rfl⟩
+    · -- k < pF.length: need to take a step in pF region
+      have hk_lt : k < pF.length := Nat.lt_of_le_of_ne hk_le hk_eq
+      -- numSteps must be > 0 (otherwise c'' = start, but c''.pc < pFOffset + pF.length)
+      have hnum_pos : numSteps > 0 := by
+        by_contra hnum_zero
+        push_neg at hnum_zero
+        have hc''_eq : c'' = ⟨pFOffset n pF + k, state''⟩ := StepsN.zero_inv (Nat.le_zero.mp hnum_zero) hstepsN
+        have hc''_pc : c''.pc = pFOffset n pF + k := by rw [hc''_eq]
+        omega
+      -- Decompose into first step + rest
+      obtain ⟨c_mid, m, hfirst_step, hrest_steps, hm_eq⟩ := StepsN.succ_inv (Nat.pos_iff_ne_zero.mp hnum_pos) hstepsN
+      -- The instruction at pFOffset + k is pF's instruction k (shifted)
+      have hembed := pF_shiftJumps_embed n pF k hk_lt
+      -- Get pF instruction (k < pF.length means pF[k]? is some)
+      have hpF_instr_exists : ∃ instr, pF.getInstr k = some instr := by
+        simp only [Program.getInstr]
+        exact ⟨pF[k], List.getElem?_eq_getElem hk_lt⟩
+      obtain ⟨instr, hpF_instr⟩ := hpF_instr_exists
+      -- The shifted instruction in minimizeProgram
+      have hmin_instr : (minimizeProgram n pF).getInstr (pFOffset n pF + k) =
+          some (instr.shiftJumps (pFOffset n pF)) := by
+        rw [hembed, Program.getInstr_shiftJumps, hpF_instr]; rfl
+      -- Match on the instruction type to handle each case
+      have hm_lt : m < numSteps := by omega
+      match instr with
+      | Instr.Z r =>
+        have hpF_step : Step pF ⟨k, state''⟩ ⟨k + 1, state''.write r 0⟩ := Step.zero hpF_instr
+        have hmin_instr' : (minimizeProgram n pF).getInstr (pFOffset n pF + k) = some (Instr.Z r) := by
+          rw [hmin_instr]; rfl
+        -- c_mid = ⟨pFOffset + k + 1, state''.write r 0⟩
+        have hc_mid_eq : c_mid = ⟨pFOffset n pF + k + 1, state''.write r 0⟩ := by
+          cases hfirst_step with
+          | zero h => rw [hmin_instr'] at h; injection h with hr; injection hr with hr'; simp only [hr']
+          | succ h => rw [hmin_instr'] at h; injection h with hc; cases hc
+          | trans h => rw [hmin_instr'] at h; injection h with hc; cases hc
+          | jump_eq h _ => rw [hmin_instr'] at h; injection h with hc; cases hc
+          | jump_ne h _ => rw [hmin_instr'] at h; injection h with hc; cases hc
+        have hk1_le : k + 1 ≤ pF.length := Nat.succ_le_of_lt hk_lt
+        have hrest_steps' : StepsN (minimizeProgram n pF) m ⟨pFOffset n pF + (k + 1), state''.write r 0⟩ c'' := by
+          rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
+        obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt (k + 1) (state''.write r 0) c'' hk1_le
+            hrest_steps'.toSteps hpc''_ge hrest_steps'
+        exact ⟨c_pF, Relation.ReflTransGen.head hpF_step hpF_steps, hpF_pc⟩
+      | Instr.S r =>
+        have hpF_step : Step pF ⟨k, state''⟩ ⟨k + 1, state''.write r (state''.read r + 1)⟩ := Step.succ hpF_instr
+        have hmin_instr' : (minimizeProgram n pF).getInstr (pFOffset n pF + k) = some (Instr.S r) := by
+          rw [hmin_instr]; rfl
+        have hc_mid_eq : c_mid = ⟨pFOffset n pF + k + 1, state''.write r (state''.read r + 1)⟩ := by
+          cases hfirst_step with
+          | zero h => rw [hmin_instr'] at h; injection h with hc; cases hc
+          | succ h => rw [hmin_instr'] at h; injection h with hr; injection hr with hr'; simp only [hr']
+          | trans h => rw [hmin_instr'] at h; injection h with hc; cases hc
+          | jump_eq h _ => rw [hmin_instr'] at h; injection h with hc; cases hc
+          | jump_ne h _ => rw [hmin_instr'] at h; injection h with hc; cases hc
+        have hk1_le : k + 1 ≤ pF.length := Nat.succ_le_of_lt hk_lt
+        have hrest_steps' : StepsN (minimizeProgram n pF) m ⟨pFOffset n pF + (k + 1), state''.write r (state''.read r + 1)⟩ c'' := by
+          rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
+        obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt (k + 1) (state''.write r (state''.read r + 1)) c'' hk1_le
+            hrest_steps'.toSteps hpc''_ge hrest_steps'
+        exact ⟨c_pF, Relation.ReflTransGen.head hpF_step hpF_steps, hpF_pc⟩
+      | Instr.T m' r =>
+        have hpF_step : Step pF ⟨k, state''⟩ ⟨k + 1, state''.write r (state''.read m')⟩ := Step.trans hpF_instr
+        have hmin_instr' : (minimizeProgram n pF).getInstr (pFOffset n pF + k) = some (Instr.T m' r) := by
+          rw [hmin_instr]; rfl
+        have hc_mid_eq : c_mid = ⟨pFOffset n pF + k + 1, state''.write r (state''.read m')⟩ := by
+          cases hfirst_step with
+          | zero h => rw [hmin_instr'] at h; injection h with hc; cases hc
+          | succ h => rw [hmin_instr'] at h; injection h with hc; cases hc
+          | trans h => rw [hmin_instr'] at h; injection h with ht; injection ht with hm' hr'; simp only [hm', hr']
+          | jump_eq h _ => rw [hmin_instr'] at h; injection h with hc; cases hc
+          | jump_ne h _ => rw [hmin_instr'] at h; injection h with hc; cases hc
+        have hk1_le : k + 1 ≤ pF.length := Nat.succ_le_of_lt hk_lt
+        have hrest_steps' : StepsN (minimizeProgram n pF) m ⟨pFOffset n pF + (k + 1), state''.write r (state''.read m')⟩ c'' := by
+          rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
+        obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt (k + 1) (state''.write r (state''.read m')) c'' hk1_le
+            hrest_steps'.toSteps hpc''_ge hrest_steps'
+        exact ⟨c_pF, Relation.ReflTransGen.head hpF_step hpF_steps, hpF_pc⟩
+      | Instr.J m' r' q =>
+        have hmin_instr' : (minimizeProgram n pF).getInstr (pFOffset n pF + k) = some (Instr.J m' r' (q + pFOffset n pF)) := by
+          rw [hmin_instr]; rfl
+        -- q ≤ pF.length by standard form
+        have hq_le : q ≤ pF.length := by
+          have hbounded := hpF_sf.getInstr_hasBoundedJump hpF_instr
+          simp only [Instr.hasBoundedJump, decide_eq_true_eq] at hbounded
+          exact hbounded
+        -- Case on whether registers are equal
+        by_cases heq : state''.read m' = state''.read r'
+        · -- Equal: jump to q
+          have hpF_step : Step pF ⟨k, state''⟩ ⟨q, state''⟩ := Step.jump_eq hpF_instr heq
+          have hc_mid_eq : c_mid = ⟨q + pFOffset n pF, state''⟩ := by
+            cases hfirst_step with
+            | zero h => rw [hmin_instr'] at h; injection h with hc; cases hc
+            | succ h => rw [hmin_instr'] at h; injection h with hc; cases hc
+            | trans h => rw [hmin_instr'] at h; injection h with hc; cases hc
+            | jump_eq h heq' => rw [hmin_instr'] at h; injection h with hj; injection hj with hm' hr' hq'; simp only [hq']
+            | jump_ne h hne => rw [hmin_instr'] at h; injection h with hj; injection hj with hm' hr' hq'; simp only [hm', hr'] at heq; exact absurd heq hne
+          have hrest_steps' : StepsN (minimizeProgram n pF) m ⟨pFOffset n pF + q, state''⟩ c'' := by
+            rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2; omega
+          obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt q state'' c'' hq_le
+              hrest_steps'.toSteps hpc''_ge hrest_steps'
+          exact ⟨c_pF, Relation.ReflTransGen.head hpF_step hpF_steps, hpF_pc⟩
+        · -- Not equal: proceed to k + 1
+          have hpF_step : Step pF ⟨k, state''⟩ ⟨k + 1, state''⟩ := Step.jump_ne hpF_instr heq
+          have hc_mid_eq : c_mid = ⟨pFOffset n pF + k + 1, state''⟩ := by
+            cases hfirst_step with
+            | zero h => rw [hmin_instr'] at h; injection h with hc; cases hc
+            | succ h => rw [hmin_instr'] at h; injection h with hc; cases hc
+            | trans h => rw [hmin_instr'] at h; injection h with hc; cases hc
+            | jump_eq h heq' => rw [hmin_instr'] at h; injection h with hj; injection hj with hm' hr' hq'; simp only [hm', hr'] at heq; exact absurd heq' heq
+            | jump_ne h _ => rfl
+          have hk1_le : k + 1 ≤ pF.length := Nat.succ_le_of_lt hk_lt
+          have hrest_steps' : StepsN (minimizeProgram n pF) m ⟨pFOffset n pF + (k + 1), state''⟩ c'' := by
+            rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
+          obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt (k + 1) state'' c'' hk1_le
+              hrest_steps'.toSteps hpc''_ge hrest_steps'
+          exact ⟨c_pF, Relation.ReflTransGen.head hpF_step hpF_steps, hpF_pc⟩
 
 /-- Auxiliary function for loop_halts_exit_gen that takes step count explicitly.
     This allows for clean strong induction on step count. -/
