@@ -24,38 +24,37 @@ open Program
 
 /-! ## pF Register Preservation -/
 
+/-- General lemma: pF execution preserves any register beyond its maxRegister. -/
+theorem pF_preserves_high_reg (pF : Program) (s s' : State)
+    (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') (hstate_eq : c'.state = s')
+    (r : ℕ) (hr : pF.maxRegister < r) :
+    s'.read r = s.read r := by
+  subst hstate_eq
+  exact Steps.preserves_high_register hsteps r hr
+
 /-- pF execution preserves the counter register. -/
 theorem pF_preserves_counter (n : ℕ) (pF : Program) (s s' : State)
     (_hpF_max : pF.maxRegister ≤ minimizationBase n pF)
     (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') (_hhalted : c'.isHalted pF)
     (hstate_eq : c'.state = s') :
-    s'.read (counterReg n pF) = s.read (counterReg n pF) := by
-  subst hstate_eq
-  exact Steps.preserves_high_register hsteps (counterReg n pF) (by
-    have h := pF_doesnt_touch_counter n pF
-    omega)
+    s'.read (counterReg n pF) = s.read (counterReg n pF) :=
+  pF_preserves_high_reg pF s s' c' hsteps hstate_eq _ (pF_doesnt_touch_counter n pF)
 
 /-- pF execution preserves the zero register. -/
 theorem pF_preserves_zeroReg (n : ℕ) (pF : Program) (s s' : State)
     (_hpF_max : pF.maxRegister ≤ minimizationBase n pF)
     (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') (_hhalted : c'.isHalted pF)
     (hstate_eq : c'.state = s') :
-    s'.read (zeroReg n pF) = s.read (zeroReg n pF) := by
-  subst hstate_eq
-  exact Steps.preserves_high_register hsteps (zeroReg n pF) (by
-    have h := pF_doesnt_touch_zeroReg n pF
-    omega)
+    s'.read (zeroReg n pF) = s.read (zeroReg n pF) :=
+  pF_preserves_high_reg pF s s' c' hsteps hstate_eq _ (pF_doesnt_touch_zeroReg n pF)
 
 /-- pF execution preserves saved input registers. -/
 theorem pF_preserves_savedInputs (n : ℕ) (pF : Program) (s s' : State)
     (_hpF_max : pF.maxRegister ≤ minimizationBase n pF)
     (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') (_hhalted : c'.isHalted pF)
     (hstate_eq : c'.state = s') (i : Fin n) :
-    s'.read (savedInputsStart n pF + i) = s.read (savedInputsStart n pF + i) := by
-  subst hstate_eq
-  exact Steps.preserves_high_register hsteps (savedInputsStart n pF + i) (by
-    have h := pF_doesnt_touch_savedInputs n pF i
-    omega)
+    s'.read (savedInputsStart n pF + i) = s.read (savedInputsStart n pF + i) :=
+  pF_preserves_high_reg pF s s' c' hsteps hstate_eq _ (pF_doesnt_touch_savedInputs n pF i)
 
 /-! ## Setup Phase Results -/
 

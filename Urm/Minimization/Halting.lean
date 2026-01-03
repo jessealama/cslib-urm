@@ -414,22 +414,7 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
   let pF_result := c_pF'.state.read 0
 
   -- loopEpilogue starts at PC = pFOffset + pF.length
-  let epilogueStartPC := pFOffset n pF + pF.length
-
-  -- Verify the instruction at epilogueStartPC is J 0 zeroReg outputPC
-  have hJ0_instr : (minimizeProgram n pF).getInstr epilogueStartPC =
-      some (Instr.J 0 (zeroReg n pF) (outputPC n pF)) := by
-    simp only [minimizeProgram, getInstr, epilogueStartPC, pFOffset, setupPhaseLength, loopPrologueLength]
-    simp only [List.getElem?_append, List.length_append, setupPhase_length, loopPrologue_length,
-      shiftJumps_length, loopEpilogue_length, setupPhaseLength, loopPrologueLength]
-    -- Navigate through nested if/then/else from List.getElem?_append
-    -- The index is in loopEpilogue (past setupPhase, loopPrologue, pF but before outputPhase)
-    have h2 : n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length <
-        n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 := by omega
-    have h3 : ¬ n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length <
-        n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length := by omega
-    have h4 : ¬ n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length < n + 2 := by omega
-    simp only [h2, h3, h4, ite_true, ite_false, loopEpilogue, List.getElem?_cons_zero, Nat.sub_self]
+  have hJ0_instr := instr_at_epilogue_J0 n pF
 
   -- Case split on whether pF returned 0
   by_cases hresult : pF_result = 0
@@ -438,7 +423,7 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
     have heq_zero : c_pF'.state.read 0 = c_pF'.state.read (zeroReg n pF) := by
       simp only [pF_result] at hresult
       rw [hresult, hzero_after_pF]
-    have hstep_J0 : Step (minimizeProgram n pF) ⟨epilogueStartPC, c_pF'.state⟩
+    have hstep_J0 : Step (minimizeProgram n pF) ⟨epilogueStartPC n pF, c_pF'.state⟩
         ⟨outputPC n pF, c_pF'.state⟩ := Step.jump_eq hJ0_instr heq_zero
     have hsteps_exit := Relation.ReflTransGen.single hstep_J0
     have hsteps_total := Relation.ReflTransGen.trans hsteps_to_epilogue hsteps_exit
@@ -453,43 +438,19 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
     have hne_zero : c_pF'.state.read 0 ≠ c_pF'.state.read (zeroReg n pF) := by
       simp only [pF_result] at hresult
       rw [hzero_after_pF]; exact hresult
-    have hstep_J0 : Step (minimizeProgram n pF) ⟨epilogueStartPC, c_pF'.state⟩
-        ⟨epilogueStartPC + 1, c_pF'.state⟩ := Step.jump_ne hJ0_instr hne_zero
+    have hstep_J0 : Step (minimizeProgram n pF) ⟨epilogueStartPC n pF, c_pF'.state⟩
+        ⟨epilogueStartPC n pF + 1, c_pF'.state⟩ := Step.jump_ne hJ0_instr hne_zero
 
     -- Execute S counter
-    have hS_instr : (minimizeProgram n pF).getInstr (epilogueStartPC + 1) =
-        some (Instr.S (counterReg n pF)) := by
-      simp only [minimizeProgram, getInstr, epilogueStartPC, pFOffset, setupPhaseLength, loopPrologueLength]
-      simp only [List.getElem?_append, List.length_append, setupPhase_length, loopPrologue_length,
-        shiftJumps_length, loopEpilogue_length, setupPhaseLength, loopPrologueLength]
-      have h2 : n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 1 <
-          n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 := by omega
-      have h3 : ¬ n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 1 <
-          n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length := by omega
-      have h4 : ¬ n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 1 < n + 2 := by omega
-      have h8 : n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 1 -
-          (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length) = 1 := by omega
-      simp only [h2, h3, h4, ite_true, ite_false, h8, loopEpilogue, List.getElem?_cons_succ, List.getElem?_cons_zero]
+    have hS_instr := instr_at_epilogue_S n pF
     let state_after_S := c_pF'.state.write (counterReg n pF) (c_pF'.state.read (counterReg n pF) + 1)
-    have hstep_S : Step (minimizeProgram n pF) ⟨epilogueStartPC + 1, c_pF'.state⟩
-        ⟨epilogueStartPC + 2, state_after_S⟩ := Step.succ hS_instr
+    have hstep_S : Step (minimizeProgram n pF) ⟨epilogueStartPC n pF + 1, c_pF'.state⟩
+        ⟨epilogueStartPC n pF + 2, state_after_S⟩ := Step.succ hS_instr
 
     -- Execute J zeroReg zeroReg loopStartPC (unconditional jump)
-    have hJ1_instr : (minimizeProgram n pF).getInstr (epilogueStartPC + 2) =
-        some (Instr.J (zeroReg n pF) (zeroReg n pF) (loopStartPC n)) := by
-      simp only [minimizeProgram, getInstr, epilogueStartPC, pFOffset, setupPhaseLength, loopPrologueLength]
-      simp only [List.getElem?_append, List.length_append, setupPhase_length, loopPrologue_length,
-        shiftJumps_length, loopEpilogue_length, setupPhaseLength, loopPrologueLength]
-      have h2 : n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 2 <
-          n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 := by omega
-      have h3 : ¬ n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 2 <
-          n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length := by omega
-      have h4 : ¬ n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 2 < n + 2 := by omega
-      have h8 : n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 2 -
-          (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length) = 2 := by omega
-      simp only [h2, h3, h4, ite_true, ite_false, h8, loopEpilogue, List.getElem?_cons_succ, List.getElem?_cons_zero]
+    have hJ1_instr := instr_at_epilogue_J1 n pF
     have heq_self : state_after_S.read (zeroReg n pF) = state_after_S.read (zeroReg n pF) := rfl
-    have hstep_J1 : Step (minimizeProgram n pF) ⟨epilogueStartPC + 2, state_after_S⟩
+    have hstep_J1 : Step (minimizeProgram n pF) ⟨epilogueStartPC n pF + 2, state_after_S⟩
         ⟨loopStartPC n, state_after_S⟩ := Step.jump_eq hJ1_instr heq_self
 
     -- Combine all steps

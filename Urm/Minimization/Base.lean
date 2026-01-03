@@ -46,10 +46,10 @@ def savedInputsStart (n : ℕ) (pF : Program) : ℕ :=
 
 /-! ## Bound lemmas for minimizationBase -/
 
-theorem minimizationBase_ge_n (n : ℕ) (pF : Program) :
+@[simp] theorem minimizationBase_ge_n (n : ℕ) (pF : Program) :
     n ≤ minimizationBase n pF := le_max_left n pF.maxRegister
 
-theorem minimizationBase_ge_pF (n : ℕ) (pF : Program) :
+@[simp] theorem minimizationBase_ge_pF (n : ℕ) (pF : Program) :
     pF.maxRegister ≤ minimizationBase n pF := le_max_right n pF.maxRegister
 
 /-! ## Register distinctness lemmas -/
@@ -74,34 +74,24 @@ theorem savedInputsStart_gt_base (n : ℕ) (pF : Program) :
 
 theorem savedInputsStart_gt_n (n : ℕ) (pF : Program) :
     n ≤ savedInputsStart n pF := by
-  simp only [savedInputsStart]
-  have h := minimizationBase_ge_n n pF
-  omega
+  simp only [savedInputsStart]; have := minimizationBase_ge_n n pF; omega
 
 theorem savedInput_reg_distinct (n : ℕ) (pF : Program) (i : Fin n) :
     savedInputsStart n pF + i ≠ i.val := by
-  simp only [savedInputsStart]
-  have h := minimizationBase_ge_n n pF
-  omega
+  simp only [savedInputsStart]; have := minimizationBase_ge_n n pF; omega
 
 /-! ## pF doesn't touch high registers -/
 
 theorem pF_doesnt_touch_savedInputs (n : ℕ) (pF : Program) (i : Fin n) :
     pF.maxRegister < savedInputsStart n pF + i := by
-  simp only [savedInputsStart]
-  have h := minimizationBase_ge_pF n pF
-  omega
+  simp only [savedInputsStart]; have := minimizationBase_ge_pF n pF; omega
 
 theorem pF_doesnt_touch_counter (n : ℕ) (pF : Program) :
     pF.maxRegister < counterReg n pF := by
-  simp only [counterReg]
-  have h := minimizationBase_ge_pF n pF
-  omega
+  simp only [counterReg]; have := minimizationBase_ge_pF n pF; omega
 
 theorem pF_doesnt_touch_zeroReg (n : ℕ) (pF : Program) :
     pF.maxRegister < zeroReg n pF := by
-  simp only [zeroReg]
-  have h := minimizationBase_ge_pF n pF
-  omega
+  simp only [zeroReg]; have := minimizationBase_ge_pF n pF; omega
 
 end Urm

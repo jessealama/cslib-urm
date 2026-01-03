@@ -135,12 +135,12 @@ theorem μ_dom_below {n : ℕ} {f : (Fin (n + 1) → ℕ) → Part ℕ} {inputs 
 /-! ## Helper Lemmas -/
 
 /-- extendInputs at index i < n returns the original input. -/
-theorem extendInputs_castSucc {n : ℕ} (inputs : Fin n → ℕ) (y : ℕ) (i : Fin n) :
+@[simp] theorem extendInputs_castSucc {n : ℕ} (inputs : Fin n → ℕ) (y : ℕ) (i : Fin n) :
     extendInputs inputs y (Fin.castSucc i) = inputs i := by
   simp [extendInputs, Fin.snoc]
 
 /-- extendInputs at index n returns y. -/
-theorem extendInputs_last {n : ℕ} (inputs : Fin n → ℕ) (y : ℕ) :
+@[simp] theorem extendInputs_last {n : ℕ} (inputs : Fin n → ℕ) (y : ℕ) :
     extendInputs inputs y (Fin.last n) = y := by
   simp [extendInputs, Fin.snoc]
 

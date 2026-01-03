@@ -144,4 +144,64 @@ theorem minimizeProgram_eq_setup_loop_output (n : ℕ) (pF : Program) :
     minimizeProgram n pF = setupPhase n pF ++ loopBody n pF ++ outputPhase n pF := by
   simp only [minimizeProgram, loopBody, List.append_assoc]
 
+/-! ## Epilogue instruction lemmas
+
+These lemmas provide direct access to epilogue instructions at specific PCs.
+They eliminate repeated simp chains in Halting.lean. -/
+
+/-- PC at start of loop epilogue. -/
+def epilogueStartPC (n : ℕ) (pF : Program) : ℕ := pFOffset n pF + pF.length
+
+theorem instr_at_epilogue_J0 (n : ℕ) (pF : Program) :
+    (minimizeProgram n pF).getInstr (epilogueStartPC n pF) =
+      some (Instr.J 0 (zeroReg n pF) (outputPC n pF)) := by
+  simp only [minimizeProgram, getInstr, epilogueStartPC, pFOffset, setupPhaseLength, loopPrologueLength,
+    List.getElem?_append, List.length_append, setupPhase_length, loopPrologue_length,
+    shiftJumps_length, loopEpilogue_length]
+  -- Navigate through the nested append conditionals
+  have h1 : ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length < n + 2) := by omega
+  have h2 : ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length <
+      n + 2 + (minimizationBase n pF + 1 + n + 1)) := by omega
+  have h3 : ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length <
+      n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length) := by omega
+  have h4 : n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length <
+      n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 := by omega
+  simp only [h1, h2, h3, h4, ite_true, ite_false, Nat.sub_self, loopEpilogue, List.getElem?_cons_zero]
+
+theorem instr_at_epilogue_S (n : ℕ) (pF : Program) :
+    (minimizeProgram n pF).getInstr (epilogueStartPC n pF + 1) =
+      some (Instr.S (counterReg n pF)) := by
+  simp only [minimizeProgram, getInstr, epilogueStartPC, pFOffset, setupPhaseLength, loopPrologueLength,
+    List.getElem?_append, List.length_append, setupPhase_length, loopPrologue_length,
+    shiftJumps_length, loopEpilogue_length]
+  have h1 : ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 1 < n + 2) := by omega
+  have h2 : ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 1 <
+      n + 2 + (minimizationBase n pF + 1 + n + 1)) := by omega
+  have h3 : ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 1 <
+      n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length) := by omega
+  have h4 : n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 1 <
+      n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 := by omega
+  have h5 : n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 1 -
+      (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length) = 1 := by omega
+  simp only [h1, h2, h3, h4, ite_true, ite_false, h5, loopEpilogue,
+    List.getElem?_cons_succ, List.getElem?_cons_zero]
+
+theorem instr_at_epilogue_J1 (n : ℕ) (pF : Program) :
+    (minimizeProgram n pF).getInstr (epilogueStartPC n pF + 2) =
+      some (Instr.J (zeroReg n pF) (zeroReg n pF) (loopStartPC n)) := by
+  simp only [minimizeProgram, getInstr, epilogueStartPC, pFOffset, setupPhaseLength, loopPrologueLength,
+    List.getElem?_append, List.length_append, setupPhase_length, loopPrologue_length,
+    shiftJumps_length, loopEpilogue_length]
+  have h1 : ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 2 < n + 2) := by omega
+  have h2 : ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 2 <
+      n + 2 + (minimizationBase n pF + 1 + n + 1)) := by omega
+  have h3 : ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 2 <
+      n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length) := by omega
+  have h4 : n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 2 <
+      n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 := by omega
+  have h5 : n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 2 -
+      (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length) = 2 := by omega
+  simp only [h1, h2, h3, h4, ite_true, ite_false, h5, loopEpilogue,
+    List.getElem?_cons_succ, List.getElem?_cons_zero]
+
 end Urm
