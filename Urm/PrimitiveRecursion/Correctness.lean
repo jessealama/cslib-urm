@@ -33,12 +33,12 @@ theorem primitiveRecursionProgram_result (n : ℕ) (pF pG : Program)
     Result (primitiveRecursionProgram n pF pG) (List.ofFn (Fin.snoc inputs y)) hHalts =
       (Pr f g (Fin.snoc inputs y)).get hPr_dom := by
   -- Step 1: Execute setup phase
-  let setup := executeSetupPhase n pF pG inputs y
+  let setup := prExecuteSetupPhase n pF pG inputs y
 
   -- Step 2: Execute base case phase
   have hf_dom : (f inputs).Dom := (Pr_dom_iff inputs y).mp hPr_dom |>.1
   have hpF_halts : Halts pF (List.ofFn inputs) := (hpF_spec inputs).1.mpr hf_dom
-  let baseCase := executeBaseCasePhase n pF pG hpF_sf inputs y setup.config.state
+  let baseCase := prExecuteBaseCasePhase n pF pG hpF_sf inputs y setup.config.state
     setup.savedInputs_eq hpF_halts
 
   -- Step 3: Execute y loop iterations
@@ -50,7 +50,7 @@ theorem primitiveRecursionProgram_result (n : ℕ) (pF pG : Program)
     rw [hResult_eq]
     simp only [Pr_zero_spec]
 
-  let loopResult := loop_k_iterations n pF pG hpF_sf hpG_sf f g hpF_spec hpG_spec
+  let loopResult := pr_loop_k_iterations n pF pG hpF_sf hpG_sf f g hpF_spec hpG_spec
     inputs y baseCase.config.state y (Nat.le_refl y)
     (by rw [baseCase.counter_preserved, setup.counter_eq])
     (by rw [baseCase.savedY_preserved, setup.savedY_eq])
@@ -75,7 +75,7 @@ theorem primitiveRecursionProgram_result (n : ℕ) (pF pG : Program)
 
   -- Step 5: Execute output phase
   obtain ⟨cOutput, hOutput_steps, hOutput_halted, hOutput_read⟩ :=
-    outputPhase_halts n pF pG loopResult.config.state
+    prOutputPhase_halts n pF pG loopResult.config.state
 
   -- cOutput.state.read 0 = accumulator = Pr(inputs, y).get
   have hOutput_eq_Pr : cOutput.state.read 0 = (Pr f g (Fin.snoc inputs y)).get hPr_dom := by
@@ -104,8 +104,9 @@ theorem primitiveRecursionProgram_result (n : ℕ) (pF pG : Program)
         ⟨prOutputPC n pF pG, loopResult.config.state⟩ cOutput := hOutput_steps
     exact h1.trans (h2.trans (h3.trans (h4.trans h5)))
 
-  -- Step 7: Get the final config from hHalts
-  obtain ⟨cFinal, hFinal_steps, hFinal_halted⟩ := hHalts
+  -- Step 7: Get the final config from hHalts (keep hHalts intact)
+  have hHalts' := hHalts
+  obtain ⟨cFinal, hFinal_steps, hFinal_halted⟩ := hHalts'
 
   -- By uniqueness of halting, cFinal = cOutput
   have hFinal_eq_Output : cFinal = cOutput :=

@@ -110,7 +110,7 @@ theorem prOutputPhase_isStandardForm (n : ℕ) (pF pG : Program) :
 /-! ## Shifted subprogram lemmas -/
 
 /-- If pF is standard form, then pF shifted has bounded jumps for the embedded position. -/
-theorem shiftedPF_hasBoundedJumps (n : ℕ) (pF pG : Program) (hF : pF.IsStandardForm) :
+theorem prShiftedPF_hasBoundedJumps (n : ℕ) (pF pG : Program) (hF : pF.IsStandardForm) :
     ∀ instr ∈ pF.shiftJumps (prPFOffset n pF pG),
       instr.hasBoundedJump (prOutputPC n pF pG + 1) = true := by
   intro instr hinstr
@@ -185,7 +185,7 @@ theorem primitiveRecursionProgram_isStandardForm (n : ℕ) (pF pG : Program)
       omega
     | Or.inl (Or.inr hinstr) =>
       -- Shifted pF
-      exact shiftedPF_hasBoundedJumps n pF pG hF instr hinstr
+      exact prShiftedPF_hasBoundedJumps n pF pG hF instr hinstr
     | Or.inr h =>
       -- T 0 accumulator
       subst h; rfl

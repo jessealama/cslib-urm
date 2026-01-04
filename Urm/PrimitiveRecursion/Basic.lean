@@ -34,17 +34,14 @@ theorem URMComputableSF.primRec {n : ℕ}
   have hinputs_eq : inputs = Fin.snoc (initInputs inputs) (lastInput inputs) := by
     ext i
     by_cases hi : i.val < n
-    · have heq : i = Fin.castSucc ⟨i.val, hi⟩ := by
-        ext; simp
-      rw [heq]; simp [Fin.snoc, initInputs]
-    · have heq : i = Fin.last n := by
-        ext
-        have := i.isLt
-        omega
-      rw [heq]; simp [Fin.snoc, lastInput]
+    · have heq : i = Fin.castSucc ⟨i.val, hi⟩ := by ext; simp
+      rw [heq]; simp only [Fin.snoc_castSucc, initInputs_apply]
+    · have heq : i = Fin.last n := by ext; have := i.isLt; grind
+      rw [heq]; simp only [Fin.snoc_last, lastInput_apply]
   rw [hinputs_eq]
-  have x := initInputs inputs
-  have y := lastInput inputs
+  -- Use let for transparent definitions so type matching works
+  let x := initInputs inputs
+  let y := lastInput inputs
   -- Apply the bundled spec
   have hspec := primitiveRecursionProgram_spec n pF pG hF_sf hG_sf f g
     (fun args => ⟨(hF_spec args).1, (hF_spec args).2⟩)
