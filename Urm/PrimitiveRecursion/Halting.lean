@@ -617,14 +617,11 @@ noncomputable def loop_iteration (n : ℕ) (pF pG : Program)
             simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn]
             have hr : r < r + 2 := by omega
             simp only [hr, ↓reduceDIte, Option.getD_some]
-            -- extendInputsForG inputs k accBefore ⟨r, hr⟩ = k
-            -- This equals (Fin.snoc (Fin.snoc inputs k) accBefore) ⟨r, hr⟩
-            -- Position r in (r+2)-tuple is the second-to-last, which is k
-            simp only [extendInputsForG, Fin.snoc]
-            split_ifs with hcast
-            · simp only [Fin.castSucc, Fin.last, Fin.coe_mk] at hcast
-              omega
-            · rfl
+            -- Position r in (r+2)-tuple = Fin.castSucc (Fin.last r) = k
+            have heq : (⟨r, hr⟩ : Fin (r + 2)) = Fin.castSucc (Fin.last r) := by
+              ext; simp [Fin.castSucc, Fin.last]
+            rw [heq]
+            exact extendInputsForG_castSucc_last inputs k accBefore
           rw [hleft, hright]
         · by_cases hr_eq_n1 : r = n + 1
           · -- Case r = n+1: both sides equal accBefore
@@ -752,29 +749,41 @@ noncomputable def loop_iteration (n : ℕ) (pF pG : Program)
         prOutputPhase_length, prLoopPrologueLength, prLoopEpilogueLength, prLoopBodyLength,
         prSetupPhaseLength, prBaseCasePhaseLength, prBaseCasePrologueLength, List.length]
       split_ifs <;> try omega
-      have hidx : _ = (0 : ℕ) := by omega
+      have hidx : n + 1 + 2 + (primitiveRecursionBase n pF pG + 1 + n + List.length pF + 1) + 1 +
+            (primitiveRecursionBase n pF pG + 1 + n + 2) +
+          List.length pG -
+        (n + 1 + 2 + (primitiveRecursionBase n pF pG + 1 + n + List.length pF + 1) + 1) -
+        (primitiveRecursionBase n pF pG + 1 + n + 2 + List.length pG) = 0 := by omega
       simp only [hidx, List.getElem?_cons_zero]
 
     have hS_instr : (primitiveRecursionProgram n pF pG).getInstr (prPGOffset n pF pG + pG.length + 1) =
         some (Instr.S (prCounterReg n pF pG)) := by
       simp only [primitiveRecursionProgram, prPGOffset, prLoopBodyPC, prLoopCheckPC, prLoopBody, prLoopEpilogue,
         getInstr, List.getElem?_append, prSetupPhase_length, prBaseCasePhase_length, prLoopCheck_length,
-        prLoopPrologue_length, shiftJumps_length, List.length_append, prLoopBody_length,
-        prOutputPhase_length, prLoopPrologueLength, prLoopEpilogueLength, prLoopBodyLength,
+        prLoopPrologue_length, shiftJumps_length, List.length_append,
+        prLoopPrologueLength, prLoopBodyLength,
         prSetupPhaseLength, prBaseCasePhaseLength, prBaseCasePrologueLength, List.length]
       split_ifs <;> try omega
-      have hidx : _ = (1 : ℕ) := by omega
+      have hidx : n + 1 + 2 + (primitiveRecursionBase n pF pG + 1 + n + List.length pF + 1) + 1 +
+            (primitiveRecursionBase n pF pG + 1 + n + 2) +
+          List.length pG + 1 -
+        (n + 1 + 2 + (primitiveRecursionBase n pF pG + 1 + n + List.length pF + 1) + 1) -
+        (primitiveRecursionBase n pF pG + 1 + n + 2 + List.length pG) = 1 := by omega
       simp only [hidx, List.getElem?_cons_succ, List.getElem?_cons_zero]
 
     have hJ_instr_epilogue : (primitiveRecursionProgram n pF pG).getInstr (prPGOffset n pF pG + pG.length + 2) =
         some (Instr.J (prZeroReg n pF pG) (prZeroReg n pF pG) (prLoopCheckPC n pF pG)) := by
       simp only [primitiveRecursionProgram, prPGOffset, prLoopBodyPC, prLoopCheckPC, prLoopBody, prLoopEpilogue,
         getInstr, List.getElem?_append, prSetupPhase_length, prBaseCasePhase_length, prLoopCheck_length,
-        prLoopPrologue_length, shiftJumps_length, List.length_append, prLoopBody_length,
-        prOutputPhase_length, prLoopPrologueLength, prLoopEpilogueLength, prLoopBodyLength,
+        prLoopPrologue_length, shiftJumps_length, List.length_append,
+        prLoopPrologueLength, prLoopBodyLength,
         prSetupPhaseLength, prBaseCasePhaseLength, prBaseCasePrologueLength, List.length]
       split_ifs <;> try omega
-      have hidx : _ = (2 : ℕ) := by omega
+      have hidx : n + 1 + 2 + (primitiveRecursionBase n pF pG + 1 + n + List.length pF + 1) + 1 +
+            (primitiveRecursionBase n pF pG + 1 + n + 2) +
+          List.length pG + 2 -
+        (n + 1 + 2 + (primitiveRecursionBase n pF pG + 1 + n + List.length pF + 1) + 1) -
+        (primitiveRecursionBase n pF pG + 1 + n + 2 + List.length pG) = 2 := by omega
       simp only [hidx, List.getElem?_cons_succ, List.getElem?_cons_zero]
 
     -- Execute T instruction
@@ -1096,9 +1105,8 @@ theorem primitiveRecursionProgram_halts (n : ℕ) (pF pG : Program)
     rw [loopResult.counter_eq, loopResult.savedY_eq]
   have hstep_exit : Step (primitiveRecursionProgram n pF pG)
       ⟨prLoopCheckPC n pF pG, loopResult.config.state⟩
-      ⟨prOutputPC n pF pG, loopResult.config.state⟩ := by
-    rw [← loopResult.pc_eq]
-    exact Step.jump_eq hJ_instr hcounter_eq_savedY
+      ⟨prOutputPC n pF pG, loopResult.config.state⟩ :=
+    Step.jump_eq hJ_instr hcounter_eq_savedY
 
   -- Phase 5: Output phase halts
   obtain ⟨finalConfig, hOutput_steps, hOutput_halted, _⟩ :=
@@ -1110,13 +1118,11 @@ theorem primitiveRecursionProgram_halts (n : ℕ) (pF pG : Program)
     -- init → prBaseCasePC (setup)
     have h1 := setup.steps
     -- prBaseCasePC → prLoopCheckPC (base case)
-    have h2 : Steps (primitiveRecursionProgram n pF pG) setup.config baseCase.config := by
-      rw [setup.pc_eq]
-      exact baseCase.steps
+    have h2 : Steps (primitiveRecursionProgram n pF pG) setup.config baseCase.config :=
+      baseCase.steps
     -- prLoopCheckPC → prLoopCheckPC with counter=y (loop iterations)
-    have h3 : Steps (primitiveRecursionProgram n pF pG) baseCase.config loopResult.config := by
-      rw [baseCase.pc_eq]
-      exact loopResult.steps
+    have h3 : Steps (primitiveRecursionProgram n pF pG) baseCase.config loopResult.config :=
+      loopResult.steps
     -- prLoopCheckPC → prOutputPC (exit jump)
     have h4 : Steps (primitiveRecursionProgram n pF pG) loopResult.config
         ⟨prOutputPC n pF pG, loopResult.config.state⟩ := by
@@ -1493,13 +1499,19 @@ theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
       · intro ⟨c, hsteps, hhalted⟩
         -- Use agreeOn to transfer execution
         have hagree_result := Steps.agreeOn hsteps hpc_c2 hagree_pF_symm
-        obtain ⟨c', hsteps', _, _⟩ := Classical.choose_spec hagree_result
-        exact ⟨c', hsteps', by rw [← (Classical.choose_spec hagree_result).2.1]; exact hhalted⟩
+        let c' := Classical.choose hagree_result
+        have hspec := Classical.choose_spec hagree_result
+        have hsteps' : Steps pF c₂ c' := hspec.1
+        have hpc' : c.pc = c'.pc := hspec.2.1
+        exact ⟨c', hsteps', by simp only [Config.isHalted] at hhalted ⊢; omega⟩
       · intro ⟨c, hsteps, hhalted⟩
         -- Use agreeOn in reverse to transfer execution
         have hagree_result := Steps.agreeOn hsteps hpc_c2.symm hagree_pF
-        obtain ⟨c', hsteps', hpc', _⟩ := Classical.choose_spec hagree_result
-        exact ⟨c', hsteps', by rw [← hpc']; exact hhalted⟩
+        let c' := Classical.choose hagree_result
+        have hspec := Classical.choose_spec hagree_result
+        have hsteps' : Steps pF (Config.init (List.ofFn inputs)) c' := hspec.1
+        have hpc' : c.pc = c'.pc := hspec.2.1
+        exact ⟨c', hsteps', by simp only [Config.isHalted] at hhalted ⊢; omega⟩
     -- Now show that pF halts on c₂.state (from the overall program halting)
     have hpF_halts_c2 : ∃ c, Steps pF c₂ c ∧ c.isHalted pF := by
       -- From hContinuation', we have steps from prPFOffset to cFinal
@@ -1551,13 +1563,12 @@ theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
       -- This means pF halted (by standard form: halts iff reaches length)
       -- Let's formalize this key step
       have hFinal_pc_ge : cFinal.pc ≥ (primitiveRecursionProgram n pF pG).length := by
-        simp only [Config.isHalted, Program.getInstr] at hFinal_halted
-        exact Nat.le_of_not_lt (fun h => by
-          simp only [List.getElem?_eq_getElem h] at hFinal_halted)
+        simp only [Config.isHalted] at hFinal_halted
+        exact hFinal_halted
       have hPF_end_lt_prog_len : prPFOffset n pF pG + pF.length < (primitiveRecursionProgram n pF pG).length := by
-        simp only [prPFOffset, primitiveRecursionProgram_length, prSetupPhaseLength,
-          prBaseCasePrologueLength, prBaseCasePhaseLength, prLoopBodyLength, prLoopPrologueLength,
-          prLoopEpilogueLength]
+        simp only [prPFOffset, primitiveRecursionProgram_length, prOutputPC, prLoopBodyPC,
+          prLoopCheckPC, prSetupPhaseLength, prBaseCasePrologueLength, prBaseCasePhaseLength,
+          prLoopBodyLength, prLoopPrologueLength, prLoopEpilogueLength]
         omega
       -- cFinal.pc > prPFOffset + pF.length, so execution passed through pF.shiftJumps completely
       -- This means there was a halting config for pF at prPFOffset + pF.length
@@ -1675,9 +1686,8 @@ theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
       rw [loopResult_k.counter_eq, loopResult_k.savedY_eq]; exact hk_ne_y
     have hstep_J : Step (primitiveRecursionProgram n pF pG)
         ⟨prLoopCheckPC n pF pG, loopResult_k.config.state⟩
-        ⟨prLoopCheckPC n pF pG + 1, loopResult_k.config.state⟩ := by
-      rw [← loopResult_k.pc_eq]
-      exact Step.jump_ne hJ_instr hcounter_ne_savedY
+        ⟨prLoopCheckPC n pF pG + 1, loopResult_k.config.state⟩ :=
+      Step.jump_ne hJ_instr hcounter_ne_savedY
     have hLoopBodyPC_eq : prLoopCheckPC n pF pG + 1 = prLoopBodyPC n pF pG := by
       simp only [prLoopBodyPC, prLoopCheckPC, prSetupPhaseLength, prBaseCasePhaseLength]
     -- Execute loop prologue
@@ -1702,10 +1712,10 @@ theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
         (Config.init (List.ofFn (Fin.snoc inputs y)))
         ⟨prLoopCheckPC n pF pG, loopResult_k.config.state⟩ := by
       have h1 := setup.steps
-      have h2 : Steps (primitiveRecursionProgram n pF pG) setup.config baseCase.config := by
-        rw [setup.pc_eq]; exact baseCase.steps
-      have h3 : Steps (primitiveRecursionProgram n pF pG) baseCase.config loopResult_k.config := by
-        rw [baseCase.pc_eq]; exact loopResult_k.steps
+      have h2 : Steps (primitiveRecursionProgram n pF pG) setup.config baseCase.config :=
+        baseCase.steps
+      have h3 : Steps (primitiveRecursionProgram n pF pG) baseCase.config loopResult_k.config :=
+        loopResult_k.steps
       have hconfig : loopResult_k.config = ⟨prLoopCheckPC n pF pG, loopResult_k.config.state⟩ := by
         ext; exact loopResult_k.pc_eq; rfl
       rw [hconfig] at h3
@@ -1750,17 +1760,17 @@ theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
           exact extendInputsForG_castSucc_castSucc inputs k _ ⟨r, hr_lt_n⟩
         rw [hleft, hright]
       · by_cases hr_eq_n : r = n
-        · subst hr_eq_n
-          have hleft := hRn_after_prologue
+        · rw [hr_eq_n]
+          have hleft : c_prologue.state.read n = k := hRn_after_prologue
           have hright : initStateG.read n = k := by
             unfold initStateG Config.init State.fromInputs State.read
             simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn]
             have hr : n < n + 2 := by omega
             simp only [hr, ↓reduceDIte, Option.getD_some]
-            simp only [extendInputsForG, Fin.snoc]
-            split_ifs with hcast
-            · simp only [Fin.castSucc, Fin.last, Fin.coe_mk] at hcast; omega
-            · rfl
+            have heq : (⟨n, hr⟩ : Fin (n + 2)) = Fin.castSucc (Fin.last n) := by
+              ext; simp [Fin.castSucc, Fin.last]
+            rw [heq]
+            exact extendInputsForG_castSucc_last inputs k _
           rw [hleft, hright]
         · by_cases hr_eq_n1 : r = n + 1
           · subst hr_eq_n1
@@ -1826,7 +1836,7 @@ theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
             rw [hleft, hright]
     -- Now use the same argument as for pF: if pG doesn't halt, main program diverges
     let c₂G : Config := ⟨0, c_prologue.state⟩
-    have hpc_c2G : (Config.init (List.ofFn (extendInputsForG inputs k _))).pc = c₂G.pc := rfl
+    have hpc_c2G : (Config.init (List.ofFn (extendInputsForG inputs k ((Pr f g (Fin.snoc inputs k)).get hPr_k)))).pc = c₂G.pc := rfl
     have hagree_pG_symm : initStateG.agreeOn c₂G.state 0 pG.maxRegister := State.agreeOn_symm hagree_pG
     -- If pG doesn't halt on initStateG, show it doesn't halt on c₂G.state, then main diverges
     have hpG_halts_iff : Halts pG (List.ofFn (extendInputsForG inputs k ((Pr f g (Fin.snoc inputs k)).get hPr_k))) ↔
@@ -1835,12 +1845,18 @@ theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
       constructor
       · intro ⟨c, hsteps, hhalted⟩
         have hagree_result := Steps.agreeOn hsteps hpc_c2G hagree_pG_symm
-        obtain ⟨c', hsteps', _, _⟩ := Classical.choose_spec hagree_result
-        exact ⟨c', hsteps', by rw [← (Classical.choose_spec hagree_result).2.1]; exact hhalted⟩
+        let c' := Classical.choose hagree_result
+        have hspec := Classical.choose_spec hagree_result
+        have hsteps' : Steps pG c₂G c' := hspec.1
+        have hpc' : c.pc = c'.pc := hspec.2.1
+        exact ⟨c', hsteps', by simp only [Config.isHalted] at hhalted ⊢; omega⟩
       · intro ⟨c, hsteps, hhalted⟩
         have hagree_result := Steps.agreeOn hsteps hpc_c2G.symm hagree_pG
-        obtain ⟨c', hsteps', hpc', _⟩ := Classical.choose_spec hagree_result
-        exact ⟨c', hsteps', by rw [← hpc']; exact hhalted⟩
+        let c' := Classical.choose hagree_result
+        have hspec := Classical.choose_spec hagree_result
+        have hsteps' : Steps pG (Config.init (List.ofFn (extendInputsForG inputs k ((Pr f g (Fin.snoc inputs k)).get hPr_k)))) c' := hspec.1
+        have hpc' : c.pc = c'.pc := hspec.2.1
+        exact ⟨c', hsteps', by simp only [Config.isHalted] at hhalted ⊢; omega⟩
     have hpG_halts_c2G : ∃ c, Steps pG c₂G c ∧ c.isHalted pG := by
       -- Same argument as pF: if pG diverges, main program diverges, contradiction
       -- Use deterministic_continuation and the fact that cFinal.pc is beyond pG
@@ -1853,13 +1869,12 @@ theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
       exfalso
       -- Use helper lemma to extract pG halting from main program execution
       have hFinal_pc_ge : cFinal.pc ≥ (primitiveRecursionProgram n pF pG).length := by
-        simp only [Config.isHalted, Program.getInstr] at hFinal_halted
-        exact Nat.le_of_not_lt (fun h => by
-          simp only [List.getElem?_eq_getElem h] at hFinal_halted)
+        simp only [Config.isHalted] at hFinal_halted
+        exact hFinal_halted
       have hPG_end_lt_prog_len : prPGOffset n pF pG + pG.length < (primitiveRecursionProgram n pF pG).length := by
-        simp only [prPGOffset, primitiveRecursionProgram_length, prSetupPhaseLength,
-          prBaseCasePrologueLength, prBaseCasePhaseLength, prLoopBodyLength, prLoopPrologueLength,
-          prLoopEpilogueLength, prLoopCheckPC]
+        simp only [prPGOffset, primitiveRecursionProgram_length, prOutputPC, prLoopBodyPC,
+          prLoopCheckPC, prSetupPhaseLength, prBaseCasePrologueLength, prBaseCasePhaseLength,
+          prLoopBodyLength, prLoopPrologueLength, prLoopEpilogueLength]
         omega
       have hsteps_from_pG : Steps (primitiveRecursionProgram n pF pG) ⟨prPGOffset n pF pG + 0, c_prologue.state⟩ cFinal := by
         simp only [Nat.add_zero]; exact hContinuation
