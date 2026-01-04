@@ -194,7 +194,7 @@ theorem primitiveRecursionProgram_isStandardForm (n : ℕ) (pF pG : Program)
     exact prLoopCheck_hasBoundedJumps n pF pG instr hinstr
   | Or.inl (Or.inr hinstr) =>
     -- Loop body
-    simp only [prLoopBody, List.mem_append, List.mem_singleton] at hinstr
+    simp only [prLoopBody, List.mem_append] at hinstr
     match hinstr with
     | Or.inl (Or.inl hinstr) =>
       -- Loop prologue

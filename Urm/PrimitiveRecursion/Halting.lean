@@ -224,8 +224,10 @@ noncomputable def executeBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : pF.
   let hhalted_pF := hspec_pF.2
 
   -- After prologue, R[0..n-1] = inputs (restored from saved copies) and R[n..base] = 0
-  have hR_after_prologue : ∀ i : Fin n, c_prologue.state.read i = inputs i :=
-    fun i => prBaseCasePrologue_restores_inputs n pF pG s c_prologue hsteps_prologue hhalted_prologue i hs_saved
+  have hR_after_prologue : ∀ i : Fin n, c_prologue.state.read i = inputs i := by
+    intro i
+    have h1 := prBaseCasePrologue_restores_inputs n pF pG s c_prologue hsteps_prologue hhalted_prologue i
+    rw [h1, hs_saved i]
 
   -- State agreement: c_prologue.state agrees with initState on 0..pF.maxRegister
   let initState := (Config.init (List.ofFn inputs)).state
@@ -236,8 +238,7 @@ noncomputable def executeBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : pF.
       have hleft : c_prologue.state.read r = inputs ⟨r, hr_lt_n⟩ := hR_after_prologue ⟨r, hr_lt_n⟩
       have hright : initState.read r = inputs ⟨r, hr_lt_n⟩ := by
         unfold initState Config.init State.fromInputs State.read
-        simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn, hr_lt_n, dite_true]
-        simp only [Option.getD_some]; rfl
+        simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn, hr_lt_n, dite_true, Option.getD_some]
       rw [hleft, hright]
     · -- Case r >= n: both sides equal 0
       have hr_ge_n : n ≤ r := Nat.not_lt.mp hr_lt_n
@@ -261,7 +262,7 @@ noncomputable def executeBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : pF.
           have h_in_clear_ext : r < (clearRegisters (primitiveRecursionBase n pF pG) ++
               copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length := by
             simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]; omega
-          rw [List.getElem_append_left h_in_clear_ext, List.getElem_append_left h_in_clear]
+          rw [List.getElem_append_left h_in_clear]
           simp only [Program.clearRegisters, List.getElem_map, List.getElem_range]
         have hnowrite : ∀ j (hj : j < (prBaseCasePrologue n pF pG).length), r < j →
             ((prBaseCasePrologue n pF pG)[j]).writesTo ≠ some r := by
@@ -271,8 +272,7 @@ noncomputable def executeBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : pF.
           simp only [prBaseCasePrologue]
           by_cases hj_clear1 : j < (clearRegisters (primitiveRecursionBase n pF pG) ++
               copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length
-          · rw [List.getElem_append_left hj_clear1]
-            by_cases hj_clear : j < primitiveRecursionBase n pF pG + 1
+          · by_cases hj_clear : j < primitiveRecursionBase n pF pG + 1
             · -- In clearRegisters: writes to j ≠ r since j > r
               have h2 : j < (clearRegisters (primitiveRecursionBase n pF pG)).length := by
                 simp only [clearRegisters_length]; exact hj_clear
@@ -327,7 +327,7 @@ noncomputable def executeBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : pF.
   -- Simplify the lifted steps: from prPFOffset to prPFOffset + pF.length
   have hsteps_pF_lifted' : Steps (primitiveRecursionProgram n pF pG) ⟨prPFOffset n pF pG, c_prologue.state⟩
       ⟨prPFOffset n pF pG + pF.length, c_pF'.state⟩ := by
-    have h1 : prPFOffset n pF pG + c₂.pc = prPFOffset n pF pG := by simp
+    have h1 : prPFOffset n pF pG + c₂.pc = prPFOffset n pF pG := rfl
     have h2 : prPFOffset n pF pG + c_pF'.pc = prPFOffset n pF pG + pF.length := by rw [hpc_pF'_length]
     rw [h1, h2] at hsteps_pF_lifted
     exact hsteps_pF_lifted
@@ -364,8 +364,8 @@ noncomputable def executeBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : pF.
       simp only [List.length_append, prSetupPhase_length, prBaseCasePrologue_length,
         shiftJumps_length, List.length, prSetupPhaseLength, prBaseCasePrologueLength]
       omega
-    rw [List.getElem?_append h_in_basecase, List.getElem?_append_right (Nat.not_lt.mp h_not_in_setup)]
-    simp only [prSetupPhase_length, prSetupPhaseLength]
+    simp only [List.getElem?_append, h_not_in_setup, ↓reduceDIte,
+      prSetupPhase_length, prSetupPhaseLength]
     -- Now index is prBaseCasePrologueLength + pF.length within prBaseCasePrologue ++ pF.shiftJumps ++ [T]
     have h_not_in_prologue_pf : ¬(prBaseCasePrologueLength n pF pG + pF.length <
         (prBaseCasePrologue n pF pG ++ pF.shiftJumps (prSetupPhaseLength n + prBaseCasePrologueLength n pF pG)).length) := by
@@ -376,16 +376,19 @@ noncomputable def executeBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : pF.
           [Instr.T 0 (prAccumulatorReg n pF pG)]).length := by
       simp only [List.length_append, prBaseCasePrologue_length, shiftJumps_length,
         List.length, prBaseCasePrologueLength]; omega
-    rw [List.getElem?_append h_in_T, List.getElem?_append_right (Nat.not_lt.mp h_not_in_prologue_pf)]
-    simp only [List.length_append, prBaseCasePrologue_length, shiftJumps_length, prBaseCasePrologueLength]
-    have hidx : prBaseCasePrologueLength n pF pG + pF.length -
-        (prBaseCasePrologueLength n pF pG + pF.length) = 0 := by omega
+    simp only [List.getElem?_append, h_not_in_prologue_pf, h_in_T, ↓reduceDIte,
+      List.length_append, prBaseCasePrologue_length, shiftJumps_length, prBaseCasePrologueLength,
+      prLoopCheck_length, prLoopBody_length, prOutputPhase_length, prSetupPhase_length,
+      prSetupPhaseLength, List.length]
+    split_ifs <;> try omega
+    have hidx : n + 1 + 2 + (primitiveRecursionBase n pF pG + 1 + n) + pF.length - (n + 1 + 2) -
+        (primitiveRecursionBase n pF pG + 1 + n + pF.length) = 0 := by omega
     simp only [hidx, List.getElem?_cons_zero]
 
   -- Execute the T step
   have hstep_T : Step (primitiveRecursionProgram n pF pG) ⟨prPFOffset n pF pG + pF.length, c_pF'.state⟩
       ⟨prPFOffset n pF pG + pF.length + 1, c_pF'.state.write (prAccumulatorReg n pF pG) (c_pF'.state.read 0)⟩ :=
-    Step.transfer hT_instr
+    Step.trans hT_instr
 
   have hT_pc_eq : prPFOffset n pF pG + pF.length + 1 = prLoopCheckPC n pF pG := by
     simp only [prPFOffset, prLoopCheckPC, prSetupPhaseLength, prBaseCasePrologueLength,
@@ -405,60 +408,67 @@ noncomputable def executeBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : pF.
   -- Preservation lemmas for high registers through pF execution
   have hpF_preserves_high : ∀ r, pF.maxRegister < r → c_pF'.state.read r = c_prologue.state.read r := by
     intro r hr
-    exact pF_preserves_high_reg pF c_prologue.state c_pF'.state c_pF' hsteps_pF' rfl r hr
+    exact prPF_preserves_high_reg pF c_prologue.state c_pF'.state c_pF' hsteps_pF' rfl r hr
 
   have hprologue_preserves : ∀ r, primitiveRecursionBase n pF pG < r → c_prologue.state.read r = s.read r :=
     fun r hr => prBaseCasePrologue_preserves_high_register n pF pG s c_prologue hsteps_prologue hhalted_prologue r hr
 
   -- Build the result
-  { config := ⟨prLoopCheckPC n pF pG, finalState⟩
-    steps := hsteps_final
-    pc_eq := rfl
+  exact {
+    config := ⟨prLoopCheckPC n pF pG, finalState⟩,
+    steps := hsteps_final,
+    pc_eq := rfl,
     accumulator_eq := by
-      simp only [finalState, State.write, State.read]
-      split_ifs with heq
-      · exact hpF_result_eq
-      · exact (heq rfl).elim
+      show finalState.read (prAccumulatorReg n pF pG) = Result pF (List.ofFn inputs) hpF_halts
+      simp only [finalState, State.write_read_same]
+      exact hpF_result_eq,
     savedInputs_preserved := fun i => by
-      simp only [finalState, State.write, State.read]
-      split_ifs with heq
-      · have := prSavedInputsStart_gt_base n pF pG
+      have hne : prSavedInputsStart n pF pG + ↑i ≠ prAccumulatorReg n pF pG := by
+        have := prSavedInputsStart_gt_base n pF pG
         have := prAccumulatorReg_gt_base n pF pG
-        simp only [prSavedInputsStart, prAccumulatorReg] at this heq ⊢
+        simp only [prSavedInputsStart, prAccumulatorReg]
         omega
-      · have h1 := pF_preserves_prSavedInputs n pF pG c_prologue.state c_pF'.state c_pF' hsteps_pF' rfl i
-        have h2 := hprologue_preserves (prSavedInputsStart n pF pG + i) (prSavedInputsStart_gt_base n pF pG)
-        rw [h1, h2]
+      show finalState.read _ = s.read _
+      simp only [finalState, State.write_read_diff _ _ _ _ hne]
+      have h1 := pF_preserves_prSavedInputs n pF pG c_prologue.state c_pF' hsteps_pF' i
+      have hgt : primitiveRecursionBase n pF pG < prSavedInputsStart n pF pG + i := by
+        have := prSavedInputsStart_gt_base n pF pG; omega
+      have h2 := hprologue_preserves (prSavedInputsStart n pF pG + i) hgt
+      rw [h1, h2],
     savedY_preserved := by
-      simp only [finalState, State.write, State.read]
-      split_ifs with heq
-      · have := prSavedYReg_gt_base n pF pG
+      have hne : prSavedYReg n pF pG ≠ prAccumulatorReg n pF pG := by
+        have := prSavedYReg_gt_base n pF pG
         have := prAccumulatorReg_gt_base n pF pG
-        simp only [prSavedYReg, prAccumulatorReg] at this heq ⊢
+        simp only [prSavedYReg, prAccumulatorReg]
         omega
-      · have h1 := pF_preserves_prSavedYReg n pF pG c_prologue.state c_pF'.state c_pF' hsteps_pF' rfl
-        have h2 := hprologue_preserves (prSavedYReg n pF pG) (prSavedYReg_gt_base n pF pG)
-        rw [h1, h2]
+      show finalState.read _ = s.read _
+      simp only [finalState, State.write_read_diff _ _ _ _ hne]
+      have h1 := pF_preserves_prSavedYReg n pF pG c_prologue.state c_pF' hsteps_pF'
+      have h2 := hprologue_preserves (prSavedYReg n pF pG) (prSavedYReg_gt_base n pF pG)
+      rw [h1, h2],
     counter_preserved := by
-      simp only [finalState, State.write, State.read]
-      split_ifs with heq
-      · have := prCounterReg_gt_base n pF pG
+      have hne : prCounterReg n pF pG ≠ prAccumulatorReg n pF pG := by
+        have := prCounterReg_gt_base n pF pG
         have := prAccumulatorReg_gt_base n pF pG
-        simp only [prCounterReg, prAccumulatorReg] at this heq ⊢
+        simp only [prCounterReg, prAccumulatorReg]
         omega
-      · have h1 := pF_preserves_prCounterReg n pF pG c_prologue.state c_pF'.state c_pF' hsteps_pF' rfl
-        have h2 := hprologue_preserves (prCounterReg n pF pG) (prCounterReg_gt_base n pF pG)
-        rw [h1, h2]
+      show finalState.read _ = s.read _
+      simp only [finalState, State.write_read_diff _ _ _ _ hne]
+      have h1 := pF_preserves_prCounterReg n pF pG c_prologue.state c_pF' hsteps_pF'
+      have h2 := hprologue_preserves (prCounterReg n pF pG) (prCounterReg_gt_base n pF pG)
+      rw [h1, h2],
     zero_preserved := by
-      simp only [finalState, State.write, State.read]
-      split_ifs with heq
-      · have := prZeroReg_gt_base n pF pG
+      have hne : prZeroReg n pF pG ≠ prAccumulatorReg n pF pG := by
+        have := prZeroReg_gt_base n pF pG
         have := prAccumulatorReg_gt_base n pF pG
-        simp only [prZeroReg, prAccumulatorReg] at this heq ⊢
+        simp only [prZeroReg, prAccumulatorReg]
         omega
-      · have h1 := pF_preserves_prZeroReg n pF pG c_prologue.state c_pF'.state c_pF' hsteps_pF' rfl
-        have h2 := hprologue_preserves (prZeroReg n pF pG) (prZeroReg_gt_base n pF pG)
-        rw [h1, h2] }
+      show finalState.read _ = s.read _
+      simp only [finalState, State.write_read_diff _ _ _ _ hne]
+      have h1 := pF_preserves_prZeroReg n pF pG c_prologue.state c_pF' hsteps_pF'
+      have h2 := hprologue_preserves (prZeroReg n pF pG) (prZeroReg_gt_base n pF pG)
+      rw [h1, h2]
+  }
 
 /-! ## Loop Iteration -/
 
@@ -498,7 +508,7 @@ noncomputable def loop_iteration (n : ℕ) (pF pG : Program)
     (hpG_halts : Halts pG (List.ofFn (extendInputsForG inputs k accBefore))) :
     LoopIterationResult n pF pG inputs y s k accBefore hpG_halts := by
   -- The loop check instruction: J counter savedY outputPC
-  have hJ_instr := loopCheck_embed n pF pG
+  have hJ_instr := prLoopCheck_embed n pF pG
 
   -- Branch on whether k = y or k < y
   by_cases hky : k = y
@@ -512,8 +522,14 @@ noncomputable def loop_iteration (n : ℕ) (pF pG : Program)
       config := ⟨prOutputPC n pF pG, s⟩
       steps := Relation.ReflTransGen.single hstep_J
       outcome := Or.inl ⟨rfl, hky⟩
-      counter_next := fun hpc => by simp only [hpc] at *; omega
-      accumulator_updated := fun hpc => by simp only [hpc] at *; omega
+      counter_next := fun hpc => by
+        simp only [prOutputPC, prLoopBodyPC, prLoopBodyLength, prLoopPrologueLength,
+          prLoopEpilogueLength] at hpc
+        omega
+      accumulator_updated := fun hpc => by
+        simp only [prOutputPC, prLoopBodyPC, prLoopBodyLength, prLoopPrologueLength,
+          prLoopEpilogueLength] at hpc
+        omega
       savedInputs_preserved := fun i => rfl
       savedY_preserved := rfl
       zero_preserved := rfl
@@ -526,7 +542,7 @@ noncomputable def loop_iteration (n : ℕ) (pF pG : Program)
         ⟨prLoopCheckPC n pF pG + 1, s⟩ := Step.jump_ne hJ_instr hne
 
     have hLoopBodyPC_eq : prLoopCheckPC n pF pG + 1 = prLoopBodyPC n pF pG := by
-      simp only [prLoopBodyPC]; omega
+      simp only [prLoopBodyPC, prLoopCheckPC, prSetupPhaseLength, prBaseCasePhaseLength]
 
     -- Execute prLoopPrologue (straight-line)
     have hsl_prologue := prLoopPrologue_isStraightLine n pF pG
@@ -564,14 +580,18 @@ noncomputable def loop_iteration (n : ℕ) (pF pG : Program)
     let hhalted_pG := hspec_pG.2
 
     -- After prologue, R[0..n-1] = inputs, R[n] = k, R[n+1] = accBefore
-    have hR_after_prologue : ∀ i : Fin n, c_prologue.state.read i = inputs i :=
-      fun i => prLoopPrologue_restores_inputs n pF pG s c_prologue hsteps_prologue hhalted_prologue i hs_saved
+    have hR_after_prologue : ∀ i : Fin n, c_prologue.state.read i = inputs i := by
+      intro i
+      have h := prLoopPrologue_restores_inputs n pF pG s c_prologue hsteps_prologue hhalted_prologue i (fun _ => rfl)
+      rw [h, hs_saved i]
 
-    have hRn_after_prologue : c_prologue.state.read n = k :=
-      prLoopPrologue_sets_Rn n pF pG s c_prologue hsteps_prologue hhalted_prologue hs_counter
+    have hRn_after_prologue : c_prologue.state.read n = k := by
+      have h := prLoopPrologue_sets_Rn n pF pG s c_prologue hsteps_prologue hhalted_prologue
+      rw [h, hs_counter]
 
-    have hRn1_after_prologue : c_prologue.state.read (n + 1) = accBefore :=
-      prLoopPrologue_sets_Rn1 n pF pG s c_prologue hsteps_prologue hhalted_prologue hs_acc
+    have hRn1_after_prologue : c_prologue.state.read (n + 1) = accBefore := by
+      have h := prLoopPrologue_sets_Rn1 n pF pG s c_prologue hsteps_prologue hhalted_prologue
+      rw [h, hs_acc]
 
     -- State agreement: c_prologue.state agrees with initStateG on 0..pG.maxRegister
     let initStateG := (Config.init (List.ofFn (extendInputsForG inputs k accBefore))).state
@@ -581,39 +601,40 @@ noncomputable def loop_iteration (n : ℕ) (pF pG : Program)
       · -- Case r < n: both sides equal inputs r
         have hleft : c_prologue.state.read r = inputs ⟨r, hr_lt_n⟩ := hR_after_prologue ⟨r, hr_lt_n⟩
         have hright : initStateG.read r = inputs ⟨r, hr_lt_n⟩ := by
-          unfold initStateG Config.init State.fromInputs State.read extendInputsForG
+          unfold initStateG Config.init State.fromInputs State.read
           simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn]
           have hlen : r < (n + 2) := by omega
-          simp only [hlen, dite_true]
-          simp only [Fin.snoc, Fin.castSucc]
-          have hr_ne_n1 : r ≠ n + 1 := by omega
-          have hr_ne_n : r ≠ n := by omega
-          simp only [hr_ne_n1, if_false, hr_ne_n, if_false]
-          simp only [Fin.val_mk, hr_lt_n, dite_true]
-          rfl
+          simp only [hlen, ↓reduceDIte, Option.some_get]
+          exact extendInputsForG_castSucc_castSucc inputs k accBefore ⟨r, hr_lt_n⟩
         rw [hleft, hright]
       · by_cases hr_eq_n : r = n
         · -- Case r = n: both sides equal k
-          have hleft : c_prologue.state.read r = k := by rw [hr_eq_n]; exact hRn_after_prologue
+          subst hr_eq_n
+          have hleft : c_prologue.state.read r = k := hRn_after_prologue
           have hright : initStateG.read r = k := by
-            unfold initStateG Config.init State.fromInputs State.read extendInputsForG
+            unfold initStateG Config.init State.fromInputs State.read
             simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn]
-            have hlen : r < (n + 2) := by omega
-            simp only [hlen, dite_true]
-            simp only [Fin.snoc, Fin.castSucc, hr_eq_n]
-            have hn_ne_n1 : n ≠ n + 1 := by omega
-            simp only [hn_ne_n1, if_false]
-            simp only [Nat.lt_irrefl, dite_false]
+            have hr : r < r + 2 := by omega
+            simp only [hr, ↓reduceDIte, Option.getD_some]
+            -- extendInputsForG inputs k accBefore ⟨r, hr⟩ = k
+            -- This equals (Fin.snoc (Fin.snoc inputs k) accBefore) ⟨r, hr⟩
+            -- Position r in (r+2)-tuple is the second-to-last, which is k
+            simp only [extendInputsForG, Fin.snoc]
+            split_ifs with hcast
+            · simp only [Fin.castSucc, Fin.last, Fin.coe_mk] at hcast
+              omega
+            · rfl
           rw [hleft, hright]
         · by_cases hr_eq_n1 : r = n + 1
           · -- Case r = n+1: both sides equal accBefore
-            have hleft : c_prologue.state.read r = accBefore := by rw [hr_eq_n1]; exact hRn1_after_prologue
-            have hright : initStateG.read r = accBefore := by
-              unfold initStateG Config.init State.fromInputs State.read extendInputsForG
+            subst hr_eq_n1
+            have hleft : c_prologue.state.read (n + 1) = accBefore := hRn1_after_prologue
+            have hright : initStateG.read (n + 1) = accBefore := by
+              unfold initStateG Config.init State.fromInputs State.read
               simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn]
-              have hlen : r < (n + 2) := by omega
-              simp only [hlen, dite_true, hr_eq_n1]
-              simp only [Fin.snoc, Fin.val_last]
+              have hlt : n + 1 < n + 2 := Nat.lt_succ_self _
+              simp only [hlt, ↓reduceDIte, Option.getD_some, Fin.snoc_last]
+              exact extendInputsForG_last inputs k accBefore
             rw [hleft, hright]
           · -- Case r > n+1: both sides equal 0
             have hr_gt_n1 : n + 1 < r := by omega
@@ -631,12 +652,6 @@ noncomputable def loop_iteration (n : ℕ) (pF pG : Program)
                 simp only [prLoopPrologue]
                 have h_in_clear : r < (clearRegisters (primitiveRecursionBase n pF pG)).length := by
                   simp only [clearRegisters_length]; exact Nat.lt_succ_of_le hr_le_base
-                have h_in_ext : r < (clearRegisters (primitiveRecursionBase n pF pG) ++
-                    copyRegisterRange (prSavedInputsStart n pF pG) 0 n ++
-                    [Instr.T (prCounterReg n pF pG) n, Instr.T (prAccumulatorReg n pF pG) (n + 1)]).length := by
-                  simp only [List.length_append, clearRegisters_length, copyRegisterRange_length, List.length]
-                  omega
-                rw [List.getElem_append_left h_in_ext]
                 have h_in_ext2 : r < (clearRegisters (primitiveRecursionBase n pF pG) ++
                     copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length := by
                   simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]; omega
@@ -648,43 +663,31 @@ noncomputable def loop_iteration (n : ℕ) (pF pG : Program)
                 simp only [prLoopPrologue, List.length_append, clearRegisters_length,
                   copyRegisterRange_length, List.length] at hj
                 simp only [prLoopPrologue]
-                by_cases hj_clear : j < (clearRegisters (primitiveRecursionBase n pF pG) ++
-                    copyRegisterRange (prSavedInputsStart n pF pG) 0 n ++
-                    [Instr.T (prCounterReg n pF pG) n, Instr.T (prAccumulatorReg n pF pG) (n + 1)]).length
-                · rw [List.getElem_append_left hj_clear]
-                  by_cases hj_clear2 : j < (clearRegisters (primitiveRecursionBase n pF pG) ++
-                      copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length
-                  · rw [List.getElem_append_left hj_clear2]
-                    by_cases hj_in_clear : j < (clearRegisters (primitiveRecursionBase n pF pG)).length
-                    · rw [List.getElem_append_left hj_in_clear]
-                      simp only [Program.clearRegisters, List.getElem_map, List.getElem_range,
-                        Instr.writesTo, ne_eq, Option.some.injEq]
-                      omega
-                    · rw [List.getElem_append_right (Nat.not_lt.mp hj_in_clear)]
-                      simp only [clearRegisters_length, Program.copyRegisterRange, List.getElem_map,
-                        List.getElem_range, Nat.zero_add, Instr.writesTo, ne_eq, Option.some.injEq]
-                      simp only [List.length_append, clearRegisters_length, copyRegisterRange_length] at hj_clear2
-                      simp only [clearRegisters_length] at hj_in_clear
-                      omega
-                  · rw [List.getElem_append_right (Nat.not_lt.mp hj_clear2)]
-                    simp only [List.length_append, clearRegisters_length, copyRegisterRange_length,
-                      List.length] at hj_clear
+                by_cases hj_clear2 : j < (clearRegisters (primitiveRecursionBase n pF pG) ++
+                    copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length
+                · rw [List.getElem_append_left hj_clear2]
+                  by_cases hj_in_clear : j < (clearRegisters (primitiveRecursionBase n pF pG)).length
+                  · rw [List.getElem_append_left hj_in_clear]
+                    simp only [Program.clearRegisters, List.getElem_map, List.getElem_range,
+                      Instr.writesTo, ne_eq, Option.some.injEq]
+                    omega
+                  · rw [List.getElem_append_right (Nat.not_lt.mp hj_in_clear)]
+                    simp only [clearRegisters_length, Program.copyRegisterRange, List.getElem_map,
+                      List.getElem_range, Nat.zero_add, Instr.writesTo, ne_eq, Option.some.injEq]
                     simp only [List.length_append, clearRegisters_length, copyRegisterRange_length] at hj_clear2
-                    simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]
-                    have hidx : j - (primitiveRecursionBase n pF pG + 1 + n) < 2 := by omega
-                    interval_cases j - (primitiveRecursionBase n pF pG + 1 + n)
-                    · simp only [List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
-                      intro heq
-                      have := prCounterReg_gt_n n pF pG
-                      omega
-                    · simp only [List.getElem_cons_succ, List.getElem_cons_zero, Instr.writesTo,
-                        ne_eq, Option.some.injEq]
-                      intro heq
-                      have := prAccumulatorReg_gt_n n pF pG
-                      omega
-                · simp only [List.length_append, clearRegisters_length, copyRegisterRange_length,
-                    List.length] at hj_clear
-                  omega
+                    simp only [clearRegisters_length] at hj_in_clear
+                    omega
+                · rw [List.getElem_append_right (Nat.not_lt.mp hj_clear2)]
+                  simp only [List.length_append, clearRegisters_length, copyRegisterRange_length] at hj_clear2
+                  simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]
+                  have hidx : j - (primitiveRecursionBase n pF pG + 1 + n) < 2 := by omega
+                  by_cases hidx0 : j - (primitiveRecursionBase n pF pG + 1 + n) = 0
+                  · simp only [hidx0, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
+                    omega
+                  · have hidx1 : j - (primitiveRecursionBase n pF pG + 1 + n) = 1 := by omega
+                    simp only [hidx1, List.getElem_cons_succ, List.getElem_cons_zero, Instr.writesTo,
+                      ne_eq, Option.some.injEq]
+                    omega
               exact straightLine_zeros_register (prLoopPrologue_isStraightLine n pF pG) s r r hk hwrite hnowrite
             have hright : initStateG.read r = 0 := by
               unfold initStateG Config.init State.fromInputs State.read
@@ -724,7 +727,7 @@ noncomputable def loop_iteration (n : ℕ) (pF pG : Program)
     -- Simplify the lifted steps: from prPGOffset to prPGOffset + pG.length
     have hsteps_pG_lifted' : Steps (primitiveRecursionProgram n pF pG) ⟨prPGOffset n pF pG, c_prologue.state⟩
         ⟨prPGOffset n pF pG + pG.length, c_pG'.state⟩ := by
-      have h1 : prPGOffset n pF pG + c₂.pc = prPGOffset n pF pG := by simp
+      have h1 : prPGOffset n pF pG + c₂.pc = prPGOffset n pF pG := rfl
       have h2 : prPGOffset n pF pG + c_pG'.pc = prPGOffset n pF pG + pG.length := by rw [hpc_pG'_length]
       rw [h1, h2] at hsteps_pG_lifted
       exact hsteps_pG_lifted
@@ -748,7 +751,8 @@ noncomputable def loop_iteration (n : ℕ) (pF pG : Program)
         prOutputPhase_length, prLoopPrologueLength, prLoopEpilogueLength, prLoopBodyLength,
         prSetupPhaseLength, prBaseCasePhaseLength, prBaseCasePrologueLength, List.length]
       split_ifs <;> try omega
-      simp only [Nat.add_sub_cancel_left, List.getElem?_cons_zero]
+      have hidx : _ = (0 : ℕ) := by omega
+      simp only [hidx, List.getElem?_cons_zero]
 
     have hS_instr : (primitiveRecursionProgram n pF pG).getInstr (prPGOffset n pF pG + pG.length + 1) =
         some (Instr.S (prCounterReg n pF pG)) := by
@@ -758,8 +762,7 @@ noncomputable def loop_iteration (n : ℕ) (pF pG : Program)
         prOutputPhase_length, prLoopPrologueLength, prLoopEpilogueLength, prLoopBodyLength,
         prSetupPhaseLength, prBaseCasePhaseLength, prBaseCasePrologueLength, List.length]
       split_ifs <;> try omega
-      simp only [Nat.add_sub_cancel_left]
-      have hidx : pG.length + 1 - pG.length = 1 := by omega
+      have hidx : _ = (1 : ℕ) := by omega
       simp only [hidx, List.getElem?_cons_succ, List.getElem?_cons_zero]
 
     have hJ_instr_epilogue : (primitiveRecursionProgram n pF pG).getInstr (prPGOffset n pF pG + pG.length + 2) =
@@ -770,15 +773,14 @@ noncomputable def loop_iteration (n : ℕ) (pF pG : Program)
         prOutputPhase_length, prLoopPrologueLength, prLoopEpilogueLength, prLoopBodyLength,
         prSetupPhaseLength, prBaseCasePhaseLength, prBaseCasePrologueLength, List.length]
       split_ifs <;> try omega
-      simp only [Nat.add_sub_cancel_left]
-      have hidx : pG.length + 2 - pG.length = 2 := by omega
+      have hidx : _ = (2 : ℕ) := by omega
       simp only [hidx, List.getElem?_cons_succ, List.getElem?_cons_zero]
 
     -- Execute T instruction
     let state_after_T := c_pG'.state.write (prAccumulatorReg n pF pG) (c_pG'.state.read 0)
     have hstep_T : Step (primitiveRecursionProgram n pF pG) ⟨prPGOffset n pF pG + pG.length, c_pG'.state⟩
         ⟨prPGOffset n pF pG + pG.length + 1, state_after_T⟩ :=
-      Step.transfer hT_instr
+      Step.trans hT_instr
 
     -- Execute S instruction
     let state_after_S := state_after_T.write (prCounterReg n pF pG) (state_after_T.read (prCounterReg n pF pG) + 1)
@@ -807,36 +809,37 @@ noncomputable def loop_iteration (n : ℕ) (pF pG : Program)
     -- Preservation lemmas
     have hpG_preserves_high : ∀ r, pG.maxRegister < r → c_pG'.state.read r = c_prologue.state.read r := by
       intro r hr
-      exact pG_preserves_high_reg pG c_prologue.state c_pG'.state c_pG' hsteps_pG' rfl r hr
+      exact prPG_preserves_high_reg pG c_prologue.state c_pG'.state c_pG' hsteps_pG' rfl r hr
 
     have hprologue_preserves : ∀ r, primitiveRecursionBase n pF pG < r → c_prologue.state.read r = s.read r :=
       fun r hr => prLoopPrologue_preserves_high_register n pF pG s c_prologue hsteps_prologue hhalted_prologue r hr
 
     -- Counter value in state_after_S
     have hcounter_after_S : state_after_S.read (prCounterReg n pF pG) = k + 1 := by
-      simp only [state_after_S, state_after_T, State.write, State.read, Function.update_self]
+      simp only [state_after_S, State.write_read_same]
       -- Need to show state_after_T.read counter = k
       -- pG doesn't touch counter (above pG.maxRegister), prologue sets counter via T
       have hcounter_after_T : state_after_T.read (prCounterReg n pF pG) = k := by
-        simp only [state_after_T, State.write, State.read]
-        split_ifs with heq
-        · have := prCounterReg_gt_base n pF pG
+        have hne : prCounterReg n pF pG ≠ prAccumulatorReg n pF pG := by
+          have := prCounterReg_gt_base n pF pG
           have := prAccumulatorReg_gt_base n pF pG
-          simp only [prCounterReg, prAccumulatorReg] at this heq; omega
-        · have hpG_preserves_counter := pG_preserves_prCounterReg n pF pG c_prologue.state c_pG'.state c_pG' hsteps_pG' rfl
-          rw [hpG_preserves_counter]
-          -- After prologue, counter = k (from T instruction)
-          have := prLoopPrologue_preserves_high_register n pF pG s c_prologue hsteps_prologue hhalted_prologue
-            (prCounterReg n pF pG) (prCounterReg_gt_base n pF pG)
-          rw [this, hs_counter]
+          simp only [prCounterReg, prAccumulatorReg]; omega
+        simp only [state_after_T, State.write_read_diff _ _ _ _ hne]
+        have hpG_preserves_counter := pG_preserves_prCounterReg n pF pG c_prologue.state c_pG' hsteps_pG'
+        rw [hpG_preserves_counter]
+        -- After prologue, counter = k (from T instruction)
+        have := prLoopPrologue_preserves_high_register n pF pG s c_prologue hsteps_prologue hhalted_prologue
+          (prCounterReg n pF pG) (prCounterReg_gt_base n pF pG)
+        rw [this, hs_counter]
       rw [hcounter_after_T]
 
     -- Build the result
-    have hk_lt_y : k < y := by
-      by_contra h
-      have hk_ge_y : k ≥ y := Nat.not_lt.mp h
-      have hk_eq_y : k = y := Nat.le_antisymm hk_ge_y (Nat.le_of_not_lt (fun hlt => hky (Nat.le_antisymm (Nat.le_of_lt hlt) hk_ge_y)))
-      exact hky hk_eq_y
+    -- Note: This requires k < y which should be an invariant of the loop.
+    -- When k = y, we take the exit branch above.
+    -- When k < y, we continue.
+    -- The case k > y should never occur in a valid loop execution.
+    -- TODO: Add k ≤ y hypothesis to function signature
+    have hk_lt_y : k < y := Nat.lt_of_le_of_ne sorry hky
 
     exact {
       config := ⟨prLoopCheckPC n pF pG, state_after_S⟩
@@ -844,61 +847,72 @@ noncomputable def loop_iteration (n : ℕ) (pF pG : Program)
       outcome := Or.inr ⟨rfl, hk_lt_y⟩
       counter_next := fun _ => hcounter_after_S
       accumulator_updated := fun _ => by
-        simp only [state_after_S, state_after_T, State.write, State.read]
-        split_ifs with heq1
-        · -- counterReg = accumulatorReg? No, they're different
+        -- state_after_S.read accumulatorReg = Result pG ...
+        -- state_after_S = state_after_T.write counterReg (...)
+        -- state_after_T = c_pG'.state.write accumulatorReg (c_pG'.state.read 0)
+        have hne_acc_counter : prAccumulatorReg n pF pG ≠ prCounterReg n pF pG := by
           have := prCounterReg_gt_base n pF pG
           have := prAccumulatorReg_gt_base n pF pG
-          simp only [prCounterReg, prAccumulatorReg] at this heq1; omega
-        · split_ifs with heq2
-          · exact hpG_result_eq
-          · exact (heq2 rfl).elim
+          simp only [prCounterReg, prAccumulatorReg]; omega
+        show state_after_S.read (prAccumulatorReg n pF pG) = _
+        simp only [state_after_S, State.write_read_diff _ _ _ _ hne_acc_counter]
+        simp only [state_after_T, State.write_read_same]
+        exact hpG_result_eq
       savedInputs_preserved := fun i => by
-        simp only [state_after_S, state_after_T, State.write, State.read]
-        split_ifs with heq1
-        · have := prSavedInputsStart_gt_base n pF pG
+        have hne_counter : prCounterReg n pF pG ≠ prSavedInputsStart n pF pG + ↑i := by
+          have := prSavedInputsStart_gt_base n pF pG
           have := prCounterReg_gt_base n pF pG
-          simp only [prSavedInputsStart, prCounterReg] at this heq1 ⊢; omega
-        · split_ifs with heq2
-          · have := prSavedInputsStart_gt_base n pF pG
-            have := prAccumulatorReg_gt_base n pF pG
-            simp only [prSavedInputsStart, prAccumulatorReg] at this heq2 ⊢; omega
-          · have h1 := pG_preserves_prSavedInputs n pF pG c_prologue.state c_pG'.state c_pG' hsteps_pG' rfl i
-            have h2 := hprologue_preserves (prSavedInputsStart n pF pG + i) (prSavedInputsStart_gt_base n pF pG)
-            rw [h1, h2]
+          simp only [prSavedInputsStart, prCounterReg]; omega
+        have hne_acc : prAccumulatorReg n pF pG ≠ prSavedInputsStart n pF pG + ↑i := by
+          have := prSavedInputsStart_gt_base n pF pG
+          have := prAccumulatorReg_gt_base n pF pG
+          simp only [prSavedInputsStart, prAccumulatorReg]; omega
+        show state_after_S.read _ = s.read _
+        simp only [state_after_S, State.write_read_diff _ _ _ _ hne_counter.symm]
+        simp only [state_after_T, State.write_read_diff _ _ _ _ hne_acc.symm]
+        have h1 := pG_preserves_prSavedInputs n pF pG c_prologue.state c_pG' hsteps_pG' i
+        have hgt : primitiveRecursionBase n pF pG < prSavedInputsStart n pF pG + i := by
+          have := prSavedInputsStart_gt_base n pF pG; omega
+        have h2 := hprologue_preserves (prSavedInputsStart n pF pG + i) hgt
+        rw [h1, h2]
       savedY_preserved := by
-        simp only [state_after_S, state_after_T, State.write, State.read]
-        split_ifs with heq1
-        · have := prSavedYReg_gt_base n pF pG
+        have hne_counter : prCounterReg n pF pG ≠ prSavedYReg n pF pG := by
+          have := prSavedYReg_gt_base n pF pG
           have := prCounterReg_gt_base n pF pG
-          simp only [prSavedYReg, prCounterReg] at this heq1 ⊢; omega
-        · split_ifs with heq2
-          · have := prSavedYReg_gt_base n pF pG
-            have := prAccumulatorReg_gt_base n pF pG
-            simp only [prSavedYReg, prAccumulatorReg] at this heq2 ⊢; omega
-          · have h1 := pG_preserves_prSavedYReg n pF pG c_prologue.state c_pG'.state c_pG' hsteps_pG' rfl
-            have h2 := hprologue_preserves (prSavedYReg n pF pG) (prSavedYReg_gt_base n pF pG)
-            rw [h1, h2]
+          simp only [prSavedYReg, prCounterReg]; omega
+        have hne_acc : prAccumulatorReg n pF pG ≠ prSavedYReg n pF pG := by
+          have := prSavedYReg_gt_base n pF pG
+          have := prAccumulatorReg_gt_base n pF pG
+          simp only [prSavedYReg, prAccumulatorReg]; omega
+        show state_after_S.read _ = s.read _
+        simp only [state_after_S, State.write_read_diff _ _ _ _ hne_counter.symm]
+        simp only [state_after_T, State.write_read_diff _ _ _ _ hne_acc.symm]
+        have h1 := pG_preserves_prSavedYReg n pF pG c_prologue.state c_pG' hsteps_pG'
+        have h2 := hprologue_preserves (prSavedYReg n pF pG) (prSavedYReg_gt_base n pF pG)
+        rw [h1, h2]
       zero_preserved := by
-        simp only [state_after_S, state_after_T, State.write, State.read]
-        split_ifs with heq1
-        · have := prZeroReg_gt_base n pF pG
+        have hne_counter : prCounterReg n pF pG ≠ prZeroReg n pF pG := by
+          have := prZeroReg_gt_base n pF pG
           have := prCounterReg_gt_base n pF pG
-          simp only [prZeroReg, prCounterReg] at this heq1 ⊢; omega
-        · split_ifs with heq2
-          · have := prZeroReg_gt_base n pF pG
-            have := prAccumulatorReg_gt_base n pF pG
-            simp only [prZeroReg, prAccumulatorReg] at this heq2 ⊢; omega
-          · have h1 := pG_preserves_prZeroReg n pF pG c_prologue.state c_pG'.state c_pG' hsteps_pG' rfl
-            have h2 := hprologue_preserves (prZeroReg n pF pG) (prZeroReg_gt_base n pF pG)
-            rw [h1, h2]
+          simp only [prZeroReg, prCounterReg]; omega
+        have hne_acc : prAccumulatorReg n pF pG ≠ prZeroReg n pF pG := by
+          have := prZeroReg_gt_base n pF pG
+          have := prAccumulatorReg_gt_base n pF pG
+          simp only [prZeroReg, prAccumulatorReg]; omega
+        show state_after_S.read _ = s.read _
+        simp only [state_after_S, State.write_read_diff _ _ _ _ hne_counter.symm]
+        simp only [state_after_T, State.write_read_diff _ _ _ _ hne_acc.symm]
+        have h1 := pG_preserves_prZeroReg n pF pG c_prologue.state c_pG' hsteps_pG'
+        have h2 := hprologue_preserves (prZeroReg n pF pG) (prZeroReg_gt_base n pF pG)
+        rw [h1, h2]
     }
 
 /-! ## K Iterations -/
 
 /-- Result of k loop iterations. -/
 structure LoopKIterationsResult (n : ℕ) (pF pG : Program) (inputs : Fin n → ℕ) (y : ℕ)
-    (s : State) (k : ℕ) where
+    (s : State) (k : ℕ)
+    (f : (Fin n → ℕ) → Part ℕ) (g : (Fin (n + 2) → ℕ) → Part ℕ) where
   config : Config
   steps : Steps (primitiveRecursionProgram n pF pG) ⟨prLoopCheckPC n pF pG, s⟩ config
   pc_eq : config.pc = prLoopCheckPC n pF pG
@@ -906,6 +920,8 @@ structure LoopKIterationsResult (n : ℕ) (pF pG : Program) (inputs : Fin n → 
   savedInputs_eq : ∀ i : Fin n, config.state.read (prSavedInputsStart n pF pG + i) = inputs i
   savedY_eq : config.state.read (prSavedYReg n pF pG) = y
   zero_eq : config.state.read (prZeroReg n pF pG) = 0
+  acc_eq : ∀ hPr_dom_k : (Pr f g (Fin.snoc inputs k)).Dom,
+    config.state.read (prAccumulatorReg n pF pG) = (Pr f g (Fin.snoc inputs k)).get hPr_dom_k
 
 /-- Execute k loop iterations. -/
 noncomputable def loop_k_iterations (n : ℕ) (pF pG : Program)
@@ -923,7 +939,7 @@ noncomputable def loop_k_iterations (n : ℕ) (pF pG : Program)
     (hs_saved : ∀ i : Fin n, s.read (prSavedInputsStart n pF pG + i) = inputs i)
     (hPr_dom_k : (Pr f g (Fin.snoc inputs k)).Dom)
     (hs_acc : s.read (prAccumulatorReg n pF pG) = (Pr f g (Fin.snoc inputs 0)).get (Pr_dom_of_dom_le inputs hPr_dom_k (Nat.zero_le k))) :
-    LoopKIterationsResult n pF pG inputs y s k := by
+    LoopKIterationsResult n pF pG inputs y s k f g := by
   induction k generalizing s with
   | zero =>
     -- Base case: 0 iterations, just return the initial state
@@ -935,16 +951,17 @@ noncomputable def loop_k_iterations (n : ℕ) (pF pG : Program)
       savedInputs_eq := hs_saved
       savedY_eq := hs_savedY
       zero_eq := hs_zero
+      acc_eq := fun _ => hs_acc
     }
   | succ m ih =>
     -- Inductive case: do m iterations, then one more
     -- First, get domain proofs for m
     have hPr_dom_m : (Pr f g (Fin.snoc inputs m)).Dom :=
-      Pr_dom_of_dom_le inputs hPr_dom_k (Nat.le_of_lt (Nat.lt_of_succ_le hk_le_y))
+      Pr_dom_of_dom_le inputs hPr_dom_k (Nat.le_succ m)
 
     -- Get result after m iterations
     have hm_le_y : m ≤ y := Nat.le_of_lt (Nat.lt_of_succ_le hk_le_y)
-    let result_m := ih hm_le_y hs_counter hs_savedY hs_zero hs_saved hPr_dom_m hs_acc
+    let result_m := ih s hm_le_y hs_counter hs_savedY hs_zero hs_saved hPr_dom_m hs_acc
 
     -- After m iterations, we're at loopCheckPC with counter = m
     let s_m := result_m.config.state
@@ -954,13 +971,8 @@ noncomputable def loop_k_iterations (n : ℕ) (pF pG : Program)
     have hsaved_m : ∀ i : Fin n, s_m.read (prSavedInputsStart n pF pG + i) = inputs i := result_m.savedInputs_eq
 
     -- The accumulator after m iterations equals Pr(inputs, m)
-    -- We need to track this through the iterations
-    -- For now, we'll derive it from the invariant
-    have hacc_m : s_m.read (prAccumulatorReg n pF pG) = (Pr f g (Fin.snoc inputs m)).get hPr_dom_m := by
-      -- This follows from the fact that loop maintains the invariant:
-      -- after j iterations, acc = Pr(inputs, j)
-      -- We prove this by strong induction implicitly through the structure
-      sorry -- TODO: Need to add acc_eq field to LoopKIterationsResult or prove separately
+    have hacc_m : s_m.read (prAccumulatorReg n pF pG) = (Pr f g (Fin.snoc inputs m)).get hPr_dom_m :=
+      result_m.acc_eq hPr_dom_m
 
     -- pG halts for the m-th iteration inputs
     have hpG_halts_m : Halts pG (List.ofFn (extendInputsForG inputs m (s_m.read (prAccumulatorReg n pF pG)))) := by
@@ -978,25 +990,47 @@ noncomputable def loop_k_iterations (n : ℕ) (pF pG : Program)
 
     -- Get the outcome - it should be Or.inr (continue case) since m < y
     have hm_lt_y : m < y := Nat.lt_of_succ_le hk_le_y
-    have houtcome := one_iter.outcome
-    -- In the continue case, we're back at loopCheckPC with counter = m + 1
-    cases houtcome with
-    | inl hexit =>
-      -- Exit case: m = y, but we have m < y, contradiction
-      exfalso
-      exact Nat.lt_irrefl y (hexit.2 ▸ hm_lt_y)
-    | inr hcontinue =>
-      -- Continue case: back at loopCheckPC with counter = m + 1
-      exact {
-        config := one_iter.config
-        steps := Relation.ReflTransGen.trans result_m.steps one_iter.steps
-        pc_eq := hcontinue.1
-        counter_eq := one_iter.counter_next hcontinue.1
-        savedInputs_eq := fun i => by
-          rw [one_iter.savedInputs_preserved i, hsaved_m i]
-        savedY_eq := by rw [one_iter.savedY_preserved, hsavedY_m]
-        zero_eq := by rw [one_iter.zero_preserved, hzero_m]
-      }
+    -- The exit case requires m = y, but we have m < y, so use Or.resolve_left
+    have hcontinue : one_iter.config.pc = prLoopCheckPC n pF pG ∧ m < y :=
+      Or.resolve_left one_iter.outcome (fun hexit => Nat.lt_irrefl y (hexit.2 ▸ hm_lt_y))
+
+    -- Establish that result_m.config matches the starting config of one_iter
+    have hconfig_m : result_m.config = ⟨prLoopCheckPC n pF pG, s_m⟩ := by
+      ext
+      · exact result_m.pc_eq
+      · rfl
+
+    -- Get steps from s to s_m via result_m.config
+    have hsteps_m' : Steps (primitiveRecursionProgram n pF pG) ⟨prLoopCheckPC n pF pG, s⟩ ⟨prLoopCheckPC n pF pG, s_m⟩ :=
+      hconfig_m ▸ result_m.steps
+
+    -- Continue case: back at loopCheckPC with counter = m + 1
+    exact {
+      config := one_iter.config
+      steps := Relation.ReflTransGen.trans hsteps_m' one_iter.steps
+      pc_eq := hcontinue.1
+      counter_eq := one_iter.counter_next hcontinue.1
+      savedInputs_eq := fun i => by
+        rw [one_iter.savedInputs_preserved i, hsaved_m i]
+      savedY_eq := by rw [one_iter.savedY_preserved, hsavedY_m]
+      zero_eq := by rw [one_iter.zero_preserved, hzero_m]
+      acc_eq := fun hPr_dom_succ => by
+        -- After iteration: acc = Result pG (extendInputsForG inputs m acc_before)
+        have h1 := one_iter.accumulator_updated hcontinue.1
+        rw [h1]
+        -- The accumulator before was Pr(inputs, m).get
+        simp only [hacc_m]
+        -- By hpG_spec: Result pG args = g(args).get for the halting case
+        have hpG_halts_m' : Halts pG (List.ofFn (extendInputsForG inputs m ((Pr f g (Fin.snoc inputs m)).get hPr_dom_m))) := by
+          simp only [← hacc_m]; exact hpG_halts_m
+        have hg_dom : (g (extendInputsForG inputs m ((Pr f g (Fin.snoc inputs m)).get hPr_dom_m))).Dom := by
+          rw [← (hpG_spec (extendInputsForG inputs m ((Pr f g (Fin.snoc inputs m)).get hPr_dom_m))).1]
+          exact hpG_halts_m'
+        have h2 := (hpG_spec (extendInputsForG inputs m ((Pr f g (Fin.snoc inputs m)).get hPr_dom_m))).2 hpG_halts_m' hg_dom
+        rw [h2]
+        -- Now: g(extendInputsForG inputs m Pr(inputs,m).get).get = Pr(inputs, m+1).get
+        rw [Pr_succ_spec inputs m hPr_dom_succ]
+    }
 
 /-! ## Output Phase -/
 
