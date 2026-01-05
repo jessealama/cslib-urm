@@ -156,9 +156,26 @@ section URMComputable1Closure
 /-- Constant zero is URMComputable1. -/
 theorem URMComputable1.zero : URMComputable1 (pure 0) := by
   unfold URMComputable1
-  -- Need: URMComputable 1 (fun x => Part.some 0)
-  -- This is the constant 0 function, ignoring input
-  sorry
+  -- pure 0 (x 0) = Part.some 0
+  have h : (fun x : Fin 1 → ℕ => (pure 0 : ℕ →. ℕ) (x 0)) = fun _ => Part.some 0 := by
+    funext x; rfl
+  rw [h]
+  -- Program: [Z 0] - zero register 0 and halt
+  use [Instr.Z 0]
+  intro inputs
+  -- Build the final state after Z 0 executes
+  let finalState := (Config.init (List.ofFn inputs)).state.write 0 0
+  have hstep : Step [Instr.Z 0] (Config.init (List.ofFn inputs)) ⟨1, finalState⟩ :=
+    Step.zero rfl
+  have hhalted : (⟨1, finalState⟩ : Config).isHalted [Instr.Z 0] := by simp
+  constructor
+  · simp only [Part.some_dom, iff_true]
+    exact ⟨⟨1, finalState⟩, Steps.single hstep, hhalted⟩
+  · intro hHalts _
+    obtain ⟨hsteps, hhalted'⟩ := Classical.choose_spec hHalts
+    have heq := Steps.halts_unique hsteps hhalted' (Steps.single hstep) hhalted
+    simp only [Result, heq, State.output]
+    rfl
 
 /-- Successor is URMComputable1. -/
 theorem URMComputable1.succ : URMComputable1 Nat.succ := by
@@ -176,28 +193,45 @@ theorem URMComputable1.right : URMComputable1 ↑fun n => n.unpair.2 := by
   unfold URMComputable1
   convert unpairRight_computable using 1
 
-/-- Pairing preserves URMComputable1. -/
+/-- Pairing preserves URMComputable1.
+
+    Proof approach: Use composition with pair_computable as outer function
+    and f, g as inner functions. -/
 theorem URMComputable1.pair {f g : ℕ →. ℕ}
     (hf : URMComputable1 f) (hg : URMComputable1 g) :
     URMComputable1 (fun n => Nat.pair <$> f n <*> g n) := by
+  -- pair(f(x), g(x)) = compose pair_computable with [f, g]
   sorry
 
-/-- Composition preserves URMComputable1. -/
+/-- Composition preserves URMComputable1.
+
+    Proof approach: Use comp_general with f as outer, g as inner. -/
 theorem URMComputable1.comp {f g : ℕ →. ℕ}
     (hf : URMComputable1 f) (hg : URMComputable1 g) :
     URMComputable1 (fun n => g n >>= f) := by
+  -- f(g(x)) = compose f with g using comp_general
   sorry
 
-/-- Primitive recursion preserves URMComputable1. -/
+/-- Primitive recursion preserves URMComputable1.
+
+    Proof approach: Adapt Mathlib's pair-encoded primitive recursion to
+    our multi-arity PrFunction, then compose with unpair. -/
 theorem URMComputable1.prec {f g : ℕ →. ℕ}
     (hf : URMComputable1 f) (hg : URMComputable1 g) :
     URMComputable1 (Nat.unpaired fun a n =>
       n.rec (f a) fun y IH => do let i ← IH; g (Nat.pair a (Nat.pair y i))) := by
+  -- Adapt: f_base(x) = f(x 0), g_step(x,k,acc) = g(pair(x 0, pair(k, acc)))
+  -- Then compose PrFunction with unpair using unpairLeft_computable, unpairRight_computable
   sorry
 
-/-- Minimization preserves URMComputable1. -/
+/-- Minimization preserves URMComputable1.
+
+    Proof approach: Define f_adapted(a, n) = f(pair(a, n)), show it's URMComputable 2,
+    then apply URMComputable.min. -/
 theorem URMComputable1.rfind {f : ℕ →. ℕ} (hf : URMComputable1 f) :
     URMComputable1 (fun a => Nat.rfind fun n => (fun m => m = 0) <$> f (Nat.pair a n)) := by
+  -- f_adapted(a,n) = f(pair(a,n)) via composition with pair_computable
+  -- Then μFunction f_adapted equals the goal, apply URMComputable.min
   sorry
 
 end URMComputable1Closure
