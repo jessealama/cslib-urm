@@ -6,6 +6,9 @@ Authors: Jesse Alama
 
 import Urm.Computable
 import Urm.Execution
+import Urm.PrimitiveRecursion.Basic
+import Urm.Composition.Basic
+import Mathlib.Tactic.FinCases
 
 /-! # Arithmetic Operations for URMs
 
@@ -563,5 +566,82 @@ theorem pred_computable : URMComputable 1 (fun x => Part.some (x 0 - 1)) := by
       have heq := Steps.halts_unique hsteps_chosen hhalted_chosen hsteps' hhalted
       simp only [Result, heq, State.output, Part.get_some]
       exact hr0
+
+/-! ## Monus (Truncated Subtraction)
+
+Monus (truncated subtraction) is computed via primitive recursion:
+- `m ∸ 0 = m` (base case: identity)
+- `m ∸ (k+1) = pred(m ∸ k)` (recursive case: apply predecessor)
+-/
+
+/-- Helper: The PR step function for monus computes pred of accumulator. -/
+private theorem monus_pr_step_eq (inputs : Fin 3 → ℕ) :
+    compFunction 1 3 (fun x => Part.some (x 0 - 1)) (fun _ => fun y => Part.some (y 2)) inputs =
+    Part.some (inputs 2 - 1) := by
+  simp only [compFunction, Part.sequence, Part.bind_some, Fin.isValue]
+  simp only [Part.map, Part.bind, Part.some]
+  simp only [Part.assert_pos (by trivial : True)]
+  rfl
+
+/-- Helper: Pr with identity base and pred-of-accumulator step computes monus. -/
+private theorem monus_pr_eq (m n : ℕ) :
+    Pr (fun x => Part.some (x 0)) (fun inputs => Part.some (inputs 2 - 1))
+      (Fin.snoc (fun _ : Fin 1 => m) n) = Part.some (m - n) := by
+  induction n with
+  | zero => simp only [Pr_snoc_zero, Nat.sub_zero]
+  | succ k ih =>
+    simp only [Pr_snoc_succ]
+    rw [ih]
+    simp only [Part.bind_some]
+    -- extendInputsForG (fun _ => m) k (m - k) 2 = m - k (the accumulator)
+    -- Note: 2 in Fin 3 is Fin.last 2
+    have h2_eq : (2 : Fin 3) = Fin.last 2 := rfl
+    have h : extendInputsForG (fun _ : Fin 1 => m) k (m - k) 2 = m - k := by
+      simp only [extendInputsForG, h2_eq, Fin.snoc_last]
+    -- Goal: Part.some (extendInputsForG ... 2 - 1) = Part.some (m - (k + 1))
+    -- Using h: Part.some ((m - k) - 1) = Part.some (m - (k + 1))
+    rw [h]
+    -- Now: Part.some ((m - k) - 1) = Part.some (m - (k + 1))
+    -- Use Nat.sub_succ: m - (k + 1) = (m - k) - 1
+    rw [Nat.sub_succ]
+    -- Now need: Part.some ((m - k) - 1) = Part.some ((m - k).pred)
+    -- But (n - 1) = n.pred for natural numbers
+    rfl
+
+open URMComputable in
+/-- Monus (truncated subtraction) is URM-computable.
+
+    monus(m, n) = m - n with natural truncation (0 when n > m).
+
+    Proof uses primitive recursion with:
+    - Base: f(m) = m (identity)
+    - Step: g(m, k, acc) = pred(acc) -/
+theorem monus_computable : URMComputable 2 (fun mn => Part.some (mn 0 - mn 1)) := by
+  -- The step function g(m, k, acc) = pred(acc) is composition of pred with projection
+  have hStepSF : URMComputableSF 3 (fun inputs => Part.some (inputs 2 - 1)) := by
+    have h := URMComputable.comp_general (m := 1) (n := 3)
+      pred_computable
+      (fun _ => proj_computable 3 2)
+    convert h using 1
+    funext inputs
+    exact (monus_pr_step_eq inputs).symm
+  have hStep : URMComputable 3 (fun inputs => Part.some (inputs 2 - 1)) :=
+    hStepSF.toComputable
+  -- Apply primitive recursion closure
+  have hPR := URMComputable.primRec (n := 1) id_computable hStep
+  -- Convert to show PrFunction computes monus
+  convert hPR using 1
+  funext inputs
+  simp only [PrFunction]
+  -- Express inputs as Fin.snoc
+  have hinputs : inputs = Fin.snoc (fun _ : Fin 1 => inputs 0) (inputs 1) := by
+    ext i
+    fin_cases i
+    · simp [Fin.snoc]
+    · simp [Fin.snoc]
+  rw [hinputs]
+  -- Need the symmetric form
+  symm
+  exact monus_pr_eq (inputs 0) (inputs 1)
 
 end Urm
