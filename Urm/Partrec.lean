@@ -76,11 +76,7 @@ end URMComputable1
 section Arithmetic
 
 -- add_computable is now provided by Urm.Arithmetic
-
-/-- Predecessor is URM-computable.
-    pred(0) = 0, pred(n+1) = n -/
-theorem pred_computable : URMComputable 1 (fun x => Part.some (x 0 - 1)) := by
-  sorry
+-- pred_computable is now provided by Urm.Arithmetic
 
 /-- Monus (truncated subtraction) is URM-computable.
     sub(x, 0) = x, sub(x, y+1) = pred(sub(x, y)) -/
