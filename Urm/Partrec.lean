@@ -5,6 +5,7 @@ Authors: Jesse Alama
 -/
 
 import Urm.Computable
+import Urm.Arithmetic
 import Urm.Composition.Basic
 import Urm.PrimitiveRecursion.Basic
 import Urm.Minimization.Basic
@@ -74,16 +75,7 @@ end URMComputable1
 
 section Arithmetic
 
-/-- Addition is URM-computable.
-    Uses primitive recursion: add(x, 0) = x, add(x, y+1) = S(add(x, y))
-
-    Proof sketch:
-    - f(x) = x (projection)
-    - g(x, k, acc) = S(acc) (successor of accumulator)
-    - PrFunction f g (x, y) = x + y by induction on y -/
-theorem add_computable : URMComputable 2 (fun xy => Part.some (xy 0 + xy 1)) := by
-  -- Via primitive recursion with f(x) = x and g(x,k,acc) = acc + 1
-  sorry
+-- add_computable is now provided by Urm.Arithmetic
 
 /-- Predecessor is URM-computable.
     pred(0) = 0, pred(n+1) = n -/
