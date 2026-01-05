@@ -5,7 +5,9 @@ import Urm.Execution
 import Urm.Shift
 import Urm.Embeddings
 import Urm.Computable
+import Urm.Arithmetic
 import Urm.Composition.Basic
 import Urm.PrimitiveRecursion.Basic
 import Urm.Minimization.Basic
+import Urm.Partrec
 import Urm.Examples
