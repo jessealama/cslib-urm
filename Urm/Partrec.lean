@@ -1177,9 +1177,43 @@ theorem URMComputable1.prec {f g : ℕ →. ℕ}
     then apply URMComputable.min. -/
 theorem URMComputable1.rfind {f : ℕ →. ℕ} (hf : URMComputable1 f) :
     URMComputable1 (fun a => Nat.rfind fun n => (fun m => m = 0) <$> f (Nat.pair a n)) := by
-  -- f_adapted(a,n) = f(pair(a,n)) via composition with pair_computable
-  -- Then μFunction f_adapted equals the goal, apply URMComputable.min
-  sorry
+  unfold URMComputable1 at *
+  -- Step 1: Define f_adapted via composition with pair_computable
+  -- f_adapted(xy) = f(pair(xy 0, xy 1))
+  let pairGs : Fin 1 → (Fin 2 → ℕ) → Part ℕ :=
+    fun _ xy => Part.some (Nat.pair (xy 0) (xy 1))
+  have h_pair : ∀ i, URMComputable 2 (pairGs i) := fun _ => pair_computable
+  have h_adapted := URMComputable.comp_general (m := 1) (n := 2) hf h_pair
+  -- h_adapted : URMComputableSF 2 (compFunction 1 2 (fun x => f (x 0)) pairGs)
+
+  -- Step 2: Apply minimization
+  have h_min := URMComputable.min h_adapted.toComputable
+  -- h_min : URMComputableSF 1 (μFunction (compFunction ...))
+
+  -- Step 3: Convert to goal form
+  convert h_min.toComputable using 1
+  funext x
+  -- Goal: Nat.rfind (fun n => (· = 0) <$> f (pair (x 0) n))
+  --     = μFunction (compFunction 1 2 ...) x
+  -- Both sides compute Nat.rfind of the same predicate
+  simp only [μFunction, μ]
+  congr 1
+  funext n
+  -- Show checkZero predicates are equal
+  simp only [checkZero, extendInputs, compFunction, Part.sequence,
+             Part.bind_some, pairGs]
+  -- Both sides are Part.map (· = 0) (f (pair ... ...))
+  -- Simplify Fin.snoc to show equality
+  congr 2
+  simp only [Part.map_some, Part.bind_some, Fin.cons_zero]
+  -- Show: f (pair (x 0) n) = f (pair (snoc x n 0) (snoc x n 1))
+  -- Unfold Fin.snoc and simplify
+  simp only [Fin.snoc, Fin.val_zero, Fin.val_one, Nat.lt_irrefl, dite_false]
+  -- Remaining goal: simplify the conditional and casts
+  have h01 : (0 : ℕ) < 1 := by omega
+  simp only [h01, ↓reduceDIte]
+  -- The casts are identities on ℕ
+  rfl
 
 end URMComputable1Closure
 
