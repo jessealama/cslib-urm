@@ -85,9 +85,139 @@ theorem sub_computable : URMComputable 2 (fun xy => Part.some (xy 0 - xy 1)) := 
 
 -- mul_computable is now provided by Urm.Arithmetic
 
+/-- URM program that computes sign: sign(0) = 0, sign(n) = 1 for n > 0
+
+Uses R1 as a zero register for comparison. -/
+def signProgram : Program := [
+  Instr.Z 1,      -- 0: Clear R1 (zero for comparison)
+  Instr.J 0 1 4,  -- 1: If R0 = R1 (=0), jump to 4 (halt with 0)
+  Instr.Z 0,      -- 2: Clear R0
+  Instr.S 0       -- 3: Set R0 = 1, then halt (pc goes to 4)
+]                 -- 4: Program ends (halted)
+
+namespace signProgram
+
+-- Helper lemmas about getInstr
+@[simp] theorem getInstr_0 : signProgram.getInstr 0 = some (Instr.Z 1) := rfl
+@[simp] theorem getInstr_1 : signProgram.getInstr 1 = some (Instr.J 0 1 4) := rfl
+@[simp] theorem getInstr_2 : signProgram.getInstr 2 = some (Instr.Z 0) := rfl
+@[simp] theorem getInstr_3 : signProgram.getInstr 3 = some (Instr.S 0) := rfl
+@[simp] theorem length_eq : signProgram.length = 4 := rfl
+
+/-- Clear R1 for zero check (pc 0 → 1). -/
+theorem step_clear_r1 (s : State) :
+    Step signProgram ⟨0, s⟩ ⟨1, s.write 1 0⟩ :=
+  Step.zero getInstr_0
+
+/-- When R0 = 0 (= R1 after clear), jump to halt (pc 1 → 4). -/
+theorem step_zero_exit (s : State) (heq : s.read 0 = s.read 1) :
+    Step signProgram ⟨1, s⟩ ⟨4, s⟩ :=
+  Step.jump_eq getInstr_1 heq
+
+/-- When R0 ≠ 0, continue to clear R0 (pc 1 → 2). -/
+theorem step_nonzero_continue (s : State) (hne : s.read 0 ≠ s.read 1) :
+    Step signProgram ⟨1, s⟩ ⟨2, s⟩ :=
+  Step.jump_ne getInstr_1 hne
+
+/-- Clear R0 (pc 2 → 3). -/
+theorem step_clear_r0 (s : State) :
+    Step signProgram ⟨2, s⟩ ⟨3, s.write 0 0⟩ :=
+  Step.zero getInstr_2
+
+/-- Increment R0 to 1 (pc 3 → 4). -/
+theorem step_inc_r0 (s : State) :
+    Step signProgram ⟨3, s⟩ ⟨4, s.write 0 (s.read 0 + 1)⟩ :=
+  Step.succ getInstr_3
+
+/-- Configuration at pc=4 is halted. -/
+theorem halted_at_4 (s : State) : (⟨4, s⟩ : Config).isHalted signProgram := by
+  simp [Config.isHalted, length_eq]
+
+/-- Full execution for input 0: halts at pc=4 with R0=0. -/
+theorem execution_zero :
+    ∃ s, Steps signProgram (Config.init [0]) ⟨4, s⟩ ∧
+         s.read 0 = 0 ∧
+         (⟨4, s⟩ : Config).isHalted signProgram := by
+  let s0 := State.fromInputs [0]
+  let s1 := s0.write 1 0
+  -- Step 0→1: clear R1
+  have h1 : Step signProgram ⟨0, s0⟩ ⟨1, s1⟩ := step_clear_r1 s0
+  -- Step 1→4: jump (R0 = R1 = 0)
+  have heq : s1.read 0 = s1.read 1 := by
+    simp [s1, s0, State.write, State.read, State.fromInputs, Function.update_of_ne]
+  have h2 : Step signProgram ⟨1, s1⟩ ⟨4, s1⟩ := step_zero_exit s1 heq
+  use s1
+  refine ⟨Steps.trans (Steps.single h1) (Steps.single h2), ?_, halted_at_4 s1⟩
+  simp [s1, s0, State.write, State.read, State.fromInputs, Function.update_of_ne]
+
+/-- Full execution for input n > 0: halts at pc=4 with R0=1. -/
+theorem execution_nonzero (n : ℕ) (hn : n > 0) :
+    ∃ s, Steps signProgram (Config.init [n]) ⟨4, s⟩ ∧
+         s.read 0 = 1 ∧
+         (⟨4, s⟩ : Config).isHalted signProgram := by
+  let s0 := State.fromInputs [n]
+  let s1 := s0.write 1 0
+  let s2 := s1.write 0 0
+  let s3 := s2.write 0 (s2.read 0 + 1)
+  -- Step 0→1: clear R1
+  have h1 : Step signProgram ⟨0, s0⟩ ⟨1, s1⟩ := step_clear_r1 s0
+  -- Step 1→2: no jump (R0 = n ≠ 0 = R1)
+  have hne : s1.read 0 ≠ s1.read 1 := by
+    simp [s1, s0, State.write, State.read, State.fromInputs, Function.update_of_ne]
+    omega
+  have h2 : Step signProgram ⟨1, s1⟩ ⟨2, s1⟩ := step_nonzero_continue s1 hne
+  -- Step 2→3: clear R0
+  have h3 : Step signProgram ⟨2, s1⟩ ⟨3, s2⟩ := step_clear_r0 s1
+  -- Step 3→4: increment R0 to 1
+  have h4 : Step signProgram ⟨3, s2⟩ ⟨4, s3⟩ := step_inc_r0 s2
+  use s3
+  refine ⟨Steps.trans (Steps.trans (Steps.trans (Steps.single h1) (Steps.single h2))
+                      (Steps.single h3)) (Steps.single h4), ?_, halted_at_4 s3⟩
+  simp [s3, s2, s1, s0, State.write, State.read, Function.update_self]
+
+end signProgram
+
 /-- Sign function: sign(0) = 0, sign(n+1) = 1 -/
 theorem sign_computable : URMComputable 1 (fun x => Part.some (if x 0 = 0 then 0 else 1)) := by
-  sorry
+  use signProgram
+  intro inputs
+  let n := inputs 0
+  have h_ofFn : List.ofFn inputs = [n] := by simp only [List.ofFn]; rfl
+  constructor
+  · -- Halting: always halts
+    simp only [Part.some_dom, iff_true]
+    by_cases hn : n = 0
+    · -- n = 0 case
+      rw [h_ofFn]
+      simp only [hn]
+      obtain ⟨s, hsteps, _, hhalted⟩ := signProgram.execution_zero
+      exact ⟨⟨4, s⟩, hsteps, hhalted⟩
+    · -- n > 0 case
+      rw [h_ofFn]
+      have hn' : n > 0 := Nat.pos_of_ne_zero hn
+      obtain ⟨s, hsteps, _, hhalted⟩ := signProgram.execution_nonzero n hn'
+      exact ⟨⟨4, s⟩, hsteps, hhalted⟩
+  · -- Result equality
+    intro hHalts _
+    obtain ⟨hsteps_chosen, hhalted_chosen⟩ := Classical.choose_spec hHalts
+    by_cases hn : n = 0
+    · -- n = 0 case: result = 0
+      obtain ⟨s, hsteps, hr0, hhalted⟩ := signProgram.execution_zero
+      have hsteps' : Steps signProgram (Config.init (List.ofFn inputs)) ⟨4, s⟩ := by
+        simp only [h_ofFn, hn]; exact hsteps
+      have heq := Steps.halts_unique hsteps_chosen hhalted_chosen hsteps' hhalted
+      simp only [Result, heq, State.output, Part.get_some, State.read] at hr0 ⊢
+      rw [show inputs 0 = 0 from hn, if_pos rfl]
+      exact hr0
+    · -- n > 0 case: result = 1
+      have hn' : n > 0 := Nat.pos_of_ne_zero hn
+      obtain ⟨s, hsteps, hr0, hhalted⟩ := signProgram.execution_nonzero n hn'
+      have hsteps' : Steps signProgram (Config.init (List.ofFn inputs)) ⟨4, s⟩ := by
+        simp only [h_ofFn]; exact hsteps
+      have heq := Steps.halts_unique hsteps_chosen hhalted_chosen hsteps' hhalted
+      simp only [Result, heq, State.output, Part.get_some, State.read] at hr0 ⊢
+      rw [if_neg (show inputs 0 ≠ 0 from hn)]
+      exact hr0
 
 /-- Less-than comparison returns 1 if x < y, else 0.
     lt(x, y) = sign(y - x) -/
