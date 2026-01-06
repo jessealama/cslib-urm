@@ -807,35 +807,223 @@ theorem updateNthEncoded_primrec₃ : Primrec fun p : ℕ × ℕ × ℕ =>
   intro p
   exact (updateNthEncoded_eq_rebuild p.1 p.2.1 p.2.2).symm
 
+set_option maxHeartbeats 2000000
 /-- For fixed progCode and bound, the step function is primitive recursive. -/
 theorem encodedStep_primrec_fixed (progCode bound : ℕ) :
     Nat.Primrec (fun configCode => encodedStep progCode bound configCode) := by
-  -- Key constants from the fixed program
+  -- Fixed constants from the program
   let progLen := progCode.unpair.1
   let progInstrs := progCode.unpair.2
 
-  -- The function structure:
-  -- 1. Extract pc = configCode.unpair.1, regsCode = configCode.unpair.2
-  -- 2. If pc ≥ progLen, return configCode (halted)
-  -- 3. Otherwise, look up instruction at pc and execute
+  -- Step 1: Shared projections (all unary Primrec over configCode)
+  have hPc : Primrec (fun c : ℕ => c.unpair.1) := Primrec.fst.comp Primrec.unpair
+  have hRegs : Primrec (fun c : ℕ => c.unpair.2) := Primrec.snd.comp Primrec.unpair
 
-  -- For the "not halted" case:
-  -- - instrCode = nthEncoded pc progInstrs
-  -- - Execute instruction based on instrCode's tag
+  -- Instruction lookup: nthEncoded pc progInstrs
+  have hInstr : Primrec (fun c : ℕ => nthEncoded c.unpair.1 progInstrs) :=
+    nthEncoded_primrec₂.comp hPc (Primrec.const progInstrs)
 
-  -- Since progInstrs is fixed, nthEncoded pc progInstrs is primrec in pc
-  -- (by nthEncoded_primrec₂ composed with const progInstrs)
+  -- Tag and args extraction from instruction
+  have hTag : Primrec (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.1) :=
+    (Primrec.fst.comp Primrec.unpair).comp hInstr
+  have hArgs : Primrec (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.2) :=
+    (Primrec.snd.comp Primrec.unpair).comp hInstr
 
-  -- Each instruction execution is primrec:
-  -- - Z n: pair (pc + 1) (updateNthEncoded n regsCode 0)
-  -- - S n: pair (pc + 1) (updateNthEncoded n regsCode (nthEncoded n regsCode + 1))
-  -- - T m n: pair (pc + 1) (updateNthEncoded n regsCode (nthEncoded m regsCode))
-  -- - J m n q: pair (if mVal = nVal then q else pc + 1) regsCode
+  -- pc + 1 (used in most branches)
+  have hPcNext : Primrec (fun c : ℕ => c.unpair.1 + 1) :=
+    Primrec.nat_add.comp hPc (Primrec.const 1)
 
-  -- The overall function combines these with primrec conditionals
+  -- Step 2: Default branch - pair (pc + 1) regsCode
+  have hDefault : Primrec (fun c : ℕ => pair (c.unpair.1 + 1) c.unpair.2) :=
+    Primrec₂.natPair.comp hPcNext hRegs
 
-  -- This is a complex proof that builds up the primitiveness step by step
-  -- For now, we accept it as the semantic correctness is more important
+  -- Step 3: Z case (tag=0)
+  -- Z n: if n ≤ bound then pair (pc+1) (updateNthEncoded n regs 0) else pair (pc+1) regs
+  -- where n = args
+  have hZPred : PrimrecPred (fun c : ℕ =>
+      (nthEncoded c.unpair.1 progInstrs).unpair.2 ≤ bound) :=
+    Primrec.nat_le.comp hArgs (Primrec.const bound)
+  -- The "then" branch: pair (pc+1) (updateNthEncoded n regs 0)
+  have hZThen : Primrec (fun c : ℕ =>
+      pair (c.unpair.1 + 1) (updateNthEncoded
+        (nthEncoded c.unpair.1 progInstrs).unpair.2 c.unpair.2 0)) :=
+    Primrec₂.natPair.comp hPcNext
+      (updateNthEncoded_primrec₃.comp (Primrec.pair hArgs (Primrec.pair hRegs (Primrec.const 0))))
+  have hZ : Primrec (fun c : ℕ =>
+      if (nthEncoded c.unpair.1 progInstrs).unpair.2 ≤ bound then
+        pair (c.unpair.1 + 1) (updateNthEncoded
+          (nthEncoded c.unpair.1 progInstrs).unpair.2 c.unpair.2 0)
+      else pair (c.unpair.1 + 1) c.unpair.2) :=
+    Primrec.ite hZPred hZThen hDefault
+
+  -- Step 4: S case (tag=1)
+  -- S n: if n ≤ bound then pair (pc+1) (updateNthEncoded n regs (nthEncoded n regs + 1)) else default
+  -- where n = args
+  -- Old value lookup: nthEncoded n regs
+  have hSOldVal : Primrec (fun c : ℕ =>
+      nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2 c.unpair.2) :=
+    nthEncoded_primrec₂.comp hArgs hRegs
+  -- New value: oldVal + 1
+  have hSNewVal : Primrec (fun c : ℕ =>
+      nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2 c.unpair.2 + 1) :=
+    Primrec.nat_add.comp hSOldVal (Primrec.const 1)
+  -- The "then" branch: pair (pc+1) (updateNthEncoded n regs newVal)
+  have hSThen : Primrec (fun c : ℕ =>
+      pair (c.unpair.1 + 1) (updateNthEncoded
+        (nthEncoded c.unpair.1 progInstrs).unpair.2 c.unpair.2
+        (nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2 c.unpair.2 + 1))) :=
+    Primrec₂.natPair.comp hPcNext
+      (updateNthEncoded_primrec₃.comp (Primrec.pair hArgs (Primrec.pair hRegs hSNewVal)))
+  have hS : Primrec (fun c : ℕ =>
+      if (nthEncoded c.unpair.1 progInstrs).unpair.2 ≤ bound then
+        pair (c.unpair.1 + 1) (updateNthEncoded
+          (nthEncoded c.unpair.1 progInstrs).unpair.2 c.unpair.2
+          (nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2 c.unpair.2 + 1))
+      else pair (c.unpair.1 + 1) c.unpair.2) :=
+    Primrec.ite hZPred hSThen hDefault  -- Reuse hZPred since same condition
+
+  -- Step 5: T case (tag=2)
+  -- T m n: copy register m to n
+  -- if n ≤ bound then pair (pc+1) (updateNthEncoded n regs (if m ≤ bound then nthEncoded m regs else 0)) else default
+  -- Extract m and n from args
+  have hTM : Primrec (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1) :=
+    (Primrec.fst.comp Primrec.unpair).comp hArgs
+  have hTN : Primrec (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2) :=
+    (Primrec.snd.comp Primrec.unpair).comp hArgs
+  -- Predicate for n ≤ bound
+  have hTNPred : PrimrecPred (fun c : ℕ =>
+      (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2 ≤ bound) :=
+    Primrec.nat_le.comp hTN (Primrec.const bound)
+  -- Predicate for m ≤ bound
+  have hTMPred : PrimrecPred (fun c : ℕ =>
+      (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound) :=
+    Primrec.nat_le.comp hTM (Primrec.const bound)
+  -- srcVal = if m ≤ bound then nthEncoded m regs else 0
+  have hTMVal : Primrec (fun c : ℕ =>
+      nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2) :=
+    nthEncoded_primrec₂.comp hTM hRegs
+  have hTSrcVal : Primrec (fun c : ℕ =>
+      if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound then
+        nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2
+      else 0) :=
+    Primrec.ite hTMPred hTMVal (Primrec.const 0)
+  -- The "then" branch: pair (pc+1) (updateNthEncoded n regs srcVal)
+  have hTThen : Primrec (fun c : ℕ =>
+      pair (c.unpair.1 + 1) (updateNthEncoded
+        (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2 c.unpair.2
+        (if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound then
+          nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2
+        else 0))) :=
+    Primrec₂.natPair.comp hPcNext
+      (updateNthEncoded_primrec₃.comp (Primrec.pair hTN (Primrec.pair hRegs hTSrcVal)))
+  have hT : Primrec (fun c : ℕ =>
+      if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2 ≤ bound then
+        pair (c.unpair.1 + 1) (updateNthEncoded
+          (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2 c.unpair.2
+          (if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound then
+            nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2
+          else 0))
+      else pair (c.unpair.1 + 1) c.unpair.2) :=
+    Primrec.ite hTNPred hTThen hDefault
+
+  -- Step 6: J case (tag=3)
+  -- J m nReg q: if mVal = nVal then pair q regs else pair (pc+1) regs
+  -- where mVal = if m ≤ bound then nthEncoded m regs else 0
+  --       nVal = if nReg ≤ bound then nthEncoded nReg regs else 0
+  -- Extract m, nReg, q from args
+  have hJM : Primrec (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1) :=
+    (Primrec.fst.comp Primrec.unpair).comp hArgs
+  have hJNReg : Primrec (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1) :=
+    (Primrec.fst.comp Primrec.unpair).comp ((Primrec.snd.comp Primrec.unpair).comp hArgs)
+  have hJQ : Primrec (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.2) :=
+    (Primrec.snd.comp Primrec.unpair).comp ((Primrec.snd.comp Primrec.unpair).comp hArgs)
+  -- Predicate for m ≤ bound
+  have hJMPred : PrimrecPred (fun c : ℕ =>
+      (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound) :=
+    Primrec.nat_le.comp hJM (Primrec.const bound)
+  -- Predicate for nReg ≤ bound
+  have hJNPred : PrimrecPred (fun c : ℕ =>
+      (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 ≤ bound) :=
+    Primrec.nat_le.comp hJNReg (Primrec.const bound)
+  -- mVal = if m ≤ bound then nthEncoded m regs else 0
+  have hJMValLookup : Primrec (fun c : ℕ =>
+      nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2) :=
+    nthEncoded_primrec₂.comp hJM hRegs
+  have hJMVal : Primrec (fun c : ℕ =>
+      if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound then
+        nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2
+      else 0) :=
+    Primrec.ite hJMPred hJMValLookup (Primrec.const 0)
+  -- nVal = if nReg ≤ bound then nthEncoded nReg regs else 0
+  have hJNValLookup : Primrec (fun c : ℕ =>
+      nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 c.unpair.2) :=
+    nthEncoded_primrec₂.comp hJNReg hRegs
+  have hJNVal : Primrec (fun c : ℕ =>
+      if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 ≤ bound then
+        nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 c.unpair.2
+      else 0) :=
+    Primrec.ite hJNPred hJNValLookup (Primrec.const 0)
+  -- Equality predicate for mVal = nVal
+  have hJEqPred : PrimrecPred (fun c : ℕ =>
+      (if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound then
+        nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2
+      else 0) =
+      (if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 ≤ bound then
+        nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 c.unpair.2
+      else 0)) :=
+    Primrec.eq.comp hJMVal hJNVal
+  -- "then" branch: pair q regs
+  have hJThen : Primrec (fun c : ℕ =>
+      pair (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.2 c.unpair.2) :=
+    Primrec₂.natPair.comp hJQ hRegs
+  -- "else" branch: pair (pc+1) regs (same as hDefault)
+  have hJ : Primrec (fun c : ℕ =>
+      if (if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound then
+            nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2
+          else 0) =
+         (if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 ≤ bound then
+            nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 c.unpair.2
+          else 0)
+      then pair (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.2 c.unpair.2
+      else pair (c.unpair.1 + 1) c.unpair.2) :=
+    Primrec.ite hJEqPred hJThen hDefault
+
+  -- Step 7: Tag dispatch using nested ite
+  -- Tag predicates
+  have hTagEq0 : PrimrecPred (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.1 = 0) :=
+    Primrec.eq.comp hTag (Primrec.const 0)
+  have hTagEq1 : PrimrecPred (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.1 = 1) :=
+    Primrec.eq.comp hTag (Primrec.const 1)
+  have hTagEq2 : PrimrecPred (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.1 = 2) :=
+    Primrec.eq.comp hTag (Primrec.const 2)
+  have hTagEq3 : PrimrecPred (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.1 = 3) :=
+    Primrec.eq.comp hTag (Primrec.const 3)
+
+  -- Build dispatch: if tag=0 then Z, else if tag=1 then S, else if tag=2 then T, else if tag=3 then J, else default
+  have hExec : Primrec (fun c : ℕ => _) :=
+    Primrec.ite hTagEq0 hZ (Primrec.ite hTagEq1 hS (Primrec.ite hTagEq2 hT (Primrec.ite hTagEq3 hJ hDefault)))
+
+  -- Step 8: Outer halted check
+  have hNotHalted : PrimrecPred (fun c : ℕ => c.unpair.1 < progLen) :=
+    Primrec.nat_lt.comp hPc (Primrec.const progLen)
+
+  -- Final: if not halted then execute else return unchanged
+  have hFinal : Primrec (fun c : ℕ => _) :=
+    Primrec.ite hNotHalted hExec Primrec.id
+
+  -- Convert to Nat.Primrec and show equality with encodedStep
+  apply Primrec.nat_iff.mp
+  apply hFinal.of_eq
+  intro c
+  -- TODO: Complete the equality proof. The issue is:
+  -- - LHS uses if-then-else on (tag = 0), (tag = 1), etc.
+  -- - RHS uses match on tag with | 0 => ... | 1 => ...
+  -- - After `split` on the RHS match, the LHS if-then-else needs to be
+  --   simplified using the hypothesis that tells us the tag value
+  -- - Also, `progInstrs` (let-bound to `(unpair progCode).2`) needs to
+  --   be recognized as equal to `(unpair progCode).2` in the RHS
+  -- Approach: Use rcases on the tag value, or prove a helper lemma
+  -- that shows the if-then-else equals the match expression
   sorry
 
 /-- For fixed progCode, the halting check is primitive recursive. -/
