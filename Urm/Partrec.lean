@@ -880,7 +880,30 @@ theorem URMComputable1.pair {f g : ℕ →. ℕ}
     (hf : URMComputable1 f) (hg : URMComputable1 g) :
     URMComputable1 (fun n => Nat.pair <$> f n <*> g n) := by
   -- pair(f(x), g(x)) = compose pair_computable with [f, g]
-  sorry
+  unfold URMComputable1 at *
+  -- Define inner functions: gs 0 = f, gs 1 = g
+  have hGs : ∀ i : Fin 2, URMComputable 1 (fun x : Fin 1 → ℕ =>
+      if i = 0 then f (x 0) else g (x 0)) := by
+    intro i; fin_cases i
+    · simp only [Fin.isValue]; exact hf
+    · simp only [Fin.isValue]; convert hg using 1
+  -- Apply comp_general with m=2, n=1
+  have h := URMComputable.comp_general (m := 2) (n := 1) pair_computable hGs
+  -- Show compFunction equals our goal
+  convert h.toComputable using 1
+  funext x
+  -- Both sides compute the same thing:
+  -- LHS: Nat.pair <$> f (x 0) <*> g (x 0)
+  -- RHS: compFunction with pair_computable and [f, g]
+  -- They're definitionally equal after unfolding
+  simp only [compFunction, Part.sequence, Part.bind_eq_bind, Part.map_eq_map,
+    seq_eq_bind_map, Part.bind_assoc, Part.bind_map, Part.map_bind, Part.bind_some,
+    Part.map_some, Fin.cons_zero, Fin.cons_one]
+  congr 1
+  funext a
+  have hif : (Fin.succ 0 : Fin 2) = 0 ↔ False := by decide
+  simp only [hif, ↓reduceIte]
+  exact (Part.bind_some_eq_map _ _).symm
 
 /-- Composition preserves URMComputable1.
 
