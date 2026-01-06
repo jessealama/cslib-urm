@@ -650,11 +650,31 @@ def iterateEncodedStep (progCode bound : ℕ) : ℕ → ℕ → ℕ
   | 0, configCode => configCode
   | n + 1, configCode => iterateEncodedStep progCode bound n (encodedStep progCode bound configCode)
 
+/-- iterateEncodedStep equals Function.iterate. -/
+theorem iterateEncodedStep_eq_iterate (progCode bound n configCode : ℕ) :
+    iterateEncodedStep progCode bound n configCode =
+    (encodedStep progCode bound)^[n] configCode := by
+  induction n generalizing configCode with
+  | zero => rfl
+  | succ n ih =>
+    simp only [iterateEncodedStep, Function.iterate_succ_apply]
+    exact ih (encodedStep progCode bound configCode)
+
 /-- For fixed progCode and bound, iteration is primitive recursive. -/
 theorem iterateEncodedStep_primrec_fixed (progCode bound : ℕ) :
     Primrec₂ (iterateEncodedStep progCode bound) := by
-  -- This follows from Nat.Primrec.prec applied to the step function
-  sorry
+  -- Convert Nat.Primrec to Primrec
+  have hStep : Primrec (encodedStep progCode bound) :=
+    Primrec.nat_iff.mpr (encodedStep_primrec_fixed progCode bound)
+  -- Build Primrec₂ for the constant step function
+  have hStep₂ : Primrec₂ (fun (_ : ℕ × ℕ) (c : ℕ) => encodedStep progCode bound c) :=
+    hStep.comp₂ Primrec₂.right
+  -- Apply nat_iterate: (h a)^[f a] (g a) with f=fst, g=snd, h=const step
+  have hIter : Primrec fun p : ℕ × ℕ => (encodedStep progCode bound)^[p.1] p.2 :=
+    Primrec.nat_iterate Primrec.fst Primrec.snd hStep₂
+  -- Convert to Primrec₂ using equality
+  exact Primrec₂.of_eq hIter fun n c =>
+    (iterateEncodedStep_eq_iterate progCode bound n c).symm
 
 /-- Iteration correctness: iterating n times corresponds to StepsN. -/
 theorem iterateEncodedStep_correct (p : Program) (n : ℕ) (c c' : Config)
