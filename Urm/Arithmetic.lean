@@ -574,8 +574,8 @@ Monus (truncated subtraction) is computed via primitive recursion:
 - `m ∸ (k+1) = pred(m ∸ k)` (recursive case: apply predecessor)
 -/
 
-/-- Helper: The PR step function for monus computes pred of accumulator. -/
-private theorem monus_pr_step_eq (inputs : Fin 3 → ℕ) :
+/-- Helper: The PR step function for sub computes pred of accumulator. -/
+private theorem sub_pr_step_eq (inputs : Fin 3 → ℕ) :
     compFunction 1 3 (fun x => Part.some (x 0 - 1)) (fun _ => fun y => Part.some (y 2)) inputs =
     Part.some (inputs 2 - 1) := by
   simp only [compFunction, Part.sequence, Part.bind_some, Fin.isValue]
@@ -583,8 +583,8 @@ private theorem monus_pr_step_eq (inputs : Fin 3 → ℕ) :
   simp only [Part.assert_pos (by trivial : True)]
   rfl
 
-/-- Helper: Pr with identity base and pred-of-accumulator step computes monus. -/
-private theorem monus_pr_eq (m n : ℕ) :
+/-- Helper: Pr with identity base and pred-of-accumulator step computes sub. -/
+private theorem sub_pr_eq (m n : ℕ) :
     Pr (fun x => Part.some (x 0)) (fun inputs => Part.some (inputs 2 - 1))
       (Fin.snoc (fun _ : Fin 1 => m) n) = Part.some (m - n) := by
   induction n with
@@ -609,14 +609,14 @@ private theorem monus_pr_eq (m n : ℕ) :
     rfl
 
 open URMComputable in
-/-- Monus (truncated subtraction) is URM-computable.
+/-- Truncated subtraction (monus) is URM-computable.
 
-    monus(m, n) = m - n with natural truncation (0 when n > m).
+    sub(m, n) = m - n with natural truncation (0 when n > m).
 
     Proof uses primitive recursion with:
     - Base: f(m) = m (identity)
     - Step: g(m, k, acc) = pred(acc) -/
-theorem monus_computable : URMComputable 2 (fun mn => Part.some (mn 0 - mn 1)) := by
+theorem sub_computable : URMComputable 2 (fun mn => Part.some (mn 0 - mn 1)) := by
   -- The step function g(m, k, acc) = pred(acc) is composition of pred with projection
   have hStepSF : URMComputableSF 3 (fun inputs => Part.some (inputs 2 - 1)) := by
     have h := URMComputable.comp_general (m := 1) (n := 3)
@@ -624,12 +624,12 @@ theorem monus_computable : URMComputable 2 (fun mn => Part.some (mn 0 - mn 1)) :
       (fun _ => proj_computable 3 2)
     convert h using 1
     funext inputs
-    exact (monus_pr_step_eq inputs).symm
+    exact (sub_pr_step_eq inputs).symm
   have hStep : URMComputable 3 (fun inputs => Part.some (inputs 2 - 1)) :=
     hStepSF.toComputable
   -- Apply primitive recursion closure
   have hPR := URMComputable.primRec (n := 1) id_computable hStep
-  -- Convert to show PrFunction computes monus
+  -- Convert to show PrFunction computes sub
   convert hPR using 1
   funext inputs
   simp only [PrFunction]
@@ -642,7 +642,7 @@ theorem monus_computable : URMComputable 2 (fun mn => Part.some (mn 0 - mn 1)) :
   rw [hinputs]
   -- Need the symmetric form
   symm
-  exact monus_pr_eq (inputs 0) (inputs 1)
+  exact sub_pr_eq (inputs 0) (inputs 1)
 
 /-! ## Multiplication
 
