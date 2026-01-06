@@ -63,7 +63,19 @@ theorem extractOutput_primrec : Nat.Primrec extractOutput := by
 /-- isHaltedAtStep is primitive recursive for fixed program parameters. -/
 theorem isHaltedAtStep_primrec (progCode bound inputConfig : ℕ) :
     Nat.Primrec (fun n => if isHaltedAtStep progCode bound inputConfig n then 1 else 0) := by
-  sorry
+  -- The function equals: encodedIsHaltedNat progCode (iterateEncodedStep progCode bound n inputConfig)
+  -- Step 1: Get Primrec for iterateEncodedStep with fixed inputConfig
+  have hIter : Primrec (fun n => iterateEncodedStep progCode bound n inputConfig) :=
+    (iterateEncodedStep_primrec_fixed progCode bound).comp Primrec.id (Primrec.const inputConfig)
+  -- Step 2: Convert to Nat.Primrec
+  have hIterNat : Nat.Primrec (fun n => iterateEncodedStep progCode bound n inputConfig) :=
+    Primrec.nat_iff.mp hIter
+  -- Step 3: Compose with encodedIsHaltedNat
+  have hComp : Nat.Primrec (fun n => encodedIsHaltedNat progCode
+      (iterateEncodedStep progCode bound n inputConfig)) :=
+    (encodedIsHaltedNat_primrec_fixed progCode).comp hIterNat
+  -- Step 4: Show equality with isHaltedAtStep
+  exact hComp.of_eq fun n => by simp only [isHaltedAtStep, encodedIsHaltedNat]
 
 /-! ## Correctness of Simulation -/
 
