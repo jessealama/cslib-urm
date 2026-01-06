@@ -460,10 +460,169 @@ end Arithmetic
 
 section Sqrt
 
+/-! ### Step 1: Build s+1 from inputs (n, s) -/
+
+/-- Helper functions for computing s+1: [proj_s, const_1].
+    gs 0 = s (projection of second argument)
+    gs 1 = 1 (constant) -/
+private def sqrtSPlus1Gs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun ns => Part.some (ns 1)) else (fun _ => Part.some 1)
+
+@[simp] private theorem sqrtSPlus1Gs_zero : sqrtSPlus1Gs 0 = fun ns => Part.some (ns 1) := rfl
+@[simp] private theorem sqrtSPlus1Gs_one : sqrtSPlus1Gs 1 = fun _ => Part.some 1 := rfl
+
+/-- Composing add with [proj_s, const_1] computes s + 1. -/
+private theorem sqrtSPlus1_comp_eq (ns : Fin 2 → ℕ) :
+    compFunction 2 2 (fun xy => Part.some (xy 0 + xy 1)) sqrtSPlus1Gs ns =
+    Part.some (ns 1 + 1) := by
+  have h0 : sqrtSPlus1Gs 0 ns = Part.some (ns 1) := rfl
+  have h1 : sqrtSPlus1Gs (Fin.succ 0) ns = Part.some 1 := rfl
+  simp only [compFunction, Part.sequence, h0, h1, Part.bind_some, Part.map_some]
+  rfl
+
+/-- s + 1 is computable as a function of (n, s). -/
+private theorem sqrtSPlus1_computable : URMComputable 2 (fun ns => Part.some (ns 1 + 1)) := by
+  have hgs : ∀ i, URMComputable 2 (sqrtSPlus1Gs i) := by
+    intro i; fin_cases i
+    · simp only [sqrtSPlus1Gs]; exact URMComputable.proj_computable 2 1
+    · simp only [sqrtSPlus1Gs]; exact const_one_computable
+  have h := URMComputable.comp_general (m := 2) (n := 2) add_computable hgs
+  convert h.toComputable using 1
+  funext ns
+  exact (sqrtSPlus1_comp_eq ns).symm
+
+/-! ### Step 2: Build (s+1)² from inputs (n, s) -/
+
+/-- Helper functions for computing (s+1)²: [s+1, s+1]. -/
+private def sqrtSquareGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
+  fun _ ns => Part.some (ns 1 + 1)
+
+@[simp] private theorem sqrtSquareGs_def (i : Fin 2) : sqrtSquareGs i = fun ns => Part.some (ns 1 + 1) := rfl
+
+/-- Composing mul with [s+1, s+1] computes (s+1)². -/
+private theorem sqrtSquare_comp_eq (ns : Fin 2 → ℕ) :
+    compFunction 2 2 (fun xy => Part.some (xy 0 * xy 1)) sqrtSquareGs ns =
+    Part.some ((ns 1 + 1) * (ns 1 + 1)) := by
+  have h0 : sqrtSquareGs 0 ns = Part.some (ns 1 + 1) := rfl
+  have h1 : sqrtSquareGs (Fin.succ 0) ns = Part.some (ns 1 + 1) := rfl
+  simp only [compFunction, Part.sequence, h0, h1, Part.bind_some, Part.map_some]
+  rfl
+
+/-- (s+1)² is computable as a function of (n, s). -/
+private theorem sqrtSquare_computable : URMComputable 2 (fun ns => Part.some ((ns 1 + 1) * (ns 1 + 1))) := by
+  have hgs : ∀ i, URMComputable 2 (sqrtSquareGs i) := fun _ => sqrtSPlus1_computable
+  have h := URMComputable.comp_general (m := 2) (n := 2) mul_computable hgs
+  convert h.toComputable using 1
+  funext ns
+  exact (sqrtSquare_comp_eq ns).symm
+
+/-! ### Step 3: Build predicate (s+1)² ≤ n -/
+
+/-- Helper functions for the predicate: [(s+1)², n]. -/
+private def sqrtPredGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0
+           then (fun ns => Part.some ((ns 1 + 1) * (ns 1 + 1)))
+           else (fun ns => Part.some (ns 0))
+
+@[simp] private theorem sqrtPredGs_zero : sqrtPredGs 0 = fun ns => Part.some ((ns 1 + 1) * (ns 1 + 1)) := rfl
+@[simp] private theorem sqrtPredGs_one : sqrtPredGs 1 = fun ns => Part.some (ns 0) := rfl
+
+/-- Composing le with [(s+1)², n] computes: if (s+1)² ≤ n then 1 else 0. -/
+private theorem sqrtPred_comp_eq (ns : Fin 2 → ℕ) :
+    compFunction 2 2 (fun xy => Part.some (if xy 0 ≤ xy 1 then 1 else 0)) sqrtPredGs ns =
+    Part.some (if (ns 1 + 1) * (ns 1 + 1) ≤ ns 0 then 1 else 0) := by
+  have h0 : sqrtPredGs 0 ns = Part.some ((ns 1 + 1) * (ns 1 + 1)) := rfl
+  have h1 : sqrtPredGs (Fin.succ 0) ns = Part.some (ns 0) := rfl
+  simp only [compFunction, Part.sequence, h0, h1, Part.bind_some, Part.map_some]
+  rfl
+
+/-- The predicate (s+1)² ≤ n is computable.
+    Returns 1 if (s+1)² ≤ n (continue searching), 0 if (s+1)² > n (stop). -/
+private theorem sqrtPred_computable :
+    URMComputable 2 (fun ns => Part.some (if (ns 1 + 1) * (ns 1 + 1) ≤ ns 0 then 1 else 0)) := by
+  have hgs : ∀ i, URMComputable 2 (sqrtPredGs i) := by
+    intro i; fin_cases i
+    · simp only [sqrtPredGs]; exact sqrtSquare_computable
+    · simp only [sqrtPredGs]; exact URMComputable.proj_computable 2 0
+  have h := URMComputable.comp_general (m := 2) (n := 2) le_computable hgs
+  convert h.toComputable using 1
+  funext ns
+  exact (sqrtPred_comp_eq ns).symm
+
+/-! ### Step 4: Connect μ to Nat.sqrt -/
+
+/-- The predicate function for minimization. -/
+private def sqrtPredFun : (Fin 2 → ℕ) → Part ℕ :=
+  fun ns => Part.some (if (ns 1 + 1) * (ns 1 + 1) ≤ ns 0 then 1 else 0)
+
+/-- Helper: simplify Fin.snoc at index 0 -/
+private theorem snoc_at_zero (n s : ℕ) : (Fin.snoc (fun _ : Fin 1 => n) s : Fin 2 → ℕ) 0 = n := rfl
+
+/-- Helper: simplify Fin.snoc at index 1 -/
+private theorem snoc_at_one (n s : ℕ) : (Fin.snoc (fun _ : Fin 1 => n) s : Fin 2 → ℕ) 1 = s := by
+  simp [Fin.snoc]
+
+/-- For s < sqrt(n), we have (s+1)² ≤ n, so the predicate returns 1 (non-zero). -/
+private theorem sqrt_pred_nonzero_below (n s : ℕ) (hs : s < Nat.sqrt n) :
+    sqrtPredFun (Fin.snoc (fun _ => n) s) ≠ Part.some 0 := by
+  simp only [sqrtPredFun, snoc_at_zero, snoc_at_one]
+  -- s < sqrt(n) implies s + 1 ≤ sqrt(n) implies (s+1)² ≤ n
+  have h1 : s + 1 ≤ Nat.sqrt n := hs
+  have h2 : (s + 1) * (s + 1) ≤ n := Nat.le_sqrt.mp h1
+  simp only [h2, ↓reduceIte, ne_eq, Part.some_inj]
+  exact Nat.one_ne_zero
+
+/-- At s = sqrt(n), we have (s+1)² > n, so the predicate returns 0. -/
+private theorem sqrt_pred_zero_at (n : ℕ) :
+    sqrtPredFun (Fin.snoc (fun _ => n) (Nat.sqrt n)) = Part.some 0 := by
+  simp only [sqrtPredFun, snoc_at_zero, snoc_at_one]
+  -- At s = sqrt(n), (s+1)² = (sqrt(n)+1)² > n by Nat.lt_succ_sqrt
+  have h : n < (Nat.sqrt n + 1) * (Nat.sqrt n + 1) := Nat.lt_succ_sqrt n
+  simp only [Nat.not_le.mpr h, ↓reduceIte]
+
+/-- Helper: extendInputs (fun _ => n) s equals Fin.snoc (fun _ => n) s -/
+private theorem extendInputs_eq_snoc (n s : ℕ) :
+    extendInputs (fun _ : Fin 1 => n) s = Fin.snoc (fun _ : Fin 1 => n) s := rfl
+
+/-- Key lemma: μ(sqrtPredFun) equals Nat.sqrt. -/
+private theorem sqrt_mu_eq (n : ℕ) :
+    μFunction sqrtPredFun (fun _ : Fin 1 => n) = Part.some (Nat.sqrt n) := by
+  -- We need to show that the minimization finds Nat.sqrt n
+  -- μ finds the least s where sqrtPredFun returns 0
+  rw [μFunction, μ]
+  -- Use Nat.mem_rfind to show Nat.sqrt n ∈ the result
+  rw [Part.eq_some_iff]
+  rw [Nat.mem_rfind]
+  constructor
+  · -- true ∈ checkZero at sqrt(n): the predicate returns 0 here
+    rw [checkZero_true_iff, extendInputs_eq_snoc]
+    rw [sqrt_pred_zero_at]
+    exact Part.mem_some 0
+  · -- For all y < sqrt(n), false ∈ checkZero: the predicate returns non-zero
+    intro y hy
+    rw [checkZero_false_iff, extendInputs_eq_snoc]
+    use 1
+    constructor
+    · exact one_ne_zero
+    · -- For y < sqrt(n), (y+1)² ≤ n, so sqrtPredFun returns 1
+      have h1 : y + 1 ≤ Nat.sqrt n := hy
+      have h2 : (y + 1) * (y + 1) ≤ n := Nat.le_sqrt.mp h1
+      simp only [sqrtPredFun, snoc_at_zero, snoc_at_one, h2, ↓reduceIte]
+      exact Part.mem_some 1
+
 /-- Square root is URM-computable.
     sqrt(n) = μs. [(s+1)² > n] -/
 theorem sqrt_computable : URMComputable 1 (fun x => Part.some (Nat.sqrt (x 0))) := by
-  sorry
+  -- Apply minimization to sqrtPred_computable
+  have h_pred : URMComputable 2 sqrtPredFun := sqrtPred_computable
+  have h_min := URMComputable.min h_pred
+  -- h_min : URMComputableSF 1 (μFunction sqrtPredFun)
+  convert h_min.toComputable using 1
+  funext x
+  -- x : Fin 1 → ℕ, and (fun _ => x 0) = x for Fin 1 → ℕ
+  have hx : (fun _ : Fin 1 => x 0) = x := funext (fun i => by simp [Fin.eq_zero i])
+  rw [← hx]
+  exact (sqrt_mu_eq (x 0)).symm
 
 end Sqrt
 
