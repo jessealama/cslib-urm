@@ -818,13 +818,249 @@ theorem pair_computable : URMComputable 2 (fun xy => Part.some (pair (xy 0) (xy 
   rw [pair_comp_eq]
   exact congrArg Part.some (pair_branchless_eq (xy 0) (xy 1)).symm
 
+/-! ### Unpair Helpers
+
+We prove unpair components are computable using branchless formulas.
+From Mathlib: `unpair n = if d < s then (d, s) else (s, d - s)`
+where `s = sqrt(n)` and `d = n - s*s`.
+
+Branchless formulas:
+- `unpair.1 = lt(d,s) * d + (1 - lt(d,s)) * s`
+- `unpair.2 = lt(d,s) * s + (1 - lt(d,s)) * (d - s)`
+-/
+
+-- Helper: sqrt(n)² is computable
+private def sqrtSqGs : Fin 1 → (Fin 1 → ℕ) → Part ℕ :=
+  fun _ => fun x => Part.some (Nat.sqrt (x 0))
+
+private theorem sqrtSq_computable : URMComputable 1 (fun x => Part.some (Nat.sqrt (x 0) * Nat.sqrt (x 0))) := by
+  have hgs : ∀ i, URMComputable 1 (sqrtSqGs i) := fun _ => sqrt_computable
+  have h := URMComputable.comp_general (m := 1) (n := 1) sq_computable hgs
+  convert h.toComputable using 1
+  funext x
+  simp only [compFunction, Part.sequence, sqrtSqGs, Part.bind_some, Part.map_some, Fin.cons_zero]
+
+-- Helper: d = n - sqrt(n)² is computable
+private def unpairDGs : Fin 2 → (Fin 1 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun x => Part.some (x 0))
+           else (fun x => Part.some (Nat.sqrt (x 0) * Nat.sqrt (x 0)))
+
+private theorem unpairD_computable : URMComputable 1 (fun x => Part.some (x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0))) := by
+  have hgs : ∀ i, URMComputable 1 (unpairDGs i) := by
+    intro i; fin_cases i
+    · simp only [unpairDGs]; exact URMComputable.proj_computable 1 0
+    · simp only [unpairDGs]; exact sqrtSq_computable
+  have h := URMComputable.comp_general (m := 2) (n := 1) monus_computable hgs
+  convert h.toComputable using 1
+  funext x
+  simp only [compFunction, Part.sequence, unpairDGs, Part.bind_some, Part.map_some,
+    Fin.val_zero, ↓reduceIte, Fin.cons_zero, Fin.cons_one, Fin.val_succ, Nat.add_one_ne_zero]
+
+-- Helper: lt(d, s) is computable (returns 0 or 1)
+private def unpairLtDSGs : Fin 2 → (Fin 1 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun x => Part.some (x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0)))
+           else (fun x => Part.some (Nat.sqrt (x 0)))
+
+private theorem unpairLtDS_computable :
+    URMComputable 1 (fun x => Part.some (if x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) < Nat.sqrt (x 0) then 1 else 0)) := by
+  have hgs : ∀ i, URMComputable 1 (unpairLtDSGs i) := by
+    intro i; fin_cases i
+    · simp only [unpairLtDSGs]; exact unpairD_computable
+    · simp only [unpairLtDSGs]; exact sqrt_computable
+  have h := URMComputable.comp_general (m := 2) (n := 1) lt_computable hgs
+  convert h.toComputable using 1
+  funext x
+  simp only [compFunction, Part.sequence, unpairLtDSGs, Part.bind_some, Part.map_some,
+    Fin.val_zero, ↓reduceIte, Fin.cons_zero, Fin.cons_one, Fin.val_succ, Nat.add_one_ne_zero]
+
+-- Helper: constant 1 as a 1-ary function
+private theorem const_one_1_computable : URMComputable 1 (fun _ : Fin 1 → ℕ => Part.some 1) := by
+  use [Instr.Z 0, Instr.S 0]
+  intro inputs
+  let s0 := State.fromInputs (List.ofFn inputs)
+  let s1 := s0.write 0 0
+  let s2 := s1.write 0 (s1.read 0 + 1)
+  have hstep1 : Step [Instr.Z 0, Instr.S 0] ⟨0, s0⟩ ⟨1, s1⟩ := Step.zero rfl
+  have hstep2 : Step [Instr.Z 0, Instr.S 0] ⟨1, s1⟩ ⟨2, s2⟩ := Step.succ rfl
+  have hhalted : (⟨2, s2⟩ : Config).isHalted [Instr.Z 0, Instr.S 0] := by simp
+  have hsteps : Steps [Instr.Z 0, Instr.S 0] (Config.init (List.ofFn inputs)) ⟨2, s2⟩ :=
+    Steps.trans (Steps.single hstep1) (Steps.single hstep2)
+  constructor
+  · simp only [Part.some_dom, iff_true]
+    exact ⟨⟨2, s2⟩, hsteps, hhalted⟩
+  · intro hHalts _
+    obtain ⟨hsteps', hhalted'⟩ := Classical.choose_spec hHalts
+    have heq := Steps.halts_unique hsteps' hhalted' hsteps hhalted
+    simp only [Result, heq, State.output, s2, s1, s0, State.write, State.read,
+      Function.update_self, Part.get_some]
+
+-- Helper: 1 - lt(d, s) is computable (ge indicator)
+private def unpairGeDSGs : Fin 2 → (Fin 1 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun _ => Part.some 1)
+           else (fun x => Part.some (if x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) < Nat.sqrt (x 0) then 1 else 0))
+
+private theorem unpairGeDS_computable :
+    URMComputable 1 (fun x => Part.some (1 - if x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) < Nat.sqrt (x 0) then 1 else 0)) := by
+  have hgs : ∀ i, URMComputable 1 (unpairGeDSGs i) := by
+    intro i; fin_cases i
+    · simp only [unpairGeDSGs]; exact const_one_1_computable
+    · simp only [unpairGeDSGs]; exact unpairLtDS_computable
+  have h := URMComputable.comp_general (m := 2) (n := 1) monus_computable hgs
+  convert h.toComputable using 1
+  funext x
+  simp only [compFunction, Part.sequence, unpairGeDSGs, Part.bind_some, Part.map_some,
+    Fin.val_zero, ↓reduceIte, Fin.cons_zero, Fin.cons_one, Fin.val_succ, Nat.add_one_ne_zero]
+
+-- Helper: d - s is computable
+private def unpairDMinusSGs : Fin 2 → (Fin 1 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun x => Part.some (x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0)))
+           else (fun x => Part.some (Nat.sqrt (x 0)))
+
+private theorem unpairDMinusS_computable :
+    URMComputable 1 (fun x => Part.some (x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) - Nat.sqrt (x 0))) := by
+  have hgs : ∀ i, URMComputable 1 (unpairDMinusSGs i) := by
+    intro i; fin_cases i
+    · simp only [unpairDMinusSGs]; exact unpairD_computable
+    · simp only [unpairDMinusSGs]; exact sqrt_computable
+  have h := URMComputable.comp_general (m := 2) (n := 1) monus_computable hgs
+  convert h.toComputable using 1
+  funext x
+  simp only [compFunction, Part.sequence, unpairDMinusSGs, Part.bind_some, Part.map_some,
+    Fin.val_zero, ↓reduceIte, Fin.cons_zero, Fin.cons_one, Fin.val_succ, Nat.add_one_ne_zero]
+
+-- Helper for unpairLeft: lt(d,s) * d
+private def unpairLeftTerm1Gs : Fin 2 → (Fin 1 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun x => Part.some (if x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) < Nat.sqrt (x 0) then 1 else 0))
+           else (fun x => Part.some (x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0)))
+
+private theorem unpairLeftTerm1_computable :
+    URMComputable 1 (fun x => Part.some ((if x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) < Nat.sqrt (x 0) then 1 else 0) *
+                                         (x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0)))) := by
+  have hgs : ∀ i, URMComputable 1 (unpairLeftTerm1Gs i) := by
+    intro i; fin_cases i
+    · simp only [unpairLeftTerm1Gs]; exact unpairLtDS_computable
+    · simp only [unpairLeftTerm1Gs]; exact unpairD_computable
+  have h := URMComputable.comp_general (m := 2) (n := 1) mul_computable hgs
+  convert h.toComputable using 1
+  funext x
+  simp only [compFunction, Part.sequence, unpairLeftTerm1Gs, Part.bind_some, Part.map_some,
+    Fin.val_zero, ↓reduceIte, Fin.cons_zero, Fin.cons_one, Fin.val_succ, Nat.add_one_ne_zero]
+
+-- Helper for unpairLeft: (1 - lt(d,s)) * s
+private def unpairLeftTerm2Gs : Fin 2 → (Fin 1 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun x => Part.some (1 - if x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) < Nat.sqrt (x 0) then 1 else 0))
+           else (fun x => Part.some (Nat.sqrt (x 0)))
+
+private theorem unpairLeftTerm2_computable :
+    URMComputable 1 (fun x => Part.some ((1 - if x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) < Nat.sqrt (x 0) then 1 else 0) *
+                                         Nat.sqrt (x 0))) := by
+  have hgs : ∀ i, URMComputable 1 (unpairLeftTerm2Gs i) := by
+    intro i; fin_cases i
+    · simp only [unpairLeftTerm2Gs]; exact unpairGeDS_computable
+    · simp only [unpairLeftTerm2Gs]; exact sqrt_computable
+  have h := URMComputable.comp_general (m := 2) (n := 1) mul_computable hgs
+  convert h.toComputable using 1
+  funext x
+  simp only [compFunction, Part.sequence, unpairLeftTerm2Gs, Part.bind_some, Part.map_some,
+    Fin.val_zero, ↓reduceIte, Fin.cons_zero, Fin.cons_one, Fin.val_succ, Nat.add_one_ne_zero]
+
+-- Helper for unpairRight: lt(d,s) * s
+private def unpairRightTerm1Gs : Fin 2 → (Fin 1 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun x => Part.some (if x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) < Nat.sqrt (x 0) then 1 else 0))
+           else (fun x => Part.some (Nat.sqrt (x 0)))
+
+private theorem unpairRightTerm1_computable :
+    URMComputable 1 (fun x => Part.some ((if x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) < Nat.sqrt (x 0) then 1 else 0) *
+                                         Nat.sqrt (x 0))) := by
+  have hgs : ∀ i, URMComputable 1 (unpairRightTerm1Gs i) := by
+    intro i; fin_cases i
+    · simp only [unpairRightTerm1Gs]; exact unpairLtDS_computable
+    · simp only [unpairRightTerm1Gs]; exact sqrt_computable
+  have h := URMComputable.comp_general (m := 2) (n := 1) mul_computable hgs
+  convert h.toComputable using 1
+  funext x
+  simp only [compFunction, Part.sequence, unpairRightTerm1Gs, Part.bind_some, Part.map_some,
+    Fin.val_zero, ↓reduceIte, Fin.cons_zero, Fin.cons_one, Fin.val_succ, Nat.add_one_ne_zero]
+
+-- Helper for unpairRight: (1 - lt(d,s)) * (d - s)
+private def unpairRightTerm2Gs : Fin 2 → (Fin 1 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun x => Part.some (1 - if x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) < Nat.sqrt (x 0) then 1 else 0))
+           else (fun x => Part.some (x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) - Nat.sqrt (x 0)))
+
+private theorem unpairRightTerm2_computable :
+    URMComputable 1 (fun x => Part.some ((1 - if x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) < Nat.sqrt (x 0) then 1 else 0) *
+                                         (x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) - Nat.sqrt (x 0)))) := by
+  have hgs : ∀ i, URMComputable 1 (unpairRightTerm2Gs i) := by
+    intro i; fin_cases i
+    · simp only [unpairRightTerm2Gs]; exact unpairGeDS_computable
+    · simp only [unpairRightTerm2Gs]; exact unpairDMinusS_computable
+  have h := URMComputable.comp_general (m := 2) (n := 1) mul_computable hgs
+  convert h.toComputable using 1
+  funext x
+  simp only [compFunction, Part.sequence, unpairRightTerm2Gs, Part.bind_some, Part.map_some,
+    Fin.val_zero, ↓reduceIte, Fin.cons_zero, Fin.cons_one, Fin.val_succ, Nat.add_one_ne_zero]
+
+-- Final composition for unpairLeft: term1 + term2
+private def unpairLeftGs : Fin 2 → (Fin 1 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0
+           then (fun x => Part.some ((if x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) < Nat.sqrt (x 0) then 1 else 0) *
+                                     (x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0))))
+           else (fun x => Part.some ((1 - if x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) < Nat.sqrt (x 0) then 1 else 0) *
+                                     Nat.sqrt (x 0)))
+
+-- Final composition for unpairRight: term1 + term2
+private def unpairRightGs : Fin 2 → (Fin 1 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0
+           then (fun x => Part.some ((if x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) < Nat.sqrt (x 0) then 1 else 0) *
+                                     Nat.sqrt (x 0)))
+           else (fun x => Part.some ((1 - if x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) < Nat.sqrt (x 0) then 1 else 0) *
+                                     (x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) - Nat.sqrt (x 0))))
+
+-- Branchless formula for unpair.1 equals Nat.unpair.1
+private theorem unpairLeft_branchless_eq (n : ℕ) :
+    (if n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n then 1 else 0) * (n - Nat.sqrt n * Nat.sqrt n) +
+    (1 - if n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n then 1 else 0) * Nat.sqrt n =
+    (Nat.unpair n).1 := by
+  rw [Nat.unpair.eq_1]
+  by_cases h : n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n
+  · simp [h]
+  · simp [h]
+
+-- Branchless formula for unpair.2 equals Nat.unpair.2
+private theorem unpairRight_branchless_eq (n : ℕ) :
+    (if n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n then 1 else 0) * Nat.sqrt n +
+    (1 - if n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n then 1 else 0) * (n - Nat.sqrt n * Nat.sqrt n - Nat.sqrt n) =
+    (Nat.unpair n).2 := by
+  rw [Nat.unpair.eq_1]
+  by_cases h : n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n
+  · simp [h]
+  · simp [h]
+
 /-- Left unpair component is URM-computable. -/
 theorem unpairLeft_computable : URMComputable 1 (fun x => Part.some (x 0).unpair.1) := by
-  sorry
+  have hgs : ∀ i, URMComputable 1 (unpairLeftGs i) := by
+    intro i; fin_cases i
+    · simp only [unpairLeftGs]; exact unpairLeftTerm1_computable
+    · simp only [unpairLeftGs]; exact unpairLeftTerm2_computable
+  have h := URMComputable.comp_general (m := 2) (n := 1) add_computable hgs
+  convert h.toComputable using 1
+  funext x
+  simp only [compFunction, Part.sequence, unpairLeftGs, Part.bind_some, Part.map_some,
+    Fin.val_zero, ↓reduceIte, Fin.cons_zero, Fin.cons_one, Fin.val_succ, Nat.add_one_ne_zero]
+  exact congrArg Part.some (unpairLeft_branchless_eq (x 0)).symm
 
 /-- Right unpair component is URM-computable. -/
 theorem unpairRight_computable : URMComputable 1 (fun x => Part.some (x 0).unpair.2) := by
-  sorry
+  have hgs : ∀ i, URMComputable 1 (unpairRightGs i) := by
+    intro i; fin_cases i
+    · simp only [unpairRightGs]; exact unpairRightTerm1_computable
+    · simp only [unpairRightGs]; exact unpairRightTerm2_computable
+  have h := URMComputable.comp_general (m := 2) (n := 1) add_computable hgs
+  convert h.toComputable using 1
+  funext x
+  simp only [compFunction, Part.sequence, unpairRightGs, Part.bind_some, Part.map_some,
+    Fin.val_zero, ↓reduceIte, Fin.cons_zero, Fin.cons_one, Fin.val_succ, Nat.add_one_ne_zero]
+  exact congrArg Part.some (unpairRight_branchless_eq (x 0)).symm
 
 end Pairing
 
