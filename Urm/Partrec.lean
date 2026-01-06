@@ -197,8 +197,17 @@ theorem URMComputable1.pair {f g : ℕ →. ℕ}
 theorem URMComputable1.comp {f g : ℕ →. ℕ}
     (hf : URMComputable1 f) (hg : URMComputable1 g) :
     URMComputable1 (fun n => g n >>= f) := by
-  -- f(g(x)) = compose f with g using comp_general
-  sorry
+  unfold URMComputable1 at *
+  -- Apply comp_general with m=1, n=1
+  have h := URMComputable.comp_general (m := 1) (n := 1) hf (fun _ => hg)
+  -- Show compFunction equals our goal
+  convert h.toComputable using 1
+  funext x
+  simp only [compFunction, Part.sequence]
+  rw [Part.bind_assoc]
+  congr 1
+  funext a
+  simp only [Part.map_some, Part.bind_some, Fin.cons_zero]
 
 /-- Primitive recursion preserves URMComputable1.
 
