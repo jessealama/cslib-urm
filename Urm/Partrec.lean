@@ -219,10 +219,68 @@ theorem sign_computable : URMComputable 1 (fun x => Part.some (if x 0 = 0 then 0
       rw [if_neg (show inputs 0 ≠ 0 from hn)]
       exact hr0
 
+/-- Helper: sign(y - x) equals the characteristic function of x < y -/
+private theorem sign_sub_swap_eq_lt (x y : ℕ) :
+    (if y - x = 0 then 0 else 1) = if x < y then 1 else 0 := by
+  by_cases h : x < y
+  · -- x < y: y - x > 0, so sign = 1
+    have hsub : y - x ≠ 0 := Nat.sub_ne_zero_of_lt h
+    simp [hsub, h]
+  · -- x ≥ y: y - x = 0, so sign = 0
+    have hsub : y - x = 0 := Nat.sub_eq_zero_of_le (Nat.not_lt.mp h)
+    simp [hsub, h]
+
+/-- The inner functions for lt: swap projections (y, x) for monus. -/
+private def ltSwapGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun xy => Part.some (xy 1)) else (fun xy => Part.some (xy 0))
+
+@[simp] private theorem ltSwapGs_zero : ltSwapGs 0 = fun xy => Part.some (xy 1) := rfl
+@[simp] private theorem ltSwapGs_one : ltSwapGs 1 = fun xy => Part.some (xy 0) := rfl
+
+/-- Helper: Composing monus with swapped projections computes y - x. -/
+private theorem lt_rev_sub_eq (xy : Fin 2 → ℕ) :
+    compFunction 2 2 (fun ab => Part.some (ab 0 - ab 1)) ltSwapGs xy =
+    Part.some (xy 1 - xy 0) := by
+  have h0 : ltSwapGs 0 xy = Part.some (xy 1) := rfl
+  have h1 : ltSwapGs (Fin.succ 0) xy = Part.some (xy 0) := rfl
+  simp only [compFunction, Part.sequence, h0, h1, Part.bind_some, Part.map_some]
+  rfl
+
+/-- Helper: The full lt composition function. -/
+private def ltOuterG : Fin 1 → (Fin 2 → ℕ) → Part ℕ :=
+  fun _ xy => Part.some (xy 1 - xy 0)
+
+/-- Helper: Composing sign with (y - x) computes lt. -/
+private theorem lt_comp_eq (xy : Fin 2 → ℕ) :
+    compFunction 1 2 (fun x => Part.some (if x 0 = 0 then 0 else 1)) ltOuterG xy =
+    Part.some (if xy 0 < xy 1 then 1 else 0) := by
+  have h0 : ltOuterG 0 xy = Part.some (xy 1 - xy 0) := rfl
+  simp only [compFunction, Part.sequence, h0, Part.bind_some, Part.map_some]
+  simp only [Fin.cons_zero]
+  exact congrArg Part.some (sign_sub_swap_eq_lt (xy 0) (xy 1))
+
 /-- Less-than comparison returns 1 if x < y, else 0.
     lt(x, y) = sign(y - x) -/
 theorem lt_computable : URMComputable 2 (fun xy => Part.some (if xy 0 < xy 1 then 1 else 0)) := by
-  sorry
+  -- Step 1: Compose monus with swapped projections to compute (y - x)
+  have hRevSub : URMComputableSF 2 (fun xy => Part.some (xy 1 - xy 0)) := by
+    have hgs : ∀ i, URMComputable 2 (ltSwapGs i) := by
+      intro i; fin_cases i <;> simp only [ltSwapGs] <;> exact URMComputable.proj_computable 2 _
+    have h := URMComputable.comp_general (m := 2) (n := 2) monus_computable hgs
+    convert h using 1
+    funext xy
+    exact (lt_rev_sub_eq xy).symm
+  -- Step 2: Compose sign with reversed subtraction
+  have hLt := URMComputable.comp_general (m := 1) (n := 2)
+    sign_computable
+    (fun _ => hRevSub.toComputable)
+  -- Step 3: Convert to desired form
+  convert hLt.toComputable using 1
+  funext xy
+  -- The inner function of hLt is (fun _ => hRevSub.toComputable) which equals ltOuterG
+  -- We need to show the compFunction equals the desired result
+  simp only [compFunction, Part.sequence, Part.bind_some, Part.map_some, Fin.cons_zero]
+  exact congrArg Part.some (sign_sub_swap_eq_lt (xy 0) (xy 1)).symm
 
 /-- Less-than-or-equal comparison returns 1 if x ≤ y, else 0. -/
 theorem le_computable : URMComputable 2 (fun xy => Part.some (if xy 0 ≤ xy 1 then 1 else 0)) := by
