@@ -383,9 +383,76 @@ theorem le_computable : URMComputable 2 (fun xy => Part.some (if xy 0 ≤ xy 1 t
   funext xy
   exact (le_comp_eq xy).symm
 
-/-- Equality check returns 1 if x = y, else 0. -/
+/-- Helper: le(x,y) * le(y,x) equals the characteristic function of x = y -/
+private theorem le_mul_le_swap_eq_eq (x y : ℕ) :
+    (if x ≤ y then 1 else 0) * (if y ≤ x then 1 else 0) = if x = y then 1 else 0 := by
+  by_cases h : x = y
+  · -- x = y: both conditions true, 1 * 1 = 1
+    simp [h]
+  · -- x ≠ y: at least one condition false
+    have hne : x < y ∨ y < x := Nat.lt_or_lt_of_ne h
+    rcases hne with hlt | hgt
+    · -- x < y: y ≤ x is false
+      simp [Nat.le_of_lt hlt, Nat.not_le.mpr hlt, h]
+    · -- y < x: x ≤ y is false
+      simp [Nat.le_of_lt hgt, Nat.not_le.mpr hgt, h]
+
+/-- The inner functions for eq: le(x,y) and le(y,x). -/
+private def eqGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0
+           then (fun xy => Part.some (if xy 0 ≤ xy 1 then 1 else 0))
+           else (fun xy => Part.some (if xy 1 ≤ xy 0 then 1 else 0))
+
+@[simp] private theorem eqGs_zero : eqGs 0 = fun xy => Part.some (if xy 0 ≤ xy 1 then 1 else 0) := rfl
+@[simp] private theorem eqGs_one : eqGs 1 = fun xy => Part.some (if xy 1 ≤ xy 0 then 1 else 0) := rfl
+
+/-- Swapped projections for computing le(y, x). -/
+private def leSwapGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun xy => Part.some (xy 1)) else (fun xy => Part.some (xy 0))
+
+@[simp] private theorem leSwapGs_zero : leSwapGs 0 = fun xy => Part.some (xy 1) := rfl
+@[simp] private theorem leSwapGs_one : leSwapGs 1 = fun xy => Part.some (xy 0) := rfl
+
+/-- Helper: Composing le with swapped projections computes le(y, x). -/
+private theorem leSwap_comp_eq (xy : Fin 2 → ℕ) :
+    compFunction 2 2 (fun ab => Part.some (if ab 0 ≤ ab 1 then 1 else 0)) leSwapGs xy =
+    Part.some (if xy 1 ≤ xy 0 then 1 else 0) := by
+  have h0 : leSwapGs 0 xy = Part.some (xy 1) := rfl
+  have h1 : leSwapGs (Fin.succ 0) xy = Part.some (xy 0) := rfl
+  simp only [compFunction, Part.sequence, h0, h1, Part.bind_some, Part.map_some]
+  rfl
+
+/-- le(y, x) is computable (le with swapped arguments). -/
+private theorem leSwap_computable : URMComputable 2 (fun xy => Part.some (if xy 1 ≤ xy 0 then 1 else 0)) := by
+  -- Compose le_computable with swapped projections
+  have hgs : ∀ i, URMComputable 2 (leSwapGs i) := by
+    intro i; fin_cases i <;> simp only [leSwapGs] <;> exact URMComputable.proj_computable 2 _
+  have h := URMComputable.comp_general (m := 2) (n := 2) le_computable hgs
+  convert h.toComputable using 1
+  funext xy
+  exact (leSwap_comp_eq xy).symm
+
+/-- Helper: Composing mul with (le(x,y), le(y,x)) computes equality. -/
+private theorem eq_comp_eq (xy : Fin 2 → ℕ) :
+    compFunction 2 2 (fun ab => Part.some (ab 0 * ab 1)) eqGs xy =
+    Part.some (if xy 0 = xy 1 then 1 else 0) := by
+  have h0 : eqGs 0 xy = Part.some (if xy 0 ≤ xy 1 then 1 else 0) := rfl
+  have h1 : eqGs (Fin.succ 0) xy = Part.some (if xy 1 ≤ xy 0 then 1 else 0) := rfl
+  simp only [compFunction, Part.sequence, h0, h1, Part.bind_some, Part.map_some]
+  exact congrArg Part.some (le_mul_le_swap_eq_eq (xy 0) (xy 1))
+
+/-- Equality check returns 1 if x = y, else 0.
+    eq(x, y) = le(x, y) * le(y, x) -/
 theorem eq_computable : URMComputable 2 (fun xy => Part.some (if xy 0 = xy 1 then 1 else 0)) := by
-  sorry
+  -- Compose mul with (le(x,y), le(y,x)) to compute le(x,y) * le(y,x)
+  have hgs : ∀ i, URMComputable 2 (eqGs i) := by
+    intro i; fin_cases i
+    · simp only [eqGs]; exact le_computable
+    · simp only [eqGs]; exact leSwap_computable
+  have h := URMComputable.comp_general (m := 2) (n := 2) mul_computable hgs
+  convert h.toComputable using 1
+  funext xy
+  exact (eq_comp_eq xy).symm
 
 end Arithmetic
 
