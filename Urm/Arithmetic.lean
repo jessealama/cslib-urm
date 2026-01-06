@@ -644,4 +644,108 @@ theorem monus_computable : URMComputable 2 (fun mn => Part.some (mn 0 - mn 1)) :
   symm
   exact monus_pr_eq (inputs 0) (inputs 1)
 
+/-! ## Multiplication
+
+Multiplication is computed via primitive recursion:
+- `x * 0 = 0` (base case: constant zero)
+- `x * (k+1) = x + (x * k)` (recursive case: add x to accumulator)
+-/
+
+/-- The constant zero function (unary) is URM-computable.
+    Program: [Z 0] - zero register 0 and halt. -/
+private theorem const_zero_computable : URMComputable 1 (fun _ => Part.some 0) := by
+  use [Instr.Z 0]
+  intro inputs
+  let finalState := (Config.init (List.ofFn inputs)).state.write 0 0
+  have hstep : Step [Instr.Z 0] (Config.init (List.ofFn inputs)) ⟨1, finalState⟩ :=
+    Step.zero rfl
+  have hhalted : (⟨1, finalState⟩ : Config).isHalted [Instr.Z 0] := by simp
+  constructor
+  · simp only [Part.some_dom, iff_true]
+    exact ⟨⟨1, finalState⟩, Steps.single hstep, hhalted⟩
+  · intro hHalts _
+    obtain ⟨hsteps, hhalted'⟩ := Classical.choose_spec hHalts
+    have heq := Steps.halts_unique hsteps hhalted' (Steps.single hstep) hhalted
+    simp only [Result, heq, State.output]
+    rfl
+
+/-- The inner functions for mul step: project to x (index 0) and acc (index 2). -/
+private def mulStepGs : Fin 2 → (Fin 3 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun y => Part.some (y 0)) else (fun y => Part.some (y 2))
+
+@[simp] private theorem mulStepGs_zero : mulStepGs 0 = fun y => Part.some (y 0) := rfl
+@[simp] private theorem mulStepGs_one : mulStepGs 1 = fun y => Part.some (y 2) := rfl
+
+/-- Helper: The PR step function for mul computes x + acc. -/
+private theorem mul_pr_step_eq (inputs : Fin 3 → ℕ) :
+    compFunction 2 3 (fun xy => Part.some (xy 0 + xy 1)) mulStepGs inputs =
+    Part.some (inputs 0 + inputs 2) := by
+  -- Expand and simplify using the explicit mulStepGs values
+  have h0 : mulStepGs 0 inputs = Part.some (inputs 0) := rfl
+  have h1 : mulStepGs (Fin.succ 0) inputs = Part.some (inputs 2) := rfl
+  simp only [compFunction, Part.sequence, h0, h1, Part.bind_some, Part.map_some]
+  rfl
+
+/-- Helper: Pr with zero base and add-x-to-acc step computes multiplication. -/
+private theorem mul_pr_eq (x y : ℕ) :
+    Pr (fun _ => Part.some 0) (fun inputs => Part.some (inputs 0 + inputs 2))
+      (Fin.snoc (fun _ : Fin 1 => x) y) = Part.some (x * y) := by
+  induction y with
+  | zero => simp only [Pr_snoc_zero, Nat.mul_zero]
+  | succ k ih =>
+    simp only [Pr_snoc_succ]
+    rw [ih]
+    simp only [Part.bind_some]
+    -- extendInputsForG (fun _ => x) k (x * k) 0 = x
+    -- extendInputsForG (fun _ => x) k (x * k) 2 = x * k
+    have h0 : extendInputsForG (fun _ : Fin 1 => x) k (x * k) 0 = x := by
+      simp only [extendInputsForG, Fin.snoc]
+      -- 0 in Fin 3 is Fin.castSucc (Fin.castSucc 0)
+      rfl
+    have h2_eq : (2 : Fin 3) = Fin.last 2 := rfl
+    have h2 : extendInputsForG (fun _ : Fin 1 => x) k (x * k) 2 = x * k := by
+      simp only [extendInputsForG, h2_eq, Fin.snoc_last]
+    -- Goal: Part.some (extendInputsForG ... 0 + extendInputsForG ... 2) = Part.some (x * (k + 1))
+    rw [h0, h2]
+    -- Now: Part.some (x + x * k) = Part.some (x * (k + 1))
+    -- Use Nat.mul_succ: x * (k + 1) = x * k + x = x + x * k (by commutativity)
+    rw [Nat.mul_succ, Nat.add_comm]
+
+open URMComputable in
+/-- Multiplication is URM-computable.
+
+    mul(x, y) = x * y
+
+    Proof uses primitive recursion with:
+    - Base: f(x) = 0 (constant zero)
+    - Step: g(x, k, acc) = x + acc (add x to accumulator) -/
+theorem mul_computable : URMComputable 2 (fun xy => Part.some (xy 0 * xy 1)) := by
+  -- The step function g(x, k, acc) = x + acc is composition of add with projections
+  have hStepSF : URMComputableSF 3 (fun inputs => Part.some (inputs 0 + inputs 2)) := by
+    have hgs : ∀ i, URMComputable 3 (mulStepGs i) := by
+      intro i; fin_cases i <;> simp only [mulStepGs] <;> exact proj_computable 3 _
+    have h := URMComputable.comp_general (m := 2) (n := 3) add_computable hgs
+    convert h using 1
+    funext inputs
+    exact (mul_pr_step_eq inputs).symm
+  have hStep : URMComputable 3 (fun inputs => Part.some (inputs 0 + inputs 2)) :=
+    hStepSF.toComputable
+  -- The base function f(x) = 0
+  have hBase : URMComputable 1 (fun _ => Part.some 0) := const_zero_computable
+  -- Apply primitive recursion closure
+  have hPR := URMComputable.primRec (n := 1) hBase hStep
+  -- Convert to show PrFunction computes multiplication
+  convert hPR using 1
+  funext inputs
+  simp only [PrFunction]
+  -- Express inputs as Fin.snoc
+  have hinputs : inputs = Fin.snoc (fun _ : Fin 1 => inputs 0) (inputs 1) := by
+    ext i
+    fin_cases i
+    · simp [Fin.snoc]
+    · simp [Fin.snoc]
+  rw [hinputs]
+  symm
+  exact mul_pr_eq (inputs 0) (inputs 1)
+
 end Urm

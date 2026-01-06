@@ -83,10 +83,7 @@ section Arithmetic
 theorem sub_computable : URMComputable 2 (fun xy => Part.some (xy 0 - xy 1)) := by
   sorry
 
-/-- Multiplication is URM-computable.
-    mul(x, 0) = 0, mul(x, y+1) = add(x, mul(x, y)) -/
-theorem mul_computable : URMComputable 2 (fun xy => Part.some (xy 0 * xy 1)) := by
-  sorry
+-- mul_computable is now provided by Urm.Arithmetic
 
 /-- Sign function: sign(0) = 0, sign(n+1) = 1 -/
 theorem sign_computable : URMComputable 1 (fun x => Part.some (if x 0 = 0 then 0 else 1)) := by
