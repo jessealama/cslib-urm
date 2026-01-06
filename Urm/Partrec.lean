@@ -467,14 +467,197 @@ theorem sqrt_computable : URMComputable 1 (fun x => Part.some (Nat.sqrt (x 0))) 
 
 end Sqrt
 
+/-! ## Square Function -/
+
+section Square
+
+/-- The inner functions for squaring: (x, x) for multiplication. -/
+private def sqGs : Fin 2 → (Fin 1 → ℕ) → Part ℕ :=
+  fun _ => fun x => Part.some (x 0)
+
+@[simp] private theorem sqGs_eval (i : Fin 2) (x : Fin 1 → ℕ) : sqGs i x = Part.some (x 0) := rfl
+
+/-- Helper: Composing mul with (x, x) computes x². -/
+private theorem sq_comp_eq (x : Fin 1 → ℕ) :
+    compFunction 2 1 (fun ab => Part.some (ab 0 * ab 1)) sqGs x =
+    Part.some (x 0 * x 0) := by
+  simp only [compFunction, Part.sequence, sqGs_eval, Part.bind_some, Part.map_some]
+  rfl
+
+/-- Square function is URM-computable. sq(x) = x * x -/
+theorem sq_computable : URMComputable 1 (fun x => Part.some ((x 0) * (x 0))) := by
+  have hgs : ∀ i, URMComputable 1 (sqGs i) := fun _ => URMComputable.proj_computable 1 0
+  have h := URMComputable.comp_general (m := 2) (n := 1) mul_computable hgs
+  convert h.toComputable using 1
+  funext x
+  exact (sq_comp_eq x).symm
+
+end Square
+
 /-! ## Pairing Functions -/
 
 section Pairing
 
+/-- The branchless formula for Cantor pairing equals Nat.pair.
+    pair(a, b) = lt(a,b) * (b² + a) + (1 - lt(a,b)) * (a² + a + b) -/
+private theorem pair_branchless_eq (a b : ℕ) :
+    (if a < b then 1 else 0) * (b * b + a) +
+    (1 - if a < b then 1 else 0) * (a * a + a + b) =
+    pair a b := by
+  unfold pair
+  by_cases h : a < b
+  · simp [h]
+  · simp [h]
+
+-- Helper: b² is computable (as a 2-arg function extracting b)
+private def sqBGs : Fin 1 → (Fin 2 → ℕ) → Part ℕ :=
+  fun _ => fun xy => Part.some (xy 1)
+
+private theorem sqB_computable : URMComputableSF 2 (fun xy => Part.some ((xy 1) * (xy 1))) := by
+  have hgs : ∀ i, URMComputable 2 (sqBGs i) := fun _ => URMComputable.proj_computable 2 1
+  have h := URMComputable.comp_general (m := 1) (n := 2) sq_computable hgs
+  convert h using 1
+  funext xy
+  simp only [compFunction, Part.sequence, sqBGs, Part.bind_some, Part.map_some, Fin.cons_zero]
+
+-- Helper: a² is computable (as a 2-arg function extracting a)
+private def sqAGs : Fin 1 → (Fin 2 → ℕ) → Part ℕ :=
+  fun _ => fun xy => Part.some (xy 0)
+
+private theorem sqA_computable : URMComputableSF 2 (fun xy => Part.some ((xy 0) * (xy 0))) := by
+  have hgs : ∀ i, URMComputable 2 (sqAGs i) := fun _ => URMComputable.proj_computable 2 0
+  have h := URMComputable.comp_general (m := 1) (n := 2) sq_computable hgs
+  convert h using 1
+  funext xy
+  simp only [compFunction, Part.sequence, sqAGs, Part.bind_some, Part.map_some, Fin.cons_zero]
+
+-- Helper: b² + a is computable
+private def termLtGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun xy => Part.some (xy 1 * xy 1)) else (fun xy => Part.some (xy 0))
+
+private theorem termLt_computable : URMComputableSF 2 (fun xy => Part.some (xy 1 * xy 1 + xy 0)) := by
+  have hgs : ∀ i, URMComputable 2 (termLtGs i) := by
+    intro i; fin_cases i
+    · simp only [termLtGs]; exact sqB_computable.toComputable
+    · simp only [termLtGs]; exact URMComputable.proj_computable 2 0
+  have h := URMComputable.comp_general (m := 2) (n := 2) add_computable hgs
+  convert h using 1
+  funext xy
+  simp only [compFunction, Part.sequence, termLtGs, Part.bind_some, Part.map_some,
+    Fin.val_zero, ↓reduceIte, Fin.cons_zero, Fin.cons_one,
+    Fin.val_succ, Nat.add_one_ne_zero]
+
+-- Helper: a² + a is computable
+private def sqAPlusAGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun xy => Part.some (xy 0 * xy 0)) else (fun xy => Part.some (xy 0))
+
+private theorem sqAPlusA_computable : URMComputableSF 2 (fun xy => Part.some (xy 0 * xy 0 + xy 0)) := by
+  have hgs : ∀ i, URMComputable 2 (sqAPlusAGs i) := by
+    intro i; fin_cases i
+    · simp only [sqAPlusAGs]; exact sqA_computable.toComputable
+    · simp only [sqAPlusAGs]; exact URMComputable.proj_computable 2 0
+  have h := URMComputable.comp_general (m := 2) (n := 2) add_computable hgs
+  convert h using 1
+  funext xy
+  simp only [compFunction, Part.sequence, sqAPlusAGs, Part.bind_some, Part.map_some,
+    Fin.val_zero, ↓reduceIte, Fin.cons_zero, Fin.cons_one,
+    Fin.val_succ, Nat.add_one_ne_zero]
+
+-- Helper: a² + a + b is computable
+private def termGeGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun xy => Part.some (xy 0 * xy 0 + xy 0)) else (fun xy => Part.some (xy 1))
+
+private theorem termGe_computable : URMComputableSF 2 (fun xy => Part.some (xy 0 * xy 0 + xy 0 + xy 1)) := by
+  have hgs : ∀ i, URMComputable 2 (termGeGs i) := by
+    intro i; fin_cases i
+    · simp only [termGeGs]; exact sqAPlusA_computable.toComputable
+    · simp only [termGeGs]; exact URMComputable.proj_computable 2 1
+  have h := URMComputable.comp_general (m := 2) (n := 2) add_computable hgs
+  convert h using 1
+  funext xy
+  simp only [compFunction, Part.sequence, termGeGs, Part.bind_some, Part.map_some,
+    Fin.val_zero, ↓reduceIte, Fin.cons_zero, Fin.cons_one,
+    Fin.val_succ, Nat.add_one_ne_zero]
+
+-- Helper: lt(a,b) * (b² + a) is computable
+private def mulLtGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun xy => Part.some (if xy 0 < xy 1 then 1 else 0))
+           else (fun xy => Part.some (xy 1 * xy 1 + xy 0))
+
+private theorem mulLt_computable : URMComputableSF 2
+    (fun xy => Part.some ((if xy 0 < xy 1 then 1 else 0) * (xy 1 * xy 1 + xy 0))) := by
+  have hgs : ∀ i, URMComputable 2 (mulLtGs i) := by
+    intro i; fin_cases i
+    · simp only [mulLtGs]; exact lt_computable
+    · simp only [mulLtGs]; exact termLt_computable.toComputable
+  have h := URMComputable.comp_general (m := 2) (n := 2) mul_computable hgs
+  convert h using 1
+  funext xy
+  simp only [compFunction, Part.sequence, mulLtGs, Part.bind_some, Part.map_some,
+    Fin.val_zero, ↓reduceIte, Fin.cons_zero, Fin.cons_one,
+    Fin.val_succ, Nat.add_one_ne_zero]
+
+-- Helper: 1 - lt(a,b) is computable (ge indicator)
+private def geGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun _ => Part.some 1)
+           else (fun xy => Part.some (if xy 0 < xy 1 then 1 else 0))
+
+private theorem ge_computable : URMComputableSF 2
+    (fun xy => Part.some (1 - if xy 0 < xy 1 then 1 else 0)) := by
+  have hgs : ∀ i, URMComputable 2 (geGs i) := by
+    intro i; fin_cases i
+    · simp only [geGs]; exact const_one_computable
+    · simp only [geGs]; exact lt_computable
+  have h := URMComputable.comp_general (m := 2) (n := 2) monus_computable hgs
+  convert h using 1
+  funext xy
+  simp only [compFunction, Part.sequence, geGs, Part.bind_some, Part.map_some,
+    Fin.val_zero, ↓reduceIte, Fin.cons_zero, Fin.cons_one,
+    Fin.val_succ, Nat.add_one_ne_zero]
+
+-- Helper: (1 - lt(a,b)) * (a² + a + b) is computable
+private def mulGeGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun xy => Part.some (1 - if xy 0 < xy 1 then 1 else 0))
+           else (fun xy => Part.some (xy 0 * xy 0 + xy 0 + xy 1))
+
+private theorem mulGe_computable : URMComputableSF 2
+    (fun xy => Part.some ((1 - if xy 0 < xy 1 then 1 else 0) * (xy 0 * xy 0 + xy 0 + xy 1))) := by
+  have hgs : ∀ i, URMComputable 2 (mulGeGs i) := by
+    intro i; fin_cases i
+    · simp only [mulGeGs]; exact ge_computable.toComputable
+    · simp only [mulGeGs]; exact termGe_computable.toComputable
+  have h := URMComputable.comp_general (m := 2) (n := 2) mul_computable hgs
+  convert h using 1
+  funext xy
+  simp only [compFunction, Part.sequence, mulGeGs, Part.bind_some, Part.map_some,
+    Fin.val_zero, ↓reduceIte, Fin.cons_zero, Fin.cons_one,
+    Fin.val_succ, Nat.add_one_ne_zero]
+
+-- Final composition: pair(a,b) = mulLt + mulGe
+private def pairGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun xy => Part.some ((if xy 0 < xy 1 then 1 else 0) * (xy 1 * xy 1 + xy 0)))
+           else (fun xy => Part.some ((1 - if xy 0 < xy 1 then 1 else 0) * (xy 0 * xy 0 + xy 0 + xy 1)))
+
+private theorem pair_comp_eq (xy : Fin 2 → ℕ) :
+    compFunction 2 2 (fun ab => Part.some (ab 0 + ab 1)) pairGs xy =
+    Part.some ((if xy 0 < xy 1 then 1 else 0) * (xy 1 * xy 1 + xy 0) +
+               (1 - if xy 0 < xy 1 then 1 else 0) * (xy 0 * xy 0 + xy 0 + xy 1)) := by
+  simp only [compFunction, Part.sequence, pairGs, Part.bind_some, Part.map_some,
+    Fin.val_zero, ↓reduceIte, Fin.cons_zero, Fin.cons_one,
+    Fin.val_succ, Nat.add_one_ne_zero]
+
 /-- Pairing function is URM-computable.
     pair(a, b) = if a < b then b² + a else a² + a + b -/
 theorem pair_computable : URMComputable 2 (fun xy => Part.some (pair (xy 0) (xy 1))) := by
-  sorry
+  have hgs : ∀ i, URMComputable 2 (pairGs i) := by
+    intro i; fin_cases i
+    · simp only [pairGs]; exact mulLt_computable.toComputable
+    · simp only [pairGs]; exact mulGe_computable.toComputable
+  have h := URMComputable.comp_general (m := 2) (n := 2) add_computable hgs
+  convert h.toComputable using 1
+  funext xy
+  rw [pair_comp_eq]
+  exact congrArg Part.some (pair_branchless_eq (xy 0) (xy 1)).symm
 
 /-- Left unpair component is URM-computable. -/
 theorem unpairLeft_computable : URMComputable 1 (fun x => Part.some (x 0).unpair.1) := by
