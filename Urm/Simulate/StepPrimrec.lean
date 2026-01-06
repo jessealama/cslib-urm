@@ -576,14 +576,236 @@ theorem nthEncoded_primrec₂ : Primrec₂ nthEncoded := by
   intro r encoded
   exact (nthEncoded_eq_iterUnpairRight r encoded).symm
 
+/-! ## Helper functions for updateNthEncoded primitiveness
+
+To prove `updateNthEncoded` is primitive recursive in all three arguments, we use two helpers:
+1. `iterBuildState r x` - iterates forward, collecting prefix left values in a stack
+2. `rebuildFromStack r stack y` - pops r elements from stack, pairs them with y
+
+The composition gives: `updateNthEncoded r x v = rebuildFromStack r (iterBuildState r x).2 (pair v (iterUnpairRight r x).unpair.2)`
+-/
+
+/-- Forward iteration collecting left values as a stack.
+    Returns (position after r steps, stack of r left values in reverse order). -/
+private def iterBuildState : ℕ → ℕ → ℕ × ℕ
+  | 0, x => (x, 0)
+  | r + 1, x =>
+    let (pos, acc) := iterBuildState r x
+    (pos.unpair.2, pair pos.unpair.1 acc)
+
+/-- iterBuildState returns iterUnpairRight in its first component. -/
+private theorem iterBuildState_fst (r x : ℕ) :
+    (iterBuildState r x).1 = iterUnpairRight r x := by
+  induction r generalizing x with
+  | zero => rfl
+  | succ r ih =>
+    simp only [iterBuildState, iterUnpairRight]
+    -- By IH: (iterBuildState r x).1 = iterUnpairRight r x
+    -- Goal: (iterUnpairRight r x).unpair.2 = iterUnpairRight r x.unpair.2
+    rw [ih, iterUnpairRight_unpair_comm]
+
+/-- iterBuildState matches Nat.rec pattern. -/
+private theorem iterBuildState_eq_nat_rec (r x : ℕ) :
+    Nat.rec (x, 0) (fun _k (pos, acc) => (pos.unpair.2, pair pos.unpair.1 acc)) r =
+    iterBuildState r x := by
+  induction r generalizing x with
+  | zero => rfl
+  | succ r ih =>
+    simp only [iterBuildState, ← ih]
+
+/-- iterBuildState is primitive recursive. -/
+private theorem iterBuildState_primrec₂ : Primrec₂ iterBuildState := by
+  -- Use Primrec.nat_rec: Primrec f → Primrec₂ g → Primrec₂ (fun a n => Nat.rec (f a) (g a) n)
+  have hbase : Primrec (fun x : ℕ => (x, 0)) :=
+    Primrec.pair Primrec.id (Primrec.const 0)
+  -- Step: (pos, acc) => (pos.unpair.2, pair pos.unpair.1 acc)
+  -- In nat_rec, step receives (_x : ℕ) and (nIH : ℕ × (ℕ × ℕ)) where nIH = (n, IH) = (n, (pos, acc))
+  have hstep : Primrec₂ (fun (_x : ℕ) (nIH : ℕ × (ℕ × ℕ)) =>
+      (nIH.2.1.unpair.2, pair nIH.2.1.unpair.1 nIH.2.2)) := by
+    -- Work at the Primrec level and convert to Primrec₂
+    -- First component: p.2.2.1.unpair.2 (where p = (x, nIH))
+    have hfst : Primrec (fun p : ℕ × (ℕ × (ℕ × ℕ)) => p.2.2.1.unpair.2) :=
+      (Primrec.snd.comp Primrec.unpair).comp
+        (Primrec.fst.comp (Primrec.snd.comp Primrec.snd))
+    -- Second component: pair p.2.2.1.unpair.1 p.2.2.2
+    have h1 : Primrec (fun p : ℕ × (ℕ × (ℕ × ℕ)) => p.2.2.1.unpair.1) :=
+      (Primrec.fst.comp Primrec.unpair).comp
+        (Primrec.fst.comp (Primrec.snd.comp Primrec.snd))
+    have h2 : Primrec (fun p : ℕ × (ℕ × (ℕ × ℕ)) => p.2.2.2) :=
+      Primrec.snd.comp (Primrec.snd.comp Primrec.snd)
+    have hsnd : Primrec (fun p : ℕ × (ℕ × (ℕ × ℕ)) => pair p.2.2.1.unpair.1 p.2.2.2) :=
+      Primrec₂.natPair.comp h1 h2
+    -- Combine into a pair-valued function
+    have hpair : Primrec (fun p : ℕ × (ℕ × (ℕ × ℕ)) =>
+        (p.2.2.1.unpair.2, pair p.2.2.1.unpair.1 p.2.2.2)) :=
+      Primrec.pair hfst hsnd
+    -- Convert directly to Primrec₂ using to₂
+    exact hpair.to₂
+  have hprec := Primrec.nat_rec hbase hstep
+  apply Primrec₂.swap
+  apply Primrec₂.of_eq hprec
+  intro x r
+  exact iterBuildState_eq_nat_rec r x
+
+/-- Rebuild from a reversed stack: pop r elements from stack, pairing with accumulator.
+    rebuildFromStack r stack y pops r left values from stack, builds pair structure with y at end. -/
+private def rebuildFromStack : ℕ → ℕ → ℕ → ℕ
+  | 0, _, y => y
+  | r + 1, stack, y => rebuildFromStack r stack.unpair.2 (pair stack.unpair.1 y)
+
+/-- Key lemma: stepping the iteration matches the rebuildFromStack recursion. -/
+private theorem rebuildFromStack_step (r stack y : ℕ) :
+    pair (iterUnpairRight r stack).unpair.1 (rebuildFromStack r stack y)
+    = rebuildFromStack r stack.unpair.2 (pair stack.unpair.1 y) := by
+  induction r generalizing stack y with
+  | zero =>
+    -- LHS: pair stack.unpair.1 y
+    -- RHS: rebuildFromStack 0 stack.unpair.2 (pair stack.unpair.1 y) = pair stack.unpair.1 y
+    simp only [iterUnpairRight, rebuildFromStack]
+  | succ r ih =>
+    -- LHS: pair (iterUnpairRight (r+1) stack).unpair.1 (rebuildFromStack (r+1) stack y)
+    simp only [iterUnpairRight, rebuildFromStack]
+    -- After simp (which applies iterUnpairRight_unpair_comm):
+    -- LHS = pair (iterUnpairRight r stack.unpair.2).unpair.1 (rebuildFromStack r stack.unpair.2 (pair stack.unpair.1 y))
+    -- RHS = rebuildFromStack r (stack.unpair.2).unpair.2 (pair (stack.unpair.2).unpair.1 (pair stack.unpair.1 y))
+    -- Apply IH with stack' = stack.unpair.2, y' = pair stack.unpair.1 y
+    exact ih stack.unpair.2 (pair stack.unpair.1 y)
+
+/-- rebuildFromStack is primitive recursive via direct Nat.rec formulation. -/
+private theorem rebuildFromStack_primrec :
+    Primrec fun p : ℕ × ℕ × ℕ => rebuildFromStack p.1 p.2.1 p.2.2 := by
+  -- Use Primrec.nat_rec with state = (remaining stack position, accumulated result)
+  -- State type: ℕ × ℕ where first is iterUnpairRight k stack, second is partial result
+  -- Base: (stack, y)
+  -- Step k (stk, acc) => (stk.unpair.2, pair stk.unpair.1 acc)
+  -- Final result is second component after r steps
+  have hbase : Primrec (fun p : ℕ × ℕ => p) := Primrec.id
+  have hstep : Primrec₂ (fun (_p : ℕ × ℕ) (nIH : ℕ × (ℕ × ℕ)) =>
+      (nIH.2.1.unpair.2, pair nIH.2.1.unpair.1 nIH.2.2)) := by
+    -- Work at the Primrec level (q = (_p, nIH))
+    have hfst : Primrec (fun q : (ℕ × ℕ) × (ℕ × (ℕ × ℕ)) => q.2.2.1.unpair.2) :=
+      (Primrec.snd.comp Primrec.unpair).comp
+        (Primrec.fst.comp (Primrec.snd.comp Primrec.snd))
+    have h1 : Primrec (fun q : (ℕ × ℕ) × (ℕ × (ℕ × ℕ)) => q.2.2.1.unpair.1) :=
+      (Primrec.fst.comp Primrec.unpair).comp
+        (Primrec.fst.comp (Primrec.snd.comp Primrec.snd))
+    have h2 : Primrec (fun q : (ℕ × ℕ) × (ℕ × (ℕ × ℕ)) => q.2.2.2) :=
+      Primrec.snd.comp (Primrec.snd.comp Primrec.snd)
+    have hsnd : Primrec (fun q : (ℕ × ℕ) × (ℕ × (ℕ × ℕ)) => pair q.2.2.1.unpair.1 q.2.2.2) :=
+      Primrec₂.natPair.comp h1 h2
+    have hpair : Primrec (fun q : (ℕ × ℕ) × (ℕ × (ℕ × ℕ)) =>
+        (q.2.2.1.unpair.2, pair q.2.2.1.unpair.1 q.2.2.2)) :=
+      Primrec.pair hfst hsnd
+    -- Convert directly to Primrec₂ using to₂
+    exact hpair.to₂
+  have hprec := Primrec.nat_rec hbase hstep
+  -- hprec : Primrec₂ (fun (stack, y) r => state after r iterations starting from (stack, y))
+  -- First, define the iterated state function
+  let iterState : ℕ → ℕ → ℕ → ℕ × ℕ := fun r stack y =>
+    Nat.rec (stack, y) (fun _k (stk, acc) => (stk.unpair.2, pair stk.unpair.1 acc)) r
+  -- Show iterState r stack y = (iterUnpairRight r stack, rebuildFromStack r stack y)
+  have hIterState : ∀ r stack y, iterState r stack y =
+      (iterUnpairRight r stack, rebuildFromStack r stack y) := by
+    intro r
+    induction r with
+    | zero => intro stack y; rfl
+    | succ r ih =>
+      intro stack y
+      simp only [iterState, iterUnpairRight, rebuildFromStack]
+      specialize ih stack y
+      simp only [iterState] at ih
+      conv_lhs => rw [ih]
+      -- LHS = ((iterUnpairRight r stack).unpair.2, pair (iterUnpairRight r stack).unpair.1 (rebuildFromStack r stack y))
+      -- RHS = (iterUnpairRight r stack.unpair.2, rebuildFromStack r stack.unpair.2 (pair stack.unpair.1 y))
+      ext
+      · -- First component
+        exact iterUnpairRight_unpair_comm r stack
+      · -- Second component
+        exact rebuildFromStack_step r stack y
+  -- Now compose
+  have hswap : Primrec₂ (fun r (p : ℕ × ℕ) => iterState r p.1 p.2) := by
+    apply Primrec₂.of_eq (Primrec₂.swap hprec)
+    intro r p
+    rfl
+  have hTriple : Primrec fun p : ℕ × ℕ × ℕ => iterState p.1 p.2.1 p.2.2 :=
+    hswap.comp Primrec.fst Primrec.snd
+  have hResult : Primrec fun p : ℕ × ℕ × ℕ => (iterState p.1 p.2.1 p.2.2).2 :=
+    Primrec.snd.comp hTriple
+  apply Primrec.of_eq hResult
+  intro p
+  rw [hIterState]
+
+/-- Key structural property: relates rebuilding from shifted stacks. -/
+private theorem rebuildFromStack_shift (r encoded y : ℕ) :
+    pair encoded.unpair.1
+      (rebuildFromStack r (iterBuildState r encoded.unpair.2).2 y) =
+    rebuildFromStack r (iterBuildState r encoded).2
+      (pair (iterUnpairRight r encoded).unpair.1 y) := by
+  induction r generalizing encoded y with
+  | zero =>
+    simp only [rebuildFromStack, iterUnpairRight]
+  | succ r ih =>
+    -- Unfold one level of each structure
+    simp only [iterBuildState, rebuildFromStack, iterUnpairRight]
+    -- After unfolding, use iterBuildState_fst to replace (iterBuildState r _).1 with iterUnpairRight
+    rw [iterBuildState_fst, iterBuildState_fst]
+    simp only [Nat.unpair_pair]
+    -- Now the goal matches the IH with y' = pair (iterUnpairRight r encoded.unpair.2).unpair.1 y
+    exact ih encoded (pair (iterUnpairRight r encoded.unpair.2).unpair.1 y)
+
+/-- Key relationship: updateNthEncoded equals composition of helpers. -/
+private theorem updateNthEncoded_eq_rebuild (r encoded newVal : ℕ) :
+    updateNthEncoded r encoded newVal =
+    rebuildFromStack r (iterBuildState r encoded).2 (pair newVal (iterUnpairRight r encoded).unpair.2) := by
+  induction r generalizing encoded with
+  | zero =>
+    simp only [updateNthEncoded_zero, rebuildFromStack, iterUnpairRight]
+  | succ r ih =>
+    simp only [updateNthEncoded_succ, iterBuildState, rebuildFromStack]
+    -- LHS: pair encoded.unpair.1 (updateNthEncoded r encoded.unpair.2 newVal)
+    -- Apply IH to recursive call
+    rw [ih]
+    -- Now use rebuildFromStack_shift to transform the LHS
+    have h := rebuildFromStack_shift r encoded (pair newVal (iterUnpairRight r encoded.unpair.2).unpair.2)
+    rw [h]
+    -- Use iterBuildState_fst and iterUnpairRight_unpair_comm to simplify
+    rw [iterBuildState_fst]
+    simp only [Nat.unpair_pair, iterUnpairRight, iterUnpairRight_unpair_comm]
+
 /-- updateNthEncoded is primitive recursive in all three arguments. -/
 theorem updateNthEncoded_primrec₃ : Primrec fun p : ℕ × ℕ × ℕ =>
     updateNthEncoded p.1 p.2.1 p.2.2 := by
-  -- updateNthEncoded r encoded newVal recurses on r:
-  -- Base (r=0): pair newVal encoded.unpair.2
-  -- Step (r=k+1): pair encoded.unpair.1 (updateNthEncoded k encoded.unpair.2 newVal)
-  -- This is a primitive recursion on r with state (encoded, newVal)
-  sorry -- This proof is complex; for now we accept it
+  -- Express updateNthEncoded using the helper composition
+  have hCompose : Primrec fun p : ℕ × ℕ × ℕ =>
+      rebuildFromStack p.1 (iterBuildState p.1 p.2.1).2
+        (pair p.2.2 (iterUnpairRight p.1 p.2.1).unpair.2) := by
+    -- Build the composition step by step
+    -- iterBuildState p.1 p.2.1 is Primrec
+    have hIterBuild : Primrec fun p : ℕ × ℕ × ℕ => iterBuildState p.1 p.2.1 :=
+      iterBuildState_primrec₂.comp Primrec.fst (Primrec.fst.comp Primrec.snd)
+    -- (iterBuildState p.1 p.2.1).2 is Primrec
+    have hStack : Primrec fun p : ℕ × ℕ × ℕ => (iterBuildState p.1 p.2.1).2 :=
+      Primrec.snd.comp hIterBuild
+    -- iterUnpairRight p.1 p.2.1 is Primrec
+    have hIterRight : Primrec fun p : ℕ × ℕ × ℕ => iterUnpairRight p.1 p.2.1 :=
+      iterUnpairRight_primrec₂.comp Primrec.fst (Primrec.fst.comp Primrec.snd)
+    -- (iterUnpairRight p.1 p.2.1).unpair.2 is Primrec
+    have hTail : Primrec fun p : ℕ × ℕ × ℕ => (iterUnpairRight p.1 p.2.1).unpair.2 :=
+      (Primrec.snd.comp Primrec.unpair).comp hIterRight
+    -- pair p.2.2 (iterUnpairRight p.1 p.2.1).unpair.2 is Primrec
+    have hNewTail : Primrec fun p : ℕ × ℕ × ℕ =>
+        pair p.2.2 (iterUnpairRight p.1 p.2.1).unpair.2 :=
+      Primrec₂.natPair.comp (Primrec.snd.comp Primrec.snd) hTail
+    -- rebuildFromStack p.1 stack newTail is Primrec via composition
+    -- We need to build the triple (p.1, stack, newTail) and apply rebuildFromStack_primrec
+    have hTriple : Primrec fun p : ℕ × ℕ × ℕ =>
+        (p.1, (iterBuildState p.1 p.2.1).2, pair p.2.2 (iterUnpairRight p.1 p.2.1).unpair.2) :=
+      Primrec.pair Primrec.fst (Primrec.pair hStack hNewTail)
+    exact rebuildFromStack_primrec.comp hTriple
+  -- Now show equality
+  apply Primrec.of_eq hCompose
+  intro p
+  exact (updateNthEncoded_eq_rebuild p.1 p.2.1 p.2.2).symm
 
 /-- For fixed progCode and bound, the step function is primitive recursive. -/
 theorem encodedStep_primrec_fixed (progCode bound : ℕ) :
