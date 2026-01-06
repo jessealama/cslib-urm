@@ -282,9 +282,106 @@ theorem lt_computable : URMComputable 2 (fun xy => Part.some (if xy 0 < xy 1 the
   simp only [compFunction, Part.sequence, Part.bind_some, Part.map_some, Fin.cons_zero]
   exact congrArg Part.some (sign_sub_swap_eq_lt (xy 0) (xy 1)).symm
 
-/-- Less-than-or-equal comparison returns 1 if x ≤ y, else 0. -/
+/-- Helper: 1 - sign(x - y) equals the characteristic function of x ≤ y -/
+private theorem one_minus_sign_sub_eq_le (x y : ℕ) :
+    1 - (if x - y = 0 then 0 else 1) = if x ≤ y then 1 else 0 := by
+  by_cases h : x ≤ y
+  · -- x ≤ y: x - y = 0, so 1 - 0 = 1
+    have hsub : x - y = 0 := Nat.sub_eq_zero_of_le h
+    simp [hsub, h]
+  · -- x > y: x - y > 0, so 1 - 1 = 0
+    have hgt : x > y := Nat.not_le.mp h
+    have hsub : x - y ≠ 0 := Nat.sub_ne_zero_of_lt hgt
+    simp [hsub, h]
+
+/-- The inner functions for le: standard projections (x, y) for monus. -/
+private def leGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun xy => Part.some (xy 0)) else (fun xy => Part.some (xy 1))
+
+@[simp] private theorem leGs_zero : leGs 0 = fun xy => Part.some (xy 0) := rfl
+@[simp] private theorem leGs_one : leGs 1 = fun xy => Part.some (xy 1) := rfl
+
+/-- Helper: Composing monus with standard projections computes x - y. -/
+private theorem le_sub_eq (xy : Fin 2 → ℕ) :
+    compFunction 2 2 (fun ab => Part.some (ab 0 - ab 1)) leGs xy =
+    Part.some (xy 0 - xy 1) := by
+  have h0 : leGs 0 xy = Part.some (xy 0) := rfl
+  have h1 : leGs (Fin.succ 0) xy = Part.some (xy 1) := rfl
+  simp only [compFunction, Part.sequence, h0, h1, Part.bind_some, Part.map_some]
+  rfl
+
+/-- The intermediate function: sign(x - y). -/
+private def leSignXY : (Fin 2 → ℕ) → Part ℕ :=
+  fun xy => Part.some (if xy 0 - xy 1 = 0 then 0 else 1)
+
+/-- sign(x - y) is computable in standard form. -/
+private theorem leSignXY_computable : URMComputableSF 2 leSignXY := by
+  -- First compose monus with leGs to get x - y
+  have hSub : URMComputableSF 2 (fun xy => Part.some (xy 0 - xy 1)) := by
+    have hgs : ∀ i, URMComputable 2 (leGs i) := by
+      intro i; fin_cases i <;> simp only [leGs] <;> exact URMComputable.proj_computable 2 _
+    have h := URMComputable.comp_general (m := 2) (n := 2) monus_computable hgs
+    convert h using 1
+    funext xy
+    exact (le_sub_eq xy).symm
+  -- Then compose sign with subtraction
+  have h := URMComputable.comp_general (m := 1) (n := 2)
+    sign_computable
+    (fun _ => hSub.toComputable)
+  convert h using 1
+  funext xy
+  simp only [compFunction, Part.sequence, Part.bind_some, Part.map_some, Fin.cons_zero, leSignXY]
+
+/-- The outer functions for le: (constant 1, sign(x - y)). -/
+private def leOuterGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
+  fun i => if i.val = 0 then (fun _ => Part.some 1) else leSignXY
+
+@[simp] private theorem leOuterGs_zero : leOuterGs 0 = fun _ => Part.some 1 := rfl
+@[simp] private theorem leOuterGs_one : leOuterGs 1 = leSignXY := rfl
+
+/-- Constant 1 is URMComputable 2 (program: Z 0, S 0). -/
+private theorem const_one_computable : URMComputable 2 (fun _ : Fin 2 → ℕ => Part.some 1) := by
+  use [Instr.Z 0, Instr.S 0]
+  intro inputs
+  -- Build the execution: Z 0 clears R0, S 0 increments to 1, then halt at pc=2
+  let s0 := State.fromInputs (List.ofFn inputs)
+  let s1 := s0.write 0 0
+  let s2 := s1.write 0 (s1.read 0 + 1)
+  have hstep1 : Step [Instr.Z 0, Instr.S 0] ⟨0, s0⟩ ⟨1, s1⟩ := Step.zero rfl
+  have hstep2 : Step [Instr.Z 0, Instr.S 0] ⟨1, s1⟩ ⟨2, s2⟩ := Step.succ rfl
+  have hhalted : (⟨2, s2⟩ : Config).isHalted [Instr.Z 0, Instr.S 0] := by simp
+  have hsteps : Steps [Instr.Z 0, Instr.S 0] (Config.init (List.ofFn inputs)) ⟨2, s2⟩ :=
+    Steps.trans (Steps.single hstep1) (Steps.single hstep2)
+  constructor
+  · simp only [Part.some_dom, iff_true]
+    exact ⟨⟨2, s2⟩, hsteps, hhalted⟩
+  · intro hHalts _
+    obtain ⟨hsteps', hhalted'⟩ := Classical.choose_spec hHalts
+    have heq := Steps.halts_unique hsteps' hhalted' hsteps hhalted
+    simp only [Result, heq, State.output, s2, s1, s0, State.write, State.read,
+      Function.update_self, Part.get_some]
+
+/-- Helper: Composing monus with (const 1, sign(x-y)) computes 1 - sign(x-y). -/
+private theorem le_comp_eq (xy : Fin 2 → ℕ) :
+    compFunction 2 2 (fun ab => Part.some (ab 0 - ab 1)) leOuterGs xy =
+    Part.some (if xy 0 ≤ xy 1 then 1 else 0) := by
+  have h0 : leOuterGs 0 xy = Part.some 1 := rfl
+  have h1 : leOuterGs (Fin.succ 0) xy = Part.some (if xy 0 - xy 1 = 0 then 0 else 1) := rfl
+  simp only [compFunction, Part.sequence, h0, h1, Part.bind_some, Part.map_some, Fin.cons_zero]
+  exact congrArg Part.some (one_minus_sign_sub_eq_le (xy 0) (xy 1))
+
+/-- Less-than-or-equal comparison returns 1 if x ≤ y, else 0.
+    le(x, y) = 1 - sign(x - y) -/
 theorem le_computable : URMComputable 2 (fun xy => Part.some (if xy 0 ≤ xy 1 then 1 else 0)) := by
-  sorry
+  -- Compose monus with (const 1, sign(x-y)) to compute 1 - sign(x-y)
+  have hgs : ∀ i, URMComputable 2 (leOuterGs i) := by
+    intro i; fin_cases i
+    · simp only [leOuterGs]; exact const_one_computable
+    · simp only [leOuterGs]; exact leSignXY_computable.toComputable
+  have h := URMComputable.comp_general (m := 2) (n := 2) monus_computable hgs
+  convert h.toComputable using 1
+  funext xy
+  exact (le_comp_eq xy).symm
 
 /-- Equality check returns 1 if x = y, else 0. -/
 theorem eq_computable : URMComputable 2 (fun xy => Part.some (if xy 0 = xy 1 then 1 else 0)) := by
