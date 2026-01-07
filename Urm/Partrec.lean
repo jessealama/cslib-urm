@@ -334,11 +334,10 @@ private def leOuterGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
 @[simp] private theorem leOuterGs_zero : leOuterGs 0 = fun _ => Part.some 1 := rfl
 @[simp] private theorem leOuterGs_one : leOuterGs 1 = leSignXY := rfl
 
-/-- Constant 1 is URMComputable 2 (program: Z 0, S 0). -/
-private theorem const_one_computable : URMComputable 2 (fun _ : Fin 2 → ℕ => Part.some 1) := by
+/-- Constant 1 is URMComputable n for any arity (program: Z 0, S 0). -/
+private theorem const_one_n_computable (n : ℕ) : URMComputable n (fun _ : Fin n → ℕ => Part.some 1) := by
   use [Instr.Z 0, Instr.S 0]
   intro inputs
-  -- Build the execution: Z 0 clears R0, S 0 increments to 1, then halt at pc=2
   let s0 := State.fromInputs (List.ofFn inputs)
   let s1 := s0.write 0 0
   let s2 := s1.write 0 (s1.read 0 + 1)
@@ -355,6 +354,10 @@ private theorem const_one_computable : URMComputable 2 (fun _ : Fin 2 → ℕ =>
     have heq := Steps.halts_unique hsteps' hhalted' hsteps hhalted
     simp only [Result, heq, State.output, s2, s1, s0, State.write, State.read,
       Function.update_self, Part.get_some]
+
+/-- Constant 1 is URMComputable 2. -/
+private theorem const_one_computable : URMComputable 2 (fun _ : Fin 2 → ℕ => Part.some 1) :=
+  const_one_n_computable 2
 
 /-- Helper: Composing sub with (const 1, sign(x-y)) computes 1 - sign(x-y). -/
 private theorem le_comp_eq (xy : Fin 2 → ℕ) :
@@ -869,25 +872,8 @@ private theorem unpairLtDS_computable :
     Fin.val_zero, ↓reduceIte, Fin.cons_zero, Fin.cons_one, Fin.val_succ, Nat.add_one_ne_zero]
 
 -- Helper: constant 1 as a 1-ary function
-private theorem const_one_1_computable : URMComputable 1 (fun _ : Fin 1 → ℕ => Part.some 1) := by
-  use [Instr.Z 0, Instr.S 0]
-  intro inputs
-  let s0 := State.fromInputs (List.ofFn inputs)
-  let s1 := s0.write 0 0
-  let s2 := s1.write 0 (s1.read 0 + 1)
-  have hstep1 : Step [Instr.Z 0, Instr.S 0] ⟨0, s0⟩ ⟨1, s1⟩ := Step.zero rfl
-  have hstep2 : Step [Instr.Z 0, Instr.S 0] ⟨1, s1⟩ ⟨2, s2⟩ := Step.succ rfl
-  have hhalted : (⟨2, s2⟩ : Config).isHalted [Instr.Z 0, Instr.S 0] := by simp
-  have hsteps : Steps [Instr.Z 0, Instr.S 0] (Config.init (List.ofFn inputs)) ⟨2, s2⟩ :=
-    Steps.trans (Steps.single hstep1) (Steps.single hstep2)
-  constructor
-  · simp only [Part.some_dom, iff_true]
-    exact ⟨⟨2, s2⟩, hsteps, hhalted⟩
-  · intro hHalts _
-    obtain ⟨hsteps', hhalted'⟩ := Classical.choose_spec hHalts
-    have heq := Steps.halts_unique hsteps' hhalted' hsteps hhalted
-    simp only [Result, heq, State.output, s2, s1, s0, State.write, State.read,
-      Function.update_self, Part.get_some]
+private theorem const_one_1_computable : URMComputable 1 (fun _ : Fin 1 → ℕ => Part.some 1) :=
+  const_one_n_computable 1
 
 -- Helper: 1 - lt(d, s) is computable (ge indicator)
 private def unpairGeDSGs : Fin 2 → (Fin 1 → ℕ) → Part ℕ :=
