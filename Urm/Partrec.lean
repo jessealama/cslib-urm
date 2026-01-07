@@ -225,12 +225,16 @@ private theorem sign_sub_swap_eq_lt (x y : ℕ) :
     have hsub : y - x = 0 := Nat.sub_eq_zero_of_le (Nat.not_lt.mp h)
     simp [hsub, h]
 
-/-- The inner functions for lt: swap projections (y, x) for sub. -/
-private def ltSwapGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
+/-- Swapped projections: returns (xy 1, xy 0) instead of (xy 0, xy 1).
+    Used by ltSwapGs, leSwapGs, and similar composition patterns. -/
+private def swapProjectionsGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
   fun i => if i.val = 0 then (fun xy => Part.some (xy 1)) else (fun xy => Part.some (xy 0))
 
-@[simp] private theorem ltSwapGs_zero : ltSwapGs 0 = fun xy => Part.some (xy 1) := rfl
-@[simp] private theorem ltSwapGs_one : ltSwapGs 1 = fun xy => Part.some (xy 0) := rfl
+@[simp] private theorem swapProjectionsGs_zero : swapProjectionsGs 0 = fun xy => Part.some (xy 1) := rfl
+@[simp] private theorem swapProjectionsGs_one : swapProjectionsGs 1 = fun xy => Part.some (xy 0) := rfl
+
+/-- The inner functions for lt: swap projections (y, x) for sub. -/
+private abbrev ltSwapGs := swapProjectionsGs
 
 /-- Helper: Composing sub with swapped projections computes y - x. -/
 private theorem lt_rev_sub_eq (xy : Fin 2 → ℕ) :
@@ -405,11 +409,7 @@ private def eqGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
 @[simp] private theorem eqGs_one : eqGs 1 = fun xy => Part.some (if xy 1 ≤ xy 0 then 1 else 0) := rfl
 
 /-- Swapped projections for computing le(y, x). -/
-private def leSwapGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
-  fun i => if i.val = 0 then (fun xy => Part.some (xy 1)) else (fun xy => Part.some (xy 0))
-
-@[simp] private theorem leSwapGs_zero : leSwapGs 0 = fun xy => Part.some (xy 1) := rfl
-@[simp] private theorem leSwapGs_one : leSwapGs 1 = fun xy => Part.some (xy 0) := rfl
+private abbrev leSwapGs := swapProjectionsGs
 
 /-- Helper: Composing le with swapped projections computes le(y, x). -/
 private theorem leSwap_comp_eq (xy : Fin 2 → ℕ) :
