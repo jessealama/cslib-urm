@@ -26,12 +26,9 @@ theorem gPhase_halts_from_saved_inputs {base n : ℕ} {pG : Program} {i : ℕ} {
     copyRegisterRange_exec (base + 1) 0 n cClear.state (Or.inr (by omega))
   have hInputs_restored : ∀ j : ℕ, (hj : j < n) → cCopy.state.read j = inputs ⟨j, hj⟩ := fun j hj => by
     simp only [Nat.zero_add] at hCopy_correct; rw [hCopy_correct j hj, hSaved_after_clear j hj]
-  have hagree : cCopy.state.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG.maxRegister := by
-    intro r _hr0 hr_max
-    by_cases hr_n : r < n
-    · rw [hInputs_restored r hr_n]; simp [State.fromInputs, State.read, hr_n]
-    · rw [hCopy_preserves r (by omega), hClear_zeros r (by omega : r ≤ base)]
-      simp [State.fromInputs, State.read, hr_n]
+  have hagree : cCopy.state.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG.maxRegister :=
+    agreeOn_after_copy_inputs hInputs_restored
+      (fun r hr_ge hr_le => by rw [hCopy_preserves r (by omega), hClear_zeros r hr_le]) hpG_max
   let epG := Halts.executeFromAgreeingState hpG_halts hpG_sf hagree
   let eT := executeSingleTransfer 0 (base + n + 1 + i) epG.config.state
   have ⟨hPGT_steps, hPGT_halted⟩ := Steps.chain_concat_sf hpG_sf epG.steps epG.halted eT.steps eT.halted
@@ -59,15 +56,13 @@ theorem gPhase_writes_result {base n : ℕ} {pG : Program} {j : ℕ} {inputs : F
   have hInputs_after_copy : ∀ k : ℕ, (hk : k < n) → dCopy.state.read k = inputs ⟨k, hk⟩ := fun k hk => by
     rw [decompose_concat_state_straightLine (copyRegisterRange_isStraightLine (base + 1) 0 n), hsCopy'_eq]
     simp only [Nat.zero_add] at hCopy_correct; rw [hCopy_correct k hk, hSaved_after_clear k hk]
-  have hagree : dCopy.state.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG.maxRegister := by
-    intro r _ hr_max
-    by_cases hr_n : r < n
-    · rw [hInputs_after_copy r hr_n]; simp [State.fromInputs, State.read, hr_n]
-    · rw [decompose_concat_state_straightLine (copyRegisterRange_isStraightLine (base + 1) 0 n), hsCopy'_eq,
-          hCopy_preserves r (Or.inr (by omega)),
-          decompose_concat_state_straightLine (clearRegisters_isStraightLine base),
-          clearRegisters_zeros' base s r (by omega : r ≤ base)]
-      simp [State.fromInputs, State.read, hr_n]
+  have hagree : dCopy.state.agreeOn (State.fromInputs (List.ofFn inputs)) 0 pG.maxRegister :=
+    agreeOn_after_copy_inputs hInputs_after_copy
+      (fun r _ hr_le => by
+        rw [decompose_concat_state_straightLine (copyRegisterRange_isStraightLine (base + 1) 0 n), hsCopy'_eq,
+            hCopy_preserves r (Or.inr (by omega)),
+            decompose_concat_state_straightLine (clearRegisters_isStraightLine base),
+            clearRegisters_zeros' base s r hr_le]) hpG_max
   let epG := Halts.executeFromAgreeingState hpG_halts hpG_sf hagree
   have hsPG_eq : dPG.state = epG.config.state :=
     congrArg Config.state (Steps.halts_unique dPG.steps_left (by simp) epG.steps epG.halted)
@@ -133,12 +128,9 @@ theorem finalPhase_halts_from_results {m n base : ℕ} {pF : Program} {results :
       (transferResultsToInputs (base + n + 1) m) := by simp
   have hInputs_set : ∀ j : ℕ, (hj : j < m) → sTransfer.read j = results ⟨j, hj⟩ := fun j hj => by
     rw [hTransfer_correct j hj, hResults_after_clear j hj]
-  have hagree : sTransfer.agreeOn (State.fromInputs (List.ofFn results)) 0 pF.maxRegister := by
-    intro r _hr0 hr_max
-    by_cases hr_m : r < m
-    · rw [hInputs_set r hr_m]; simp [State.fromInputs, State.read, hr_m]
-    · rw [hTransfer_preserves r (by omega), hClear_zeros r (by omega : r ≤ base)]
-      simp [State.fromInputs, State.read, hr_m]
+  have hagree : sTransfer.agreeOn (State.fromInputs (List.ofFn results)) 0 pF.maxRegister :=
+    agreeOn_after_copy_inputs hInputs_set
+      (fun r _ hr_le => by rw [hTransfer_preserves r (by omega), hClear_zeros r hr_le]) hpF_max
   let epF := Halts.executeFromAgreeingState hpF_halts hpF_sf hagree
   have ⟨hTransferF_steps, hTransferF_halted⟩ := Steps.chain_concat_sf (transferResultsToInputs_isStandardForm (base + n + 1) m) hTransfer_steps hTransfer_halted epF.steps epF.halted
   have ⟨hFinal_steps, hFinal_halted⟩ := Steps.chain_concat_sf (clearRegisters_isStandardForm base) hClear_steps hClear_halted hTransferF_steps hTransferF_halted
