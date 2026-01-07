@@ -101,12 +101,6 @@ theorem prLoopEpilogue_hasBoundedJumps (n : ℕ) (pF pG : Program) :
       prBaseCasePrologueLength]
     omega
 
-/-- The output phase is straight-line. -/
-theorem prOutputPhase_isStandardForm (n : ℕ) (pF pG : Program) :
-    (prOutputPhase n pF pG).IsStandardForm := by
-  simp only [prOutputPhase]
-  exact straightLine_isStandardForm rfl
-
 /-! ## Shifted subprogram lemmas -/
 
 /-- If pF is standard form, then pF shifted has bounded jumps for the embedded position. -/

@@ -54,10 +54,6 @@ def unshift (σ : State) (offset : ℕ) : State :=
 theorem shift_zero (σ : State) : σ.shift 0 = σ := by
   funext r; simp [shift]
 
-@[simp]
-theorem unshift_zero (σ : State) : σ.unshift 0 = σ := by
-  funext r; simp [unshift]
-
 theorem shift_unshift (σ : State) (offset : ℕ) :
     (σ.shift offset).unshift offset = σ := by
   funext r
@@ -69,10 +65,6 @@ theorem shift_unshift (σ : State) (offset : ℕ) :
 theorem shift_read (σ : State) (offset r : ℕ) (hr : offset ≤ r) :
     (σ.shift offset).read r = σ.read (r - offset) := by
   simp only [shift, read, hr, ↓reduceIte]
-
-theorem shift_read_below (σ : State) (offset r : ℕ) (hr : r < offset) :
-    (σ.shift offset).read r = 0 := by
-  simp only [shift, read, Nat.not_le.mpr hr, ↓reduceIte]
 
 @[simp]
 theorem unshift_read (σ : State) (offset r : ℕ) :

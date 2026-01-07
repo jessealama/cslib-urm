@@ -59,27 +59,6 @@ private theorem single_instr_computes {instr : Instr} {inputs : List ℕ} {final
     have heq := Steps.halts_unique hsteps hhalted (Steps.single hstep) h_final_halted
     simp only [Result, heq]
 
-/-- The zero function `Z() = 0` (nullary) is URM-computable.
-
-Program: Empty program - register 0 is initialized to 0. -/
-theorem zero_computable : URMComputable 0 (fun _ => Part.some 0) := by
-  use []
-  intro inputs
-  constructor
-  · simp only [Part.some_dom, iff_true]
-    exact Halts.empty_halts (List.ofFn inputs)
-  · intro hHalts _
-    -- Result is the output of the chosen halted config
-    -- The empty program halts immediately at Config.init, so this equals 0
-    obtain ⟨hsteps, hhalted⟩ := Classical.choose_spec hHalts
-    -- The init config is also halted for the empty program
-    have h_init_halted : (Config.init (List.ofFn inputs)).isHalted [] := by
-      simp
-    -- By uniqueness of halted configs, the chosen one equals init
-    have heq := Steps.halts_unique hsteps hhalted (Steps.refl _) h_init_halted
-    simp only [Result, heq, State.output, Config.init, State.fromInputs, List.getD, List.ofFn_zero,
-      List.getElem?_nil, Part.get_some, Option.getD]
-
 /-- The successor function `S(x) = x + 1` is URM-computable.
 
 Program: `[S 0]` - increment register 0 and halt. -/

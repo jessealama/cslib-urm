@@ -80,13 +80,6 @@ theorem decodeRegs_length (k n : ℕ) : (decodeRegs k n).length = k := by
   | zero => rfl
   | succ k ih => simp only [decodeRegs_succ, List.length_cons, ih]
 
-/-- Get the i-th element of the decoded list. -/
-theorem decodeRegs_getD (k n i : ℕ) (hi : i < k) :
-    (decodeRegs k n).getD i 0 = (decodeRegs k n)[i]'(by simp; omega) := by
-  simp only [List.getD_eq_getElem?_getD]
-  rw [List.getElem?_eq_getElem (by simp; omega)]
-  simp
-
 /-! ## Configuration Encoding -/
 
 /-- Encode a configuration with a given register bound.
@@ -100,20 +93,6 @@ def decodeConfig (bound : ℕ) (n : ℕ) : Config :=
   let regs := decodeRegs (bound + 1) n.unpair.2
   ⟨pc, fun r => regs.getD r 0⟩
 
-@[simp]
-theorem encodeConfig_pc (bound : ℕ) (c : Config) :
-    (encodeConfig bound c).unpair.1 = c.pc := by
-  simp [encodeConfig]
-
-@[simp]
-theorem decodeConfig_pc (bound n : ℕ) : (decodeConfig bound n).pc = n.unpair.1 := rfl
-
-/-- Round-trip property: decoding an encoded config gives back the same pc
-    and register values for registers ≤ bound. -/
-theorem decodeConfig_encodeConfig_pc (bound : ℕ) (c : Config) :
-    (decodeConfig bound (encodeConfig bound c)).pc = c.pc := by
-  simp [decodeConfig, encodeConfig]
-
 /-- Helper lemma: decodeRegs after encodeRegs of ofFn list. -/
 private theorem decodeRegs_encodeRegs_ofFn (bound : ℕ) (f : Fin (bound + 1) → ℕ) :
     decodeRegs (bound + 1) (encodeRegs (List.ofFn f)) = List.ofFn f := by
@@ -122,15 +101,6 @@ private theorem decodeRegs_encodeRegs_ofFn (bound : ℕ) (f : Fin (bound + 1) �
   have := decodeRegs_encodeRegs (List.ofFn f)
   simp only [h] at this
   exact this
-
-/-- Round-trip for registers within bound. -/
-theorem decodeConfig_encodeConfig_reg (bound : ℕ) (c : Config) (r : ℕ) (hr : r ≤ bound) :
-    (decodeConfig bound (encodeConfig bound c)).state r = c.state r := by
-  simp only [decodeConfig, encodeConfig, Nat.unpair_pair]
-  rw [decodeRegs_encodeRegs_ofFn]
-  simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn]
-  have hr' : r < bound + 1 := Nat.lt_succ_of_le hr
-  simp only [hr', ↓reduceDIte, Option.getD_some]
 
 /-! ## Instruction Encoding -/
 
@@ -182,30 +152,10 @@ private theorem decodeRegs_encodeRegs_map (p : Program) :
   simp only [h] at this
   exact this
 
-@[simp]
-theorem decodeProgram_encodeProgram (p : Program) : decodeProgram (encodeProgram p) = p := by
-  simp only [decodeProgram, encodeProgram, Nat.unpair_pair]
-  rw [decodeRegs_encodeRegs_map, List.map_map]
-  simp only [Function.comp_def, decodeInstr_encodeInstr, List.map_id']
-
 /-- Get instruction at position from encoded program. -/
 def getEncodedInstr (progCode : ℕ) (pc : ℕ) : Option Instr :=
   let p := decodeProgram progCode
   p.getInstr pc
-
-theorem getEncodedInstr_correct (p : Program) (pc : ℕ) :
-    getEncodedInstr (encodeProgram p) pc = p.getInstr pc := by
-  simp [getEncodedInstr, Program.getInstr]
-
-/-! ## Input Encoding -/
-
-/-- Encode a single input as an encoded configuration. -/
-def encodeInput (bound : ℕ) (input : ℕ) : ℕ :=
-  encodeConfig bound (Config.init [input])
-
-/-- Decode the input from an encoded configuration (register 0). -/
-def decodeInput (bound : ℕ) (configCode : ℕ) : ℕ :=
-  (decodeConfig bound configCode).state 0
 
 /-! ## Helper: Update encoded registers -/
 
@@ -221,15 +171,6 @@ private theorem decodeRegs_encodeRegs_set (k : ℕ) (regCode r v : ℕ) :
   have := decodeRegs_encodeRegs ((decodeRegs k regCode).set r v)
   simp only [h] at this
   exact this
-
-theorem updateRegs_correct (k : ℕ) (regCode : ℕ) (r v : ℕ) (hr : r < k) :
-    (decodeRegs k (updateRegs k regCode r v)).getD r 0 = v := by
-  simp only [updateRegs]
-  rw [decodeRegs_encodeRegs_set]
-  simp only [List.getD_eq_getElem?_getD]
-  have hlen : r < (decodeRegs k regCode).length := by simp; omega
-  rw [List.getElem?_set_self hlen]
-  rfl
 
 /-! ## Encoded Configuration Operations -/
 

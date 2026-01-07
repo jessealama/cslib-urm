@@ -175,25 +175,6 @@ theorem nthEncoded_encodeConfig_regs (bound : ℕ) (c : Config) (r : ℕ) (hr : 
   have h2 := readEncodedReg_encodeConfig bound c r hr
   rw [← h2, h1]
 
-/-- nthEncoded on encoded program gives the encoded instruction at that position. -/
-theorem nthEncoded_encodeProgram (p : Program) (pc : ℕ) (hpc : pc < p.length) :
-    nthEncoded pc (encodeProgram p).unpair.2 = encodeInstr p[pc] := by
-  simp only [encodeProgram, Nat.unpair_pair]
-  induction pc generalizing p with
-  | zero =>
-    match p with
-    | [] => simp at hpc
-    | hd :: tl =>
-      simp only [List.map_cons, encodeRegs_cons, nthEncoded_zero, Nat.unpair_pair,
-                 List.getElem_cons_zero]
-  | succ pc' ih =>
-    match p with
-    | [] => simp at hpc
-    | hd :: tl =>
-      simp only [List.map_cons, encodeRegs_cons, nthEncoded_succ, Nat.unpair_pair,
-                 List.length_cons, Nat.succ_lt_succ_iff, List.getElem_cons_succ] at hpc ⊢
-      exact ih tl hpc
-
 /-- Helper: nthEncoded on encodeRegs gives the element at that position. -/
 theorem nthEncoded_encodeRegs (l : List ℕ) (i : ℕ) (hi : i < l.length) :
     nthEncoded i (encodeRegs l) = l[i] := by
@@ -265,23 +246,6 @@ private theorem configRegList_set (bound : ℕ) (c : Config) (r v : ℕ) :
       split_ifs with heq2
       · exact absurd heq2.symm heq
       · rfl
-
-/-- updateNthEncoded correctly encodes a state write. -/
-theorem updateNthEncoded_encodeConfig (bound : ℕ) (c : Config) (r v : ℕ) (hr : r ≤ bound) :
-    Nat.pair (c.pc + 1) (updateNthEncoded r (encodeConfig bound c).unpair.2 v) =
-    encodeConfig bound ⟨c.pc + 1, c.state.write r v⟩ := by
-  simp only [encodeConfig, Nat.unpair_pair]
-  congr 1
-  -- Rewrite in terms of configRegList
-  show updateNthEncoded r (encodeRegs (configRegList bound c)) v =
-       encodeRegs (configRegList bound ⟨c.pc + 1, c.state.write r v⟩)
-  have hr' : r < (configRegList bound c).length := by simp; omega
-  rw [updateNthEncoded_encodeRegs _ _ _ hr']
-  congr 1
-  -- The pc doesn't affect registers, and state.write r v matches set r v
-  rw [configRegList_set bound c r v]
-  -- configRegList only depends on state, not pc
-  rfl
 
 /-! ## Correctness Lemmas -/
 
