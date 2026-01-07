@@ -11,3 +11,4 @@ import Urm.PrimitiveRecursion.Basic
 import Urm.Minimization.Basic
 import Urm.Partrec
 import Urm.Examples
+import Urm.Simulate.Basic
