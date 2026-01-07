@@ -309,56 +309,17 @@ private theorem sign_sub_swap_eq_lt (x y : ℕ) :
     have hsub : y - x = 0 := Nat.sub_eq_zero_of_le (Nat.not_lt.mp h)
     simp [hsub, h]
 
-/-- Swapped projections: returns (xy 1, xy 0) instead of (xy 0, xy 1).
-    Used by ltSwapGs, leSwapGs, and similar composition patterns. -/
-private def swapProjectionsGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
-  fun i => if i.val = 0 then (fun xy => Part.some (xy 1)) else (fun xy => Part.some (xy 0))
-
-@[simp] private theorem swapProjectionsGs_zero : swapProjectionsGs 0 = fun xy => Part.some (xy 1) := rfl
-@[simp] private theorem swapProjectionsGs_one : swapProjectionsGs 1 = fun xy => Part.some (xy 0) := rfl
-
-/-- The inner functions for lt: swap projections (y, x) for sub. -/
-private abbrev ltSwapGs := swapProjectionsGs
-
-/-- Helper: Composing sub with swapped projections computes y - x. -/
-private theorem lt_rev_sub_eq (xy : Fin 2 → ℕ) :
-    compFunction 2 2 (fun ab => Part.some (ab 0 - ab 1)) ltSwapGs xy =
-    Part.some (xy 1 - xy 0) := by
-  have h0 : ltSwapGs 0 xy = Part.some (xy 1) := rfl
-  have h1 : ltSwapGs (Fin.succ 0) xy = Part.some (xy 0) := rfl
-  simp only [compFunction, Part.sequence, h0, h1, Part.bind_some, Part.map_some]
-  rfl
-
-/-- Helper: The full lt composition function. -/
-private def ltOuterG : Fin 1 → (Fin 2 → ℕ) → Part ℕ :=
-  fun _ xy => Part.some (xy 1 - xy 0)
-
-/-- Helper: Composing sign with (y - x) computes lt. -/
-private theorem lt_comp_eq (xy : Fin 2 → ℕ) :
-    compFunction 1 2 (fun x => Part.some (if x 0 = 0 then 0 else 1)) ltOuterG xy =
-    Part.some (if xy 0 < xy 1 then 1 else 0) := by
-  have h0 : ltOuterG 0 xy = Part.some (xy 1 - xy 0) := rfl
-  simp only [compFunction, Part.sequence, h0, Part.bind_some, Part.map_some]
-  simp only [Fin.cons_zero]
-  exact congrArg Part.some (sign_sub_swap_eq_lt (xy 0) (xy 1))
-
 /-- Less-than comparison returns 1 if x < y, else 0.
     lt(x, y) = sign(y - x) -/
 theorem lt_computable : URMComputable 2 (fun xy => Part.some (if xy 0 < xy 1 then 1 else 0)) := by
-  -- Step 1: Compose sub with swapped projections to compute (y - x)
-  have hRevSub : URMComputableSF 2 (fun xy => Part.some (xy 1 - xy 0)) := by
+  -- Compute (y - x) via comp_proj2
+  have hRevSub : URMComputable 2 (fun xy => Part.some (xy 1 - xy 0)) := by
     have h := URMComputable.comp_proj2 sub_computable (1 : Fin 2) (0 : Fin 2)
-    simp only [mkPair] at h; exact h.toSF
-  -- Step 2: Compose sign with reversed subtraction
-  have hLt := URMComputable.comp_general (m := 1) (n := 2)
-    sign_computable
-    (fun _ => hRevSub.toComputable)
-  -- Step 3: Convert to desired form
-  convert hLt.toComputable using 1
+    simp only [mkPair] at h; exact h
+  -- Compose sign with reversed subtraction
+  have h := URMComputable.comp_unary_total sign_computable hRevSub
+  convert h using 1
   funext xy
-  -- The inner function of hLt is (fun _ => hRevSub.toComputable) which equals ltOuterG
-  -- We need to show the compFunction equals the desired result
-  simp only [compFunction, Part.sequence, Part.bind_some, Part.map_some, Fin.cons_zero]
   exact congrArg Part.some (sign_sub_swap_eq_lt (xy 0) (xy 1)).symm
 
 /-- Helper: 1 - sign(x - y) equals the characteristic function of x ≤ y -/
@@ -379,24 +340,11 @@ private def leSignXY : (Fin 2 → ℕ) → Part ℕ :=
 
 /-- sign(x - y) is computable in standard form. -/
 private theorem leSignXY_computable : URMComputableSF 2 leSignXY := by
-  -- First get x - y via comp_proj2
-  have hSub : URMComputableSF 2 (fun xy => Part.some (xy 0 - xy 1)) := by
+  have hSub : URMComputable 2 (fun xy => Part.some (xy 0 - xy 1)) := by
     have h := URMComputable.comp_proj2 sub_computable (0 : Fin 2) (1 : Fin 2)
-    simp only [mkPair] at h; exact h.toSF
-  -- Then compose sign with subtraction
-  have h := URMComputable.comp_general (m := 1) (n := 2)
-    sign_computable
-    (fun _ => hSub.toComputable)
-  convert h using 1
-  funext xy
-  simp only [compFunction, Part.sequence, Part.bind_some, Part.map_some, Fin.cons_zero, leSignXY]
-
-/-- The outer functions for le: (constant 1, sign(x - y)). -/
-private def leOuterGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
-  fun i => if i.val = 0 then (fun _ => Part.some 1) else leSignXY
-
-@[simp] private theorem leOuterGs_zero : leOuterGs 0 = fun _ => Part.some 1 := rfl
-@[simp] private theorem leOuterGs_one : leOuterGs 1 = leSignXY := rfl
+    simp only [mkPair] at h; exact h
+  have h := URMComputable.comp_unary_total sign_computable hSub
+  convert h.toSF using 1
 
 /-- Constant 1 is URMComputable n for any arity (program: Z 0, S 0). -/
 private theorem const_one_n_computable (n : ℕ) : URMComputable n (fun _ : Fin n → ℕ => Part.some 1) := by
@@ -423,27 +371,16 @@ private theorem const_one_n_computable (n : ℕ) : URMComputable n (fun _ : Fin 
 private theorem const_one_computable : URMComputable 2 (fun _ : Fin 2 → ℕ => Part.some 1) :=
   const_one_n_computable 2
 
-/-- Helper: Composing sub with (const 1, sign(x-y)) computes 1 - sign(x-y). -/
-private theorem le_comp_eq (xy : Fin 2 → ℕ) :
-    compFunction 2 2 (fun ab => Part.some (ab 0 - ab 1)) leOuterGs xy =
-    Part.some (if xy 0 ≤ xy 1 then 1 else 0) := by
-  have h0 : leOuterGs 0 xy = Part.some 1 := rfl
-  have h1 : leOuterGs (Fin.succ 0) xy = Part.some (if xy 0 - xy 1 = 0 then 0 else 1) := rfl
-  simp only [compFunction, Part.sequence, h0, h1, Part.bind_some, Part.map_some, Fin.cons_zero]
-  exact congrArg Part.some (one_minus_sign_sub_eq_le (xy 0) (xy 1))
-
 /-- Less-than-or-equal comparison returns 1 if x ≤ y, else 0.
     le(x, y) = 1 - sign(x - y) -/
 theorem le_computable : URMComputable 2 (fun xy => Part.some (if xy 0 ≤ xy 1 then 1 else 0)) := by
-  -- Compose sub with (const 1, sign(x-y)) to compute 1 - sign(x-y)
-  have hgs : ∀ i, URMComputable 2 (leOuterGs i) := by
-    intro i; fin_cases i
-    · simp only [leOuterGs]; exact const_one_computable
-    · simp only [leOuterGs]; exact leSignXY_computable.toComputable
-  have h := URMComputable.comp_general (m := 2) (n := 2) sub_computable hgs
-  convert h.toComputable using 1
+  have h := URMComputable.comp_binary_total sub_computable
+    const_one_computable
+    leSignXY_computable.toComputable
+  convert h using 1
   funext xy
-  exact (le_comp_eq xy).symm
+  simp only [mkPair_zero, mkPair_one]
+  exact congrArg Part.some (one_minus_sign_sub_eq_le (xy 0) (xy 1)).symm
 
 /-- Helper: le(x,y) * le(y,x) equals the characteristic function of x = y -/
 private theorem le_mul_le_swap_eq_eq (x y : ℕ) :
@@ -459,53 +396,21 @@ private theorem le_mul_le_swap_eq_eq (x y : ℕ) :
     · -- y < x: x ≤ y is false
       simp [Nat.le_of_lt hgt, Nat.not_le.mpr hgt, h]
 
-/-- The inner functions for eq: le(x,y) and le(y,x). -/
-private def eqGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
-  fun i => if i.val = 0
-           then (fun xy => Part.some (if xy 0 ≤ xy 1 then 1 else 0))
-           else (fun xy => Part.some (if xy 1 ≤ xy 0 then 1 else 0))
-
-@[simp] private theorem eqGs_zero : eqGs 0 = fun xy => Part.some (if xy 0 ≤ xy 1 then 1 else 0) := rfl
-@[simp] private theorem eqGs_one : eqGs 1 = fun xy => Part.some (if xy 1 ≤ xy 0 then 1 else 0) := rfl
-
-/-- Swapped projections for computing le(y, x). -/
-private abbrev leSwapGs := swapProjectionsGs
-
-/-- Helper: Composing le with swapped projections computes le(y, x). -/
-private theorem leSwap_comp_eq (xy : Fin 2 → ℕ) :
-    compFunction 2 2 (fun ab => Part.some (if ab 0 ≤ ab 1 then 1 else 0)) leSwapGs xy =
-    Part.some (if xy 1 ≤ xy 0 then 1 else 0) := by
-  have h0 : leSwapGs 0 xy = Part.some (xy 1) := rfl
-  have h1 : leSwapGs (Fin.succ 0) xy = Part.some (xy 0) := rfl
-  simp only [compFunction, Part.sequence, h0, h1, Part.bind_some, Part.map_some]
-  rfl
-
 /-- le(y, x) is computable (le with swapped arguments). -/
 private theorem leSwap_computable : URMComputable 2 (fun xy => Part.some (if xy 1 ≤ xy 0 then 1 else 0)) := by
   have h := URMComputable.comp_proj2 le_computable (1 : Fin 2) (0 : Fin 2)
   simp only [mkPair] at h; exact h
 
-/-- Helper: Composing mul with (le(x,y), le(y,x)) computes equality. -/
-private theorem eq_comp_eq (xy : Fin 2 → ℕ) :
-    compFunction 2 2 (fun ab => Part.some (ab 0 * ab 1)) eqGs xy =
-    Part.some (if xy 0 = xy 1 then 1 else 0) := by
-  have h0 : eqGs 0 xy = Part.some (if xy 0 ≤ xy 1 then 1 else 0) := rfl
-  have h1 : eqGs (Fin.succ 0) xy = Part.some (if xy 1 ≤ xy 0 then 1 else 0) := rfl
-  simp only [compFunction, Part.sequence, h0, h1, Part.bind_some, Part.map_some]
-  exact congrArg Part.some (le_mul_le_swap_eq_eq (xy 0) (xy 1))
-
 /-- Equality check returns 1 if x = y, else 0.
     eq(x, y) = le(x, y) * le(y, x) -/
 theorem eq_computable : URMComputable 2 (fun xy => Part.some (if xy 0 = xy 1 then 1 else 0)) := by
-  -- Compose mul with (le(x,y), le(y,x)) to compute le(x,y) * le(y,x)
-  have hgs : ∀ i, URMComputable 2 (eqGs i) := by
-    intro i; fin_cases i
-    · simp only [eqGs]; exact le_computable
-    · simp only [eqGs]; exact leSwap_computable
-  have h := URMComputable.comp_general (m := 2) (n := 2) mul_computable hgs
-  convert h.toComputable using 1
+  have h := URMComputable.comp_binary_total mul_computable
+    le_computable
+    leSwap_computable
+  convert h using 1
   funext xy
-  exact (eq_comp_eq xy).symm
+  simp only [mkPair_zero, mkPair_one]
+  exact congrArg Part.some (le_mul_le_swap_eq_eq (xy 0) (xy 1)).symm
 
 end Arithmetic
 
@@ -870,35 +775,20 @@ theorem URMComputable1.right : URMComputable1 ↑fun n => n.unpair.2 := by
 
 /-- Pairing preserves URMComputable1.
 
-    Proof approach: Use composition with pair_computable as outer function
+    Proof approach: Use comp_binary with pair_computable as outer function
     and f, g as inner functions. -/
 theorem URMComputable1.pair {f g : ℕ →. ℕ}
     (hf : URMComputable1 f) (hg : URMComputable1 g) :
     URMComputable1 (fun n => Nat.pair <$> f n <*> g n) := by
-  -- pair(f(x), g(x)) = compose pair_computable with [f, g]
   unfold URMComputable1 at *
-  -- Define inner functions: gs 0 = f, gs 1 = g
-  have hGs : ∀ i : Fin 2, URMComputable 1 (fun x : Fin 1 → ℕ =>
-      if i = 0 then f (x 0) else g (x 0)) := by
-    intro i; fin_cases i
-    · simp only [Fin.isValue]; exact hf
-    · simp only [Fin.isValue]; convert hg using 1
-  -- Apply comp_general with m=2, n=1
-  have h := URMComputable.comp_general (m := 2) (n := 1) pair_computable hGs
-  -- Show compFunction equals our goal
-  convert h.toComputable using 1
+  have h := URMComputable.comp_binary pair_computable hf hg
+  convert h using 1
   funext x
-  -- Both sides compute the same thing:
-  -- LHS: Nat.pair <$> f (x 0) <*> g (x 0)
-  -- RHS: compFunction with pair_computable and [f, g]
-  -- They're definitionally equal after unfolding
   simp only [compFunction, Part.sequence, Part.bind_eq_bind, Part.map_eq_map,
     seq_eq_bind_map, Part.bind_assoc, Part.bind_map, Part.map_bind, Part.bind_some,
-    Part.map_some, Fin.cons_zero, Fin.cons_one]
-  congr 1
-  funext a
-  have hif : (Fin.succ 0 : Fin 2) = 0 ↔ False := by decide
-  simp only [hif, ↓reduceIte]
+    Part.map_some, Fin.cons_zero, Fin.cons_one, binaryGs, Fin.val_zero, ↓reduceIte,
+    Fin.val_succ, Nat.add_one_ne_zero]
+  congr 1; funext a
   exact (Part.bind_some_eq_map _ _).symm
 
 /-- Composition preserves URMComputable1.
@@ -936,91 +826,26 @@ theorem URMComputable1.prec {f g : ℕ →. ℕ}
     have h := URMComputable.comp_proj2 pair_computable (1 : Fin 3) (2 : Fin 3)
     simp only [mkPair] at h; exact h
 
-  -- Outer pair: projects (xka 0, innerPair) then pairs them
-  let outerPairGs : Fin 2 → (Fin 3 → ℕ) → Part ℕ := fun i xka =>
-    if i.val = 0 then Part.some (xka 0)
-    else Part.some (Nat.pair (xka 1) (xka 2))
-  have h_outerPairGs : ∀ i, URMComputable 3 (outerPairGs i) := fun i => by
-    fin_cases i
-    · simp only [outerPairGs, ↓reduceIte]
-      exact URMComputable.proj_computable _ _
-    · simp only [outerPairGs, Nat.one_ne_zero, ↓reduceIte]
-      exact h_innerPair
-  have h_nestedPair := URMComputable.comp_general (m := 2) (n := 3) pair_computable h_outerPairGs
+  -- Outer pair: compose pair with (proj 0, innerPair) to get pair(xka 0, pair(xka 1, xka 2))
+  have h_nestedPair : URMComputable 3 (fun xka => Part.some (Nat.pair (xka 0) (Nat.pair (xka 1) (xka 2)))) := by
+    have h := URMComputable.comp_binary_total pair_computable
+      (URMComputable.proj_computable 3 0) h_innerPair
+    convert h using 1
 
-  -- Prove the composition equals pair(xka 0, pair(xka 1, xka 2))
-  have h_nestedPair_eq : compFunction 2 3 (fun xy => Part.some (Nat.pair (xy 0) (xy 1))) outerPairGs
-      = fun xka => Part.some (Nat.pair (xka 0) (Nat.pair (xka 1) (xka 2))) := by
-    funext xka
-    simp only [compFunction, Part.sequence, outerPairGs, Fin.val_zero, ↓reduceIte, Part.bind_some,
-      Part.map_some, Fin.cons_zero, Fin.cons_one, Fin.val_succ, Nat.add_one_ne_zero]
-
-  -- Step 2: Build g_step = g ∘ nestedPair
-  let nestedPairGs : Fin 1 → (Fin 3 → ℕ) → Part ℕ := fun _ xka =>
-    Part.some (Nat.pair (xka 0) (Nat.pair (xka 1) (xka 2)))
-  have h_nestedPairGs : ∀ i, URMComputable 3 (nestedPairGs i) := fun _ => by
-    simp only [nestedPairGs]
-    rw [← h_nestedPair_eq]
-    exact h_nestedPair.toComputable
-  have h_gstep := URMComputable.comp_general (m := 1) (n := 3) hg h_nestedPairGs
-
-  -- Prove g_step computes g(pair(xka 0, pair(xka 1, xka 2)))
-  have h_gstep_eq : compFunction 1 3 (fun x => g (x 0)) nestedPairGs
-      = fun xka => g (Nat.pair (xka 0) (Nat.pair (xka 1) (xka 2))) := by
-    funext xka
-    simp only [compFunction, Part.sequence, nestedPairGs, Part.bind_some, Part.map_some,
-      Fin.cons_zero]
+  -- Step 2: Build g_step = g ∘ nestedPair via comp_unary_total
+  have h_gstep_computable : URMComputable 3 (fun xka => g (Nat.pair (xka 0) (Nat.pair (xka 1) (xka 2)))) := by
+    have h := URMComputable.comp_unary_total hg h_nestedPair
+    convert h using 1
 
   -- Step 3: Apply primRec
-  let g_step : (Fin 3 → ℕ) → Part ℕ := fun xka => g (Nat.pair (xka 0) (Nat.pair (xka 1) (xka 2)))
-  have h_gstep_computable : URMComputable 3 g_step := by
-    simp only [g_step]
-    rw [← h_gstep_eq]
-    exact h_gstep.toComputable
-
   have h_primRec := URMComputable.primRec (n := 1) hf h_gstep_computable
 
   -- Step 4: Compose with unpair to get URMComputable 1
-  let unpairGs : Fin 2 → (Fin 1 → ℕ) → Part ℕ := fun i x =>
-    if i.val = 0 then Part.some (x 0).unpair.1 else Part.some (x 0).unpair.2
-  have h_unpairGs : ∀ i, URMComputable 1 (unpairGs i) := fun i => by
-    fin_cases i
-    · simp only [unpairGs, ↓reduceIte]; exact unpairLeft_computable
-    · simp only [unpairGs, Nat.one_ne_zero, ↓reduceIte]; exact unpairRight_computable
-  have h_final := URMComputable.comp_general (m := 2) (n := 1) h_primRec h_unpairGs
+  have h_final := URMComputable.comp_binary_total h_primRec
+    unpairLeft_computable unpairRight_computable
 
-  -- Step 5: Prove semantic equivalence
-  convert h_final.toComputable using 1
-  funext x
-  -- Simplify the compFunction on RHS
-  simp only [Nat.unpaired, compFunction, Part.sequence, unpairGs, Fin.val_zero, ↓reduceIte,
-    Part.bind_some, Part.map_some, Fin.val_succ, Nat.add_one_ne_zero]
-  -- Now RHS is: PrFunction ... (Fin.cons (unpair (x 0)).1 (Fin.cons (unpair (x 0)).2 Fin.elim0))
-
-  -- Generalize for induction
-  set a := (x 0).unpair.1
-  set n := (x 0).unpair.2
-
-  -- Key lemma: PrFunction unfolds as Pr
-  simp only [PrFunction, Pr]
-
-  -- Helper: compute initInputs and lastInput on Fin.cons a (Fin.cons m Fin.elim0)
-  have h_init : ∀ m, initInputs (Fin.cons a (Fin.cons m Fin.elim0)) = fun _ : Fin 1 => a := by
-    intro m; funext i; fin_cases i; simp [initInputs, Fin.castSucc_zero, Fin.cons_zero]
-  have h_last : ∀ m, lastInput (Fin.cons a (Fin.cons m Fin.elim0)) = m := by
-    intro m; simp [lastInput, Fin.cons_one, Fin.cons_zero]
-
-  simp only [h_init, h_last]
-
-  -- Prove by induction on n
-  induction n with
-  | zero =>
-    -- Both sides reduce to: f a = f ((fun _ => a) 0)
-    simp only [Nat.rec_zero]
-  | succ n ih =>
-    -- Both sides reduce to: (n.rec ...).bind (fun acc => g (pair a (pair n acc)))
-    -- The Fin.snoc expressions are definitionally equal: snoc (snoc _ k) acc i = [a,k,acc][i]
-    rfl
+  -- Step 5: Prove semantic equivalence (types are definitionally equal)
+  convert h_final using 1
 
 /-- Minimization preserves URMComputable1.
 
@@ -1030,40 +855,27 @@ theorem URMComputable1.rfind {f : ℕ →. ℕ} (hf : URMComputable1 f) :
     URMComputable1 (fun a => Nat.rfind fun n => (fun m => m = 0) <$> f (Nat.pair a n)) := by
   unfold URMComputable1 at *
   -- Step 1: Define f_adapted via composition with pair_computable
-  -- f_adapted(xy) = f(pair(xy 0, xy 1))
   let pairGs : Fin 1 → (Fin 2 → ℕ) → Part ℕ :=
     fun _ xy => Part.some (Nat.pair (xy 0) (xy 1))
   have h_pair : ∀ i, URMComputable 2 (pairGs i) := fun _ => pair_computable
   have h_adapted := URMComputable.comp_general (m := 1) (n := 2) hf h_pair
-  -- h_adapted : URMComputableSF 2 (compFunction 1 2 (fun x => f (x 0)) pairGs)
 
   -- Step 2: Apply minimization
   have h_min := URMComputable.min h_adapted.toComputable
-  -- h_min : URMComputableSF 1 (μFunction (compFunction ...))
 
   -- Step 3: Convert to goal form
   convert h_min.toComputable using 1
   funext x
-  -- Goal: Nat.rfind (fun n => (· = 0) <$> f (pair (x 0) n))
-  --     = μFunction (compFunction 1 2 ...) x
-  -- Both sides compute Nat.rfind of the same predicate
   simp only [μFunction, μ]
   congr 1
   funext n
-  -- Show checkZero predicates are equal
   simp only [checkZero, extendInputs, compFunction, Part.sequence,
              Part.bind_some, pairGs]
-  -- Both sides are Part.map (· = 0) (f (pair ... ...))
-  -- Simplify Fin.snoc to show equality
   congr 2
   simp only [Part.map_some, Part.bind_some, Fin.cons_zero]
-  -- Show: f (pair (x 0) n) = f (pair (snoc x n 0) (snoc x n 1))
-  -- Unfold Fin.snoc and simplify
   simp only [Fin.snoc, Fin.val_zero, Fin.val_one, Nat.lt_irrefl, dite_false]
-  -- Remaining goal: simplify the conditional and casts
   have h01 : (0 : ℕ) < 1 := by omega
   simp only [h01, ↓reduceDIte]
-  -- The casts are identities on ℕ
   rfl
 
 end URMComputable1Closure
