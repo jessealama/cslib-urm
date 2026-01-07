@@ -421,6 +421,51 @@ theorem prBaseCasePrologue_preserves_high_register (n : ℕ) (pF pG : Program)
     simp only [Instr.writesTo, ne_eq, Option.some.injEq, Nat.zero_add]
     have := primitiveRecursionBase_ge_n n pF pG; omega
 
+/-- After base case prologue, registers in [n..base] are cleared to 0. -/
+theorem prBaseCasePrologue_clears_above_n (n : ℕ) (pF pG : Program) (s : State) (c : Config)
+    (hsteps : Steps (prBaseCasePrologue n pF pG) ⟨0, s⟩ c)
+    (hhalted : c.isHalted (prBaseCasePrologue n pF pG))
+    (r : ℕ) (hr_ge : n ≤ r) (hr_le : r ≤ primitiveRecursionBase n pF pG) :
+    c.state.read r = 0 := by
+  have hsl := prBaseCasePrologue_isStraightLine n pF pG
+  have hk : r < (prBaseCasePrologue n pF pG).length := by
+    simp only [prBaseCasePrologue, List.length_append, clearRegisters_length, copyRegisterRange_length]
+    omega
+  have hwrite : (prBaseCasePrologue n pF pG)[r] = Instr.Z r := by
+    simp only [prBaseCasePrologue]
+    have h_in_clear : r < (clearRegisters (primitiveRecursionBase n pF pG)).length := by
+      simp only [clearRegisters_length]; exact Nat.lt_succ_of_le hr_le
+    rw [List.getElem_append_left h_in_clear]
+    simp only [Program.clearRegisters, List.getElem_map, List.getElem_range]
+  have hnowrite : ∀ j (hj : j < (prBaseCasePrologue n pF pG).length), r < j →
+      ((prBaseCasePrologue n pF pG)[j]).writesTo ≠ some r := by
+    intro j hj hjr
+    simp only [prBaseCasePrologue, List.length_append, clearRegisters_length,
+      copyRegisterRange_length] at hj
+    simp only [prBaseCasePrologue]
+    by_cases hj_clear1 : j < (clearRegisters (primitiveRecursionBase n pF pG) ++
+        copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length
+    · by_cases hj_clear : j < primitiveRecursionBase n pF pG + 1
+      · have h2 : j < (clearRegisters (primitiveRecursionBase n pF pG)).length := by
+          simp only [clearRegisters_length]; exact hj_clear
+        rw [List.getElem_append_left h2]
+        simp only [Program.clearRegisters, List.getElem_map, List.getElem_range,
+          Instr.writesTo, ne_eq, Option.some.injEq]
+        intro heq; exact Nat.ne_of_lt hjr heq.symm
+      · have h2 : ¬ j < (clearRegisters (primitiveRecursionBase n pF pG)).length := by
+          simp only [clearRegisters_length]; omega
+        have h2' : (clearRegisters (primitiveRecursionBase n pF pG)).length ≤ j := Nat.not_lt.mp h2
+        rw [List.getElem_append_right h2']
+        simp only [clearRegisters_length, Program.copyRegisterRange,
+          List.getElem_map, List.getElem_range, Nat.zero_add, Instr.writesTo, ne_eq, Option.some.injEq]
+        simp only [List.length_append, clearRegisters_length, copyRegisterRange_length] at hj_clear1
+        omega
+    · simp only [List.length_append, clearRegisters_length, copyRegisterRange_length] at hj_clear1
+      omega
+  have ⟨hsteps', hhalted', _⟩ := straightLineFinalState_spec hsl s
+  rw [Steps.halts_unique hsteps hhalted hsteps' hhalted']
+  exact straightLine_zeros_register hsl s r r hk hwrite hnowrite
+
 /-- After loop prologue, registers 0..n-1 contain the saved inputs. -/
 theorem prLoopPrologue_restores_inputs (n : ℕ) (pF pG : Program)
     (s : State) (c' : Config)

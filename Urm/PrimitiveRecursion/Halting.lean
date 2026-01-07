@@ -5,6 +5,7 @@ Authors: Jesse Alama
 -/
 
 import Urm.PrimitiveRecursion.Preservation
+import Urm.Composition.Helpers
 import Urm.Embeddings
 import Urm.Shift
 
@@ -226,69 +227,12 @@ noncomputable def prExecuteBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : p
 
   -- State agreement: c_prologue.state agrees with initState on 0..pF.maxRegister
   let initState := (Config.init (List.ofFn inputs)).state
-  have hagree_pF : c_prologue.state.agreeOn initState 0 pF.maxRegister := by
-    intro r _ hr_hi
-    by_cases hr_lt_n : r < n
-    · -- Case r < n: both sides equal inputs r
-      have hleft : c_prologue.state.read r = inputs ⟨r, hr_lt_n⟩ := hR_after_prologue ⟨r, hr_lt_n⟩
-      have hright : initState.read r = inputs ⟨r, hr_lt_n⟩ := by
-        unfold initState Config.init State.fromInputs State.read
-        simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn, hr_lt_n, dite_true, Option.getD_some]
-      rw [hleft, hright]
-    · -- Case r >= n: both sides equal 0
-      have hr_ge_n : n ≤ r := Nat.not_lt.mp hr_lt_n
-      -- Right side: initState.read r = 0 (beyond List.ofFn length)
-      have hright : initState.read r = 0 := by
-        unfold initState Config.init State.fromInputs State.read
-        have hr_ge_n' : ¬ r < n := hr_lt_n
-        simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn, hr_ge_n', dite_false, Option.getD_none]
-      -- Left side: c_prologue.state.read r = 0 (cleared by prologue, not overwritten)
-      have hleft : c_prologue.state.read r = 0 := by
-        have hr_le_base : r ≤ primitiveRecursionBase n pF pG :=
-          Nat.le_trans hr_hi (primitiveRecursionBase_ge_pF n pF pG)
-        -- Use straightLine_zeros_register: Z r at position r, no later writes to r
-        have hk : r < (prBaseCasePrologue n pF pG).length := by
-          simp only [prBaseCasePrologue, List.length_append, clearRegisters_length, copyRegisterRange_length]
-          omega
-        have hwrite : (prBaseCasePrologue n pF pG)[r] = Instr.Z r := by
-          simp only [prBaseCasePrologue]
-          have h_in_clear : r < (clearRegisters (primitiveRecursionBase n pF pG)).length := by
-            simp only [clearRegisters_length]; exact Nat.lt_succ_of_le hr_le_base
-          have h_in_clear_ext : r < (clearRegisters (primitiveRecursionBase n pF pG) ++
-              copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length := by
-            simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]; omega
-          rw [List.getElem_append_left h_in_clear]
-          simp only [Program.clearRegisters, List.getElem_map, List.getElem_range]
-        have hnowrite : ∀ j (hj : j < (prBaseCasePrologue n pF pG).length), r < j →
-            ((prBaseCasePrologue n pF pG)[j]).writesTo ≠ some r := by
-          intro j hj hjr
-          simp only [prBaseCasePrologue, List.length_append, clearRegisters_length,
-            copyRegisterRange_length] at hj
-          simp only [prBaseCasePrologue]
-          by_cases hj_clear1 : j < (clearRegisters (primitiveRecursionBase n pF pG) ++
-              copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length
-          · by_cases hj_clear : j < primitiveRecursionBase n pF pG + 1
-            · -- In clearRegisters: writes to j ≠ r since j > r
-              have h2 : j < (clearRegisters (primitiveRecursionBase n pF pG)).length := by
-                simp only [clearRegisters_length]; exact hj_clear
-              rw [List.getElem_append_left h2]
-              simp only [Program.clearRegisters, List.getElem_map, List.getElem_range,
-                Instr.writesTo, ne_eq, Option.some.injEq]
-              intro heq; exact Nat.ne_of_lt hjr heq.symm
-            · -- In copyRegisterRange: writes to 0 + (j - base - 1) < n ≤ r
-              have h2 : ¬ j < (clearRegisters (primitiveRecursionBase n pF pG)).length := by
-                simp only [clearRegisters_length]; omega
-              have h2' : (clearRegisters (primitiveRecursionBase n pF pG)).length ≤ j := Nat.not_lt.mp h2
-              rw [List.getElem_append_right h2']
-              simp only [clearRegisters_length, Program.copyRegisterRange,
-                List.getElem_map, List.getElem_range, Nat.zero_add, Instr.writesTo, ne_eq, Option.some.injEq]
-              simp only [List.length_append, clearRegisters_length, copyRegisterRange_length] at hj_clear1
-              omega
-          · -- Past prBaseCasePrologue - no more instructions
-            simp only [List.length_append, clearRegisters_length, copyRegisterRange_length] at hj_clear1
-            omega
-        exact straightLine_zeros_register hsl_prologue s r r hk hwrite hnowrite
-      rw [hleft, hright]
+  have hagree_pF : c_prologue.state.agreeOn initState 0 pF.maxRegister :=
+    agreeOn_after_copy_inputs (base := primitiveRecursionBase n pF pG)
+      (fun j hj => hR_after_prologue ⟨j, hj⟩)
+      (fun r hr_ge hr_le => prBaseCasePrologue_clears_above_n n pF pG s c_prologue
+        hsteps_prologue hhalted_prologue r hr_ge hr_le)
+      (primitiveRecursionBase_ge_pF n pF pG)
 
   -- Define c₂ to use agreeOn
   let c₂ : Config := ⟨0, c_prologue.state⟩
@@ -1394,61 +1338,12 @@ theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
       rw [h1, setup.savedInputs_eq i]
     -- State agreement for pF execution
     let initState := (Config.init (List.ofFn inputs)).state
-    have hagree_pF : c_prologue.state.agreeOn initState 0 pF.maxRegister := by
-      intro r _ hr_hi
-      by_cases hr_lt_n : r < n
-      · have hleft : c_prologue.state.read r = inputs ⟨r, hr_lt_n⟩ := hR_after_prologue ⟨r, hr_lt_n⟩
-        have hright : initState.read r = inputs ⟨r, hr_lt_n⟩ := by
-          unfold initState Config.init State.fromInputs State.read
-          simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn, hr_lt_n, dite_true, Option.getD_some]
-        rw [hleft, hright]
-      · have hr_ge_n : n ≤ r := Nat.not_lt.mp hr_lt_n
-        have hright : initState.read r = 0 := by
-          unfold initState Config.init State.fromInputs State.read
-          have hr_ge_n' : ¬ r < n := hr_lt_n
-          simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn, hr_ge_n', dite_false, Option.getD_none]
-        have hleft : c_prologue.state.read r = 0 := by
-          have hr_le_base : r ≤ primitiveRecursionBase n pF pG :=
-            Nat.le_trans hr_hi (primitiveRecursionBase_ge_pF n pF pG)
-          have hk : r < (prBaseCasePrologue n pF pG).length := by
-            simp only [prBaseCasePrologue, List.length_append, clearRegisters_length, copyRegisterRange_length]
-            omega
-          have hwrite : (prBaseCasePrologue n pF pG)[r] = Instr.Z r := by
-            simp only [prBaseCasePrologue]
-            have h_in_clear : r < (clearRegisters (primitiveRecursionBase n pF pG)).length := by
-              simp only [clearRegisters_length]; exact Nat.lt_succ_of_le hr_le_base
-            have h_in_clear_ext : r < (clearRegisters (primitiveRecursionBase n pF pG) ++
-                copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length := by
-              simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]; omega
-            rw [List.getElem_append_left h_in_clear]
-            simp only [Program.clearRegisters, List.getElem_map, List.getElem_range]
-          have hnowrite : ∀ j (hj : j < (prBaseCasePrologue n pF pG).length), r < j →
-              ((prBaseCasePrologue n pF pG)[j]).writesTo ≠ some r := by
-            intro j hj hjr
-            simp only [prBaseCasePrologue, List.length_append, clearRegisters_length,
-              copyRegisterRange_length] at hj
-            simp only [prBaseCasePrologue]
-            by_cases hj_clear1 : j < (clearRegisters (primitiveRecursionBase n pF pG) ++
-                copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length
-            · by_cases hj_clear : j < primitiveRecursionBase n pF pG + 1
-              · have h2 : j < (clearRegisters (primitiveRecursionBase n pF pG)).length := by
-                  simp only [clearRegisters_length]; exact hj_clear
-                rw [List.getElem_append_left h2]
-                simp only [Program.clearRegisters, List.getElem_map, List.getElem_range,
-                  Instr.writesTo, ne_eq, Option.some.injEq]
-                intro heq; exact Nat.ne_of_lt hjr heq.symm
-              · have h2 : ¬ j < (clearRegisters (primitiveRecursionBase n pF pG)).length := by
-                  simp only [clearRegisters_length]; omega
-                have h2' : (clearRegisters (primitiveRecursionBase n pF pG)).length ≤ j := Nat.not_lt.mp h2
-                rw [List.getElem_append_right h2']
-                simp only [clearRegisters_length, Program.copyRegisterRange,
-                  List.getElem_map, List.getElem_range, Nat.zero_add, Instr.writesTo, ne_eq, Option.some.injEq]
-                simp only [List.length_append, clearRegisters_length, copyRegisterRange_length] at hj_clear1
-                omega
-            · simp only [List.length_append, clearRegisters_length, copyRegisterRange_length] at hj_clear1
-              omega
-          exact straightLine_zeros_register hsl_prologue setup.config.state r r hk hwrite hnowrite
-        rw [hleft, hright]
+    have hagree_pF : c_prologue.state.agreeOn initState 0 pF.maxRegister :=
+      agreeOn_after_copy_inputs (base := primitiveRecursionBase n pF pG)
+        (fun j hj => hR_after_prologue ⟨j, hj⟩)
+        (fun r hr_ge hr_le => prBaseCasePrologue_clears_above_n n pF pG setup.config.state c_prologue
+          hsteps_prologue hhalted_prologue r hr_ge hr_le)
+        (primitiveRecursionBase_ge_pF n pF pG)
     -- Now use agreeOn to transfer pF's divergence
     -- If pF doesn't halt on initState, it doesn't halt on c_prologue.state either (by agreeOn)
     have hpF_not_halts' : ¬Halts pF (List.ofFn inputs) := hpF_not_halts
