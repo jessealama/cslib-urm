@@ -43,6 +43,36 @@ namespace Urm
 open Nat (pair unpair)
 open Part
 
+/-! ## Binary Projection Composition Helper -/
+
+/-- The standard binary projections selector: maps 0 ↦ proj_i, 1 ↦ proj_j. -/
+private def binaryProjGs {n : ℕ} (i j : Fin n) : Fin 2 → (Fin n → ℕ) → Part ℕ :=
+  fun k => if k.val = 0 then (fun x => Part.some (x i)) else (fun x => Part.some (x j))
+
+/-- Helper to build a Fin 2 → ℕ from two values. -/
+private def mkPair (a b : ℕ) : Fin 2 → ℕ := Fin.cons a (Fin.cons b Fin.elim0)
+
+@[simp] private theorem mkPair_zero (a b : ℕ) : mkPair a b 0 = a := rfl
+@[simp] private theorem mkPair_one (a b : ℕ) : mkPair a b 1 = b := rfl
+
+/-- compFunction with binary projections equals the function applied to those projections. -/
+private theorem compFunction_binaryProj_eq {n : ℕ} (f : (Fin 2 → ℕ) → Part ℕ) (i j : Fin n) (x : Fin n → ℕ) :
+    compFunction 2 n f (binaryProjGs i j) x = f (mkPair (x i) (x j)) := by
+  simp only [compFunction, binaryProjGs, Part.sequence, Part.bind_some, Part.map_some,
+    Fin.val_zero, ↓reduceIte, Fin.val_succ, Nat.add_one_ne_zero, mkPair]
+
+/-- Compose a 2-ary function with two projections.
+    Given f(a, b) computable and indices i, j, this proves f(x[i], x[j]) is computable. -/
+theorem URMComputable.comp_proj2 {n : ℕ} {f : (Fin 2 → ℕ) → Part ℕ}
+    (hf : URMComputable 2 f) (i j : Fin n) :
+    URMComputable n (fun x => f (mkPair (x i) (x j))) := by
+  have hgs : ∀ k, URMComputable n (binaryProjGs i j k) := by
+    intro k; fin_cases k <;> simp only [binaryProjGs] <;> exact URMComputable.proj_computable n _
+  have h := URMComputable.comp_general hf hgs
+  convert h.toComputable using 1
+  funext x
+  exact (compFunction_binaryProj_eq f i j x).symm
+
 /-! ## Unary Function Wrapper -/
 
 /-- A unary partial function `ℕ →. ℕ` is URM-computable. -/
@@ -263,12 +293,8 @@ private theorem lt_comp_eq (xy : Fin 2 → ℕ) :
 theorem lt_computable : URMComputable 2 (fun xy => Part.some (if xy 0 < xy 1 then 1 else 0)) := by
   -- Step 1: Compose sub with swapped projections to compute (y - x)
   have hRevSub : URMComputableSF 2 (fun xy => Part.some (xy 1 - xy 0)) := by
-    have hgs : ∀ i, URMComputable 2 (ltSwapGs i) := by
-      intro i; fin_cases i <;> simp only [ltSwapGs] <;> exact URMComputable.proj_computable 2 _
-    have h := URMComputable.comp_general (m := 2) (n := 2) sub_computable hgs
-    convert h using 1
-    funext xy
-    exact (lt_rev_sub_eq xy).symm
+    have h := URMComputable.comp_proj2 sub_computable (1 : Fin 2) (0 : Fin 2)
+    simp only [mkPair] at h; exact h.toSF
   -- Step 2: Compose sign with reversed subtraction
   have hLt := URMComputable.comp_general (m := 1) (n := 2)
     sign_computable
@@ -317,12 +343,8 @@ private def leSignXY : (Fin 2 → ℕ) → Part ℕ :=
 private theorem leSignXY_computable : URMComputableSF 2 leSignXY := by
   -- First compose sub with leGs to get x - y
   have hSub : URMComputableSF 2 (fun xy => Part.some (xy 0 - xy 1)) := by
-    have hgs : ∀ i, URMComputable 2 (leGs i) := by
-      intro i; fin_cases i <;> simp only [leGs] <;> exact URMComputable.proj_computable 2 _
-    have h := URMComputable.comp_general (m := 2) (n := 2) sub_computable hgs
-    convert h using 1
-    funext xy
-    exact (le_sub_eq xy).symm
+    have h := URMComputable.comp_proj2 sub_computable (0 : Fin 2) (1 : Fin 2)
+    simp only [mkPair] at h; exact h.toSF
   -- Then compose sign with subtraction
   have h := URMComputable.comp_general (m := 1) (n := 2)
     sign_computable
@@ -422,13 +444,8 @@ private theorem leSwap_comp_eq (xy : Fin 2 → ℕ) :
 
 /-- le(y, x) is computable (le with swapped arguments). -/
 private theorem leSwap_computable : URMComputable 2 (fun xy => Part.some (if xy 1 ≤ xy 0 then 1 else 0)) := by
-  -- Compose le_computable with swapped projections
-  have hgs : ∀ i, URMComputable 2 (leSwapGs i) := by
-    intro i; fin_cases i <;> simp only [leSwapGs] <;> exact URMComputable.proj_computable 2 _
-  have h := URMComputable.comp_general (m := 2) (n := 2) le_computable hgs
-  convert h.toComputable using 1
-  funext xy
-  exact (leSwap_comp_eq xy).symm
+  have h := URMComputable.comp_proj2 le_computable (1 : Fin 2) (0 : Fin 2)
+  simp only [mkPair] at h; exact h
 
 /-- Helper: Composing mul with (le(x,y), le(y,x)) computes equality. -/
 private theorem eq_comp_eq (xy : Fin 2 → ℕ) :
