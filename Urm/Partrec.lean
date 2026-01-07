@@ -319,29 +319,13 @@ private theorem one_minus_sign_sub_eq_le (x y : ℕ) :
     have hsub : x - y ≠ 0 := Nat.sub_ne_zero_of_lt hgt
     simp [hsub, h]
 
-/-- The inner functions for le: standard projections (x, y) for sub. -/
-private def leGs : Fin 2 → (Fin 2 → ℕ) → Part ℕ :=
-  fun i => if i.val = 0 then (fun xy => Part.some (xy 0)) else (fun xy => Part.some (xy 1))
-
-@[simp] private theorem leGs_zero : leGs 0 = fun xy => Part.some (xy 0) := rfl
-@[simp] private theorem leGs_one : leGs 1 = fun xy => Part.some (xy 1) := rfl
-
-/-- Helper: Composing sub with standard projections computes x - y. -/
-private theorem le_sub_eq (xy : Fin 2 → ℕ) :
-    compFunction 2 2 (fun ab => Part.some (ab 0 - ab 1)) leGs xy =
-    Part.some (xy 0 - xy 1) := by
-  have h0 : leGs 0 xy = Part.some (xy 0) := rfl
-  have h1 : leGs (Fin.succ 0) xy = Part.some (xy 1) := rfl
-  simp only [compFunction, Part.sequence, h0, h1, Part.bind_some, Part.map_some]
-  rfl
-
 /-- The intermediate function: sign(x - y). -/
 private def leSignXY : (Fin 2 → ℕ) → Part ℕ :=
   fun xy => Part.some (if xy 0 - xy 1 = 0 then 0 else 1)
 
 /-- sign(x - y) is computable in standard form. -/
 private theorem leSignXY_computable : URMComputableSF 2 leSignXY := by
-  -- First compose sub with leGs to get x - y
+  -- First get x - y via comp_proj2
   have hSub : URMComputableSF 2 (fun xy => Part.some (xy 0 - xy 1)) := by
     have h := URMComputable.comp_proj2 sub_computable (0 : Fin 2) (1 : Fin 2)
     simp only [mkPair] at h; exact h.toSF
@@ -1169,20 +1153,10 @@ theorem URMComputable1.prec {f g : ℕ →. ℕ}
 
   -- Step 1: Build nested pair: (Fin 3 → ℕ) → Part ℕ computing pair(x0, pair(x1, x2))
 
-  -- Inner pair: projects (xka 1, xka 2) then pairs them
-  let innerPairGs : Fin 2 → (Fin 3 → ℕ) → Part ℕ := fun i xka =>
-    if i.val = 0 then Part.some (xka 1) else Part.some (xka 2)
-  have h_innerPairGs : ∀ i, URMComputable 3 (innerPairGs i) := fun i => by
-    fin_cases i <;> simp only [innerPairGs, ↓reduceIte,
-      Nat.one_ne_zero] <;> exact URMComputable.proj_computable _ _
-  have h_innerPair := URMComputable.comp_general (m := 2) (n := 3) pair_computable h_innerPairGs
-
-  -- Prove the composition equals pair(xka 1, xka 2)
-  have h_innerPair_eq : compFunction 2 3 (fun xy => Part.some (Nat.pair (xy 0) (xy 1))) innerPairGs
-      = fun xka => Part.some (Nat.pair (xka 1) (xka 2)) := by
-    funext xka
-    simp only [compFunction, Part.sequence, innerPairGs, Fin.val_zero, ↓reduceIte, Part.bind_some,
-      Part.map_some, Fin.cons_zero, Fin.cons_one, Fin.val_succ, Nat.add_one_ne_zero]
+  -- Inner pair: pair(xka 1, xka 2) via comp_proj2
+  have h_innerPair : URMComputable 3 (fun xka => Part.some (Nat.pair (xka 1) (xka 2))) := by
+    have h := URMComputable.comp_proj2 pair_computable (1 : Fin 3) (2 : Fin 3)
+    simp only [mkPair] at h; exact h
 
   -- Outer pair: projects (xka 0, innerPair) then pairs them
   let outerPairGs : Fin 2 → (Fin 3 → ℕ) → Part ℕ := fun i xka =>
@@ -1193,8 +1167,7 @@ theorem URMComputable1.prec {f g : ℕ →. ℕ}
     · simp only [outerPairGs, ↓reduceIte]
       exact URMComputable.proj_computable _ _
     · simp only [outerPairGs, Nat.one_ne_zero, ↓reduceIte]
-      rw [← h_innerPair_eq]
-      exact h_innerPair.toComputable
+      exact h_innerPair
   have h_nestedPair := URMComputable.comp_general (m := 2) (n := 3) pair_computable h_outerPairGs
 
   -- Prove the composition equals pair(xka 0, pair(xka 1, xka 2))
