@@ -198,6 +198,11 @@ theorem preserves_high_register {c c' : Config} (hsteps : Steps p c c') (r : ℕ
   | refl => rfl
   | head hstep _ ih => rw [ih]; exact Step.preserves_high_register hstep r hr
 
+/-- Aesop-based tactic for step chaining using ReflTransGen constructors.
+    Automatically chains Step hypotheses into a Steps proof. -/
+macro "aesop_steps" : tactic =>
+  `(tactic| aesop (config := { enableSimp := false }) (add safe constructors Relation.ReflTransGen))
+
 end Steps
 
 /-- A program halts on given inputs if there exists a halted configuration reachable from
