@@ -22,24 +22,6 @@ namespace Urm
 
 open Program
 
-/-! ## General register preservation -/
-
-/-- General lemma: pF execution preserves any register beyond its maxRegister. -/
-theorem prPF_preserves_high_reg (pF : Program) (s s' : State)
-    (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') (hstate_eq : c'.state = s')
-    (r : ℕ) (hr : pF.maxRegister < r) :
-    s'.read r = s.read r := by
-  subst hstate_eq
-  exact Steps.preserves_high_register hsteps r hr
-
-/-- General lemma: pG execution preserves any register beyond its maxRegister. -/
-theorem prPG_preserves_high_reg (pG : Program) (s s' : State)
-    (c' : Config) (hsteps : Steps pG ⟨0, s⟩ c') (hstate_eq : c'.state = s')
-    (r : ℕ) (hr : pG.maxRegister < r) :
-    s'.read r = s.read r := by
-  subst hstate_eq
-  exact Steps.preserves_high_register hsteps r hr
-
 /-! ## Setup Phase Lemmas -/
 
 /-- Setup phase is a straight-line program. -/
@@ -65,77 +47,98 @@ theorem prLoopPrologue_isStraightLine (n : ℕ) (pF pG : Program) :
           copyRegisterRange_isStraightLine (prSavedInputsStart n pF pG) 0 n⟩, ?_⟩
   simp only [List.all_cons, List.all_nil, Instr.isNonJumping, Bool.and_self]
 
-/-! ## Specific preservation lemmas -/
+/-! ## Generic preservation lemmas
 
-/-- pF preserves saved inputs. -/
+Any program bounded by primitiveRecursionBase preserves high registers. -/
+
+/-- Generic: bounded program preserves saved inputs. -/
+theorem program_preserves_prSavedInputs (n : ℕ) (pF pG : Program) (p : Program)
+    (hp : p.maxRegister ≤ primitiveRecursionBase n pF pG) (s : State)
+    (c' : Config) (hsteps : Steps p ⟨0, s⟩ c') (i : Fin n) :
+    c'.state.read (prSavedInputsStart n pF pG + i) = s.read (prSavedInputsStart n pF pG + i) :=
+  Steps.preserves_high_register hsteps _ (program_doesnt_touch_prSavedInputs n pF pG p hp i)
+
+/-- Generic: bounded program preserves savedY register. -/
+theorem program_preserves_prSavedYReg (n : ℕ) (pF pG : Program) (p : Program)
+    (hp : p.maxRegister ≤ primitiveRecursionBase n pF pG) (s : State)
+    (c' : Config) (hsteps : Steps p ⟨0, s⟩ c') :
+    c'.state.read (prSavedYReg n pF pG) = s.read (prSavedYReg n pF pG) :=
+  Steps.preserves_high_register hsteps _ (program_doesnt_touch_prSavedYReg n pF pG p hp)
+
+/-- Generic: bounded program preserves counter register. -/
+theorem program_preserves_prCounterReg (n : ℕ) (pF pG : Program) (p : Program)
+    (hp : p.maxRegister ≤ primitiveRecursionBase n pF pG) (s : State)
+    (c' : Config) (hsteps : Steps p ⟨0, s⟩ c') :
+    c'.state.read (prCounterReg n pF pG) = s.read (prCounterReg n pF pG) :=
+  Steps.preserves_high_register hsteps _ (program_doesnt_touch_prCounterReg n pF pG p hp)
+
+/-- Generic: bounded program preserves accumulator register. -/
+theorem program_preserves_prAccumulatorReg (n : ℕ) (pF pG : Program) (p : Program)
+    (hp : p.maxRegister ≤ primitiveRecursionBase n pF pG) (s : State)
+    (c' : Config) (hsteps : Steps p ⟨0, s⟩ c') :
+    c'.state.read (prAccumulatorReg n pF pG) = s.read (prAccumulatorReg n pF pG) :=
+  Steps.preserves_high_register hsteps _ (program_doesnt_touch_prAccumulatorReg n pF pG p hp)
+
+/-- Generic: bounded program preserves zero register. -/
+theorem program_preserves_prZeroReg (n : ℕ) (pF pG : Program) (p : Program)
+    (hp : p.maxRegister ≤ primitiveRecursionBase n pF pG) (s : State)
+    (c' : Config) (hsteps : Steps p ⟨0, s⟩ c') :
+    c'.state.read (prZeroReg n pF pG) = s.read (prZeroReg n pF pG) :=
+  Steps.preserves_high_register hsteps _ (program_doesnt_touch_prZeroReg n pF pG p hp)
+
+/-! ## pF preservation lemmas -/
+
 theorem pF_preserves_prSavedInputs (n : ℕ) (pF pG : Program) (s : State)
     (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') (i : Fin n) :
-    c'.state.read (prSavedInputsStart n pF pG + i) = s.read (prSavedInputsStart n pF pG + i) := by
-  exact prPF_preserves_high_reg pF s c'.state c' hsteps rfl
-    (prSavedInputsStart n pF pG + i) (pF_doesnt_touch_prSavedInputs n pF pG i)
+    c'.state.read (prSavedInputsStart n pF pG + i) = s.read (prSavedInputsStart n pF pG + i) :=
+  program_preserves_prSavedInputs n pF pG pF (primitiveRecursionBase_ge_pF n pF pG) s c' hsteps i
 
-/-- pF preserves savedY register. -/
 theorem pF_preserves_prSavedYReg (n : ℕ) (pF pG : Program) (s : State)
     (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') :
-    c'.state.read (prSavedYReg n pF pG) = s.read (prSavedYReg n pF pG) := by
-  exact prPF_preserves_high_reg pF s c'.state c' hsteps rfl
-    (prSavedYReg n pF pG) (pF_doesnt_touch_prSavedYReg n pF pG)
+    c'.state.read (prSavedYReg n pF pG) = s.read (prSavedYReg n pF pG) :=
+  program_preserves_prSavedYReg n pF pG pF (primitiveRecursionBase_ge_pF n pF pG) s c' hsteps
 
-/-- pF preserves counter register. -/
 theorem pF_preserves_prCounterReg (n : ℕ) (pF pG : Program) (s : State)
     (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') :
-    c'.state.read (prCounterReg n pF pG) = s.read (prCounterReg n pF pG) := by
-  exact prPF_preserves_high_reg pF s c'.state c' hsteps rfl
-    (prCounterReg n pF pG) (pF_doesnt_touch_prCounterReg n pF pG)
+    c'.state.read (prCounterReg n pF pG) = s.read (prCounterReg n pF pG) :=
+  program_preserves_prCounterReg n pF pG pF (primitiveRecursionBase_ge_pF n pF pG) s c' hsteps
 
-/-- pF preserves accumulator register. -/
 theorem pF_preserves_prAccumulatorReg (n : ℕ) (pF pG : Program) (s : State)
     (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') :
-    c'.state.read (prAccumulatorReg n pF pG) = s.read (prAccumulatorReg n pF pG) := by
-  exact prPF_preserves_high_reg pF s c'.state c' hsteps rfl
-    (prAccumulatorReg n pF pG) (pF_doesnt_touch_prAccumulatorReg n pF pG)
+    c'.state.read (prAccumulatorReg n pF pG) = s.read (prAccumulatorReg n pF pG) :=
+  program_preserves_prAccumulatorReg n pF pG pF (primitiveRecursionBase_ge_pF n pF pG) s c' hsteps
 
-/-- pF preserves zero register. -/
 theorem pF_preserves_prZeroReg (n : ℕ) (pF pG : Program) (s : State)
     (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') :
-    c'.state.read (prZeroReg n pF pG) = s.read (prZeroReg n pF pG) := by
-  exact prPF_preserves_high_reg pF s c'.state c' hsteps rfl
-    (prZeroReg n pF pG) (pF_doesnt_touch_prZeroReg n pF pG)
+    c'.state.read (prZeroReg n pF pG) = s.read (prZeroReg n pF pG) :=
+  program_preserves_prZeroReg n pF pG pF (primitiveRecursionBase_ge_pF n pF pG) s c' hsteps
 
-/-- pG preserves saved inputs. -/
+/-! ## pG preservation lemmas -/
+
 theorem pG_preserves_prSavedInputs (n : ℕ) (pF pG : Program) (s : State)
     (c' : Config) (hsteps : Steps pG ⟨0, s⟩ c') (i : Fin n) :
-    c'.state.read (prSavedInputsStart n pF pG + i) = s.read (prSavedInputsStart n pF pG + i) := by
-  exact prPG_preserves_high_reg pG s c'.state c' hsteps rfl
-    (prSavedInputsStart n pF pG + i) (pG_doesnt_touch_prSavedInputs n pF pG i)
+    c'.state.read (prSavedInputsStart n pF pG + i) = s.read (prSavedInputsStart n pF pG + i) :=
+  program_preserves_prSavedInputs n pF pG pG (primitiveRecursionBase_ge_pG n pF pG) s c' hsteps i
 
-/-- pG preserves savedY register. -/
 theorem pG_preserves_prSavedYReg (n : ℕ) (pF pG : Program) (s : State)
     (c' : Config) (hsteps : Steps pG ⟨0, s⟩ c') :
-    c'.state.read (prSavedYReg n pF pG) = s.read (prSavedYReg n pF pG) := by
-  exact prPG_preserves_high_reg pG s c'.state c' hsteps rfl
-    (prSavedYReg n pF pG) (pG_doesnt_touch_prSavedYReg n pF pG)
+    c'.state.read (prSavedYReg n pF pG) = s.read (prSavedYReg n pF pG) :=
+  program_preserves_prSavedYReg n pF pG pG (primitiveRecursionBase_ge_pG n pF pG) s c' hsteps
 
-/-- pG preserves counter register. -/
 theorem pG_preserves_prCounterReg (n : ℕ) (pF pG : Program) (s : State)
     (c' : Config) (hsteps : Steps pG ⟨0, s⟩ c') :
-    c'.state.read (prCounterReg n pF pG) = s.read (prCounterReg n pF pG) := by
-  exact prPG_preserves_high_reg pG s c'.state c' hsteps rfl
-    (prCounterReg n pF pG) (pG_doesnt_touch_prCounterReg n pF pG)
+    c'.state.read (prCounterReg n pF pG) = s.read (prCounterReg n pF pG) :=
+  program_preserves_prCounterReg n pF pG pG (primitiveRecursionBase_ge_pG n pF pG) s c' hsteps
 
-/-- pG preserves accumulator register. -/
 theorem pG_preserves_prAccumulatorReg (n : ℕ) (pF pG : Program) (s : State)
     (c' : Config) (hsteps : Steps pG ⟨0, s⟩ c') :
-    c'.state.read (prAccumulatorReg n pF pG) = s.read (prAccumulatorReg n pF pG) := by
-  exact prPG_preserves_high_reg pG s c'.state c' hsteps rfl
-    (prAccumulatorReg n pF pG) (pG_doesnt_touch_prAccumulatorReg n pF pG)
+    c'.state.read (prAccumulatorReg n pF pG) = s.read (prAccumulatorReg n pF pG) :=
+  program_preserves_prAccumulatorReg n pF pG pG (primitiveRecursionBase_ge_pG n pF pG) s c' hsteps
 
-/-- pG preserves zero register. -/
 theorem pG_preserves_prZeroReg (n : ℕ) (pF pG : Program) (s : State)
     (c' : Config) (hsteps : Steps pG ⟨0, s⟩ c') :
-    c'.state.read (prZeroReg n pF pG) = s.read (prZeroReg n pF pG) := by
-  exact prPG_preserves_high_reg pG s c'.state c' hsteps rfl
-    (prZeroReg n pF pG) (pG_doesnt_touch_prZeroReg n pF pG)
+    c'.state.read (prZeroReg n pF pG) = s.read (prZeroReg n pF pG) :=
+  program_preserves_prZeroReg n pF pG pG (primitiveRecursionBase_ge_pG n pF pG) s c' hsteps
 
 /-! ## Setup Phase Invariants -/
 

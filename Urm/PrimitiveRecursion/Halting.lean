@@ -345,7 +345,7 @@ noncomputable def prExecuteBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : p
   -- Preservation lemmas for high registers through pF execution
   have hpF_preserves_high : ∀ r, pF.maxRegister < r → c_pF'.state.read r = c_prologue.state.read r := by
     intro r hr
-    exact prPF_preserves_high_reg pF c_prologue.state c_pF'.state c_pF' hsteps_pF' rfl r hr
+    exact Steps.preserves_high_register hsteps_pF' r hr
 
   have hprologue_preserves : ∀ r, primitiveRecursionBase n pF pG < r → c_prologue.state.read r = s.read r :=
     fun r hr => prBaseCasePrologue_preserves_high_register n pF pG s c_prologue hsteps_prologue hhalted_prologue r hr
@@ -360,51 +360,27 @@ noncomputable def prExecuteBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : p
       simp only [finalState, State.write_read_same]
       exact hpF_result_eq,
     savedInputs_preserved := fun i => by
-      have hne : prSavedInputsStart n pF pG + ↑i ≠ prAccumulatorReg n pF pG := by
-        have := prSavedInputsStart_gt_base n pF pG
-        have := prAccumulatorReg_gt_base n pF pG
-        simp only [prSavedInputsStart, prAccumulatorReg]
-        omega
       show finalState.read _ = s.read _
-      simp only [finalState, State.write_read_diff _ _ _ _ hne]
-      have h1 := pF_preserves_prSavedInputs n pF pG c_prologue.state c_pF' hsteps_pF' i
+      simp only [finalState, State.write_read_diff _ _ _ _ (prSavedInput_ne_prAccumulatorReg n pF pG i)]
       have hgt : primitiveRecursionBase n pF pG < prSavedInputsStart n pF pG + i := by
         have := prSavedInputsStart_gt_base n pF pG; omega
-      have h2 := hprologue_preserves (prSavedInputsStart n pF pG + i) hgt
-      rw [h1, h2],
+      rw [pF_preserves_prSavedInputs n pF pG c_prologue.state c_pF' hsteps_pF' i,
+          hprologue_preserves (prSavedInputsStart n pF pG + i) hgt],
     savedY_preserved := by
-      have hne : prSavedYReg n pF pG ≠ prAccumulatorReg n pF pG := by
-        have := prSavedYReg_gt_base n pF pG
-        have := prAccumulatorReg_gt_base n pF pG
-        simp only [prSavedYReg, prAccumulatorReg]
-        omega
       show finalState.read _ = s.read _
-      simp only [finalState, State.write_read_diff _ _ _ _ hne]
-      have h1 := pF_preserves_prSavedYReg n pF pG c_prologue.state c_pF' hsteps_pF'
-      have h2 := hprologue_preserves (prSavedYReg n pF pG) (prSavedYReg_gt_base n pF pG)
-      rw [h1, h2],
+      simp only [finalState, State.write_read_diff _ _ _ _ (prSavedYReg_ne_prAccumulatorReg n pF pG)]
+      rw [pF_preserves_prSavedYReg n pF pG c_prologue.state c_pF' hsteps_pF',
+          hprologue_preserves _ (prSavedYReg_gt_base n pF pG)],
     counter_preserved := by
-      have hne : prCounterReg n pF pG ≠ prAccumulatorReg n pF pG := by
-        have := prCounterReg_gt_base n pF pG
-        have := prAccumulatorReg_gt_base n pF pG
-        simp only [prCounterReg, prAccumulatorReg]
-        omega
       show finalState.read _ = s.read _
-      simp only [finalState, State.write_read_diff _ _ _ _ hne]
-      have h1 := pF_preserves_prCounterReg n pF pG c_prologue.state c_pF' hsteps_pF'
-      have h2 := hprologue_preserves (prCounterReg n pF pG) (prCounterReg_gt_base n pF pG)
-      rw [h1, h2],
+      simp only [finalState, State.write_read_diff _ _ _ _ (prCounterReg_ne_prAccumulatorReg n pF pG)]
+      rw [pF_preserves_prCounterReg n pF pG c_prologue.state c_pF' hsteps_pF',
+          hprologue_preserves _ (prCounterReg_gt_base n pF pG)],
     zero_preserved := by
-      have hne : prZeroReg n pF pG ≠ prAccumulatorReg n pF pG := by
-        have := prZeroReg_gt_base n pF pG
-        have := prAccumulatorReg_gt_base n pF pG
-        simp only [prZeroReg, prAccumulatorReg]
-        omega
       show finalState.read _ = s.read _
-      simp only [finalState, State.write_read_diff _ _ _ _ hne]
-      have h1 := pF_preserves_prZeroReg n pF pG c_prologue.state c_pF' hsteps_pF'
-      have h2 := hprologue_preserves (prZeroReg n pF pG) (prZeroReg_gt_base n pF pG)
-      rw [h1, h2]
+      simp only [finalState, State.write_read_diff _ _ _ _ (prAccumulatorReg_ne_prZeroReg n pF pG).symm]
+      rw [pF_preserves_prZeroReg n pF pG c_prologue.state c_pF' hsteps_pF',
+          hprologue_preserves _ (prZeroReg_gt_base n pF pG)]
   }
 
 /-! ## Loop Iteration -/
@@ -753,7 +729,7 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
     -- Preservation lemmas
     have hpG_preserves_high : ∀ r, pG.maxRegister < r → c_pG'.state.read r = c_prologue.state.read r := by
       intro r hr
-      exact prPG_preserves_high_reg pG c_prologue.state c_pG'.state c_pG' hsteps_pG' rfl r hr
+      exact Steps.preserves_high_register hsteps_pG' r hr
 
     have hprologue_preserves : ∀ r, primitiveRecursionBase n pF pG < r → c_prologue.state.read r = s.read r :=
       fun r hr => prLoopPrologue_preserves_high_register n pF pG s c_prologue hsteps_prologue hhalted_prologue r hr
@@ -798,52 +774,25 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
         simp only [state_after_T, State.write_read_same]
         exact hpG_result_eq
       savedInputs_preserved := fun i => by
-        have hne_counter : prCounterReg n pF pG ≠ prSavedInputsStart n pF pG + ↑i := by
-          have := prSavedInputsStart_gt_base n pF pG
-          have := prCounterReg_gt_base n pF pG
-          simp only [prSavedInputsStart, prCounterReg]; omega
-        have hne_acc : prAccumulatorReg n pF pG ≠ prSavedInputsStart n pF pG + ↑i := by
-          have := prSavedInputsStart_gt_base n pF pG
-          have := prAccumulatorReg_gt_base n pF pG
-          simp only [prSavedInputsStart, prAccumulatorReg]; omega
         show state_after_S.read _ = s.read _
-        simp only [state_after_S, State.write_read_diff _ _ _ _ hne_counter.symm]
-        simp only [state_after_T, State.write_read_diff _ _ _ _ hne_acc.symm]
-        have h1 := pG_preserves_prSavedInputs n pF pG c_prologue.state c_pG' hsteps_pG' i
+        simp only [state_after_S, State.write_read_diff _ _ _ _ (prSavedInput_ne_prCounterReg n pF pG i)]
+        simp only [state_after_T, State.write_read_diff _ _ _ _ (prSavedInput_ne_prAccumulatorReg n pF pG i)]
         have hgt : primitiveRecursionBase n pF pG < prSavedInputsStart n pF pG + i := by
           have := prSavedInputsStart_gt_base n pF pG; omega
-        have h2 := hprologue_preserves (prSavedInputsStart n pF pG + i) hgt
-        rw [h1, h2]
+        rw [pG_preserves_prSavedInputs n pF pG c_prologue.state c_pG' hsteps_pG' i,
+            hprologue_preserves (prSavedInputsStart n pF pG + i) hgt]
       savedY_preserved := by
-        have hne_counter : prCounterReg n pF pG ≠ prSavedYReg n pF pG := by
-          have := prSavedYReg_gt_base n pF pG
-          have := prCounterReg_gt_base n pF pG
-          simp only [prSavedYReg, prCounterReg]; omega
-        have hne_acc : prAccumulatorReg n pF pG ≠ prSavedYReg n pF pG := by
-          have := prSavedYReg_gt_base n pF pG
-          have := prAccumulatorReg_gt_base n pF pG
-          simp only [prSavedYReg, prAccumulatorReg]; omega
         show state_after_S.read _ = s.read _
-        simp only [state_after_S, State.write_read_diff _ _ _ _ hne_counter.symm]
-        simp only [state_after_T, State.write_read_diff _ _ _ _ hne_acc.symm]
-        have h1 := pG_preserves_prSavedYReg n pF pG c_prologue.state c_pG' hsteps_pG'
-        have h2 := hprologue_preserves (prSavedYReg n pF pG) (prSavedYReg_gt_base n pF pG)
-        rw [h1, h2]
+        simp only [state_after_S, State.write_read_diff _ _ _ _ (prSavedYReg_ne_prCounterReg n pF pG)]
+        simp only [state_after_T, State.write_read_diff _ _ _ _ (prSavedYReg_ne_prAccumulatorReg n pF pG)]
+        rw [pG_preserves_prSavedYReg n pF pG c_prologue.state c_pG' hsteps_pG',
+            hprologue_preserves _ (prSavedYReg_gt_base n pF pG)]
       zero_preserved := by
-        have hne_counter : prCounterReg n pF pG ≠ prZeroReg n pF pG := by
-          have := prZeroReg_gt_base n pF pG
-          have := prCounterReg_gt_base n pF pG
-          simp only [prZeroReg, prCounterReg]; omega
-        have hne_acc : prAccumulatorReg n pF pG ≠ prZeroReg n pF pG := by
-          have := prZeroReg_gt_base n pF pG
-          have := prAccumulatorReg_gt_base n pF pG
-          simp only [prZeroReg, prAccumulatorReg]; omega
         show state_after_S.read _ = s.read _
-        simp only [state_after_S, State.write_read_diff _ _ _ _ hne_counter.symm]
-        simp only [state_after_T, State.write_read_diff _ _ _ _ hne_acc.symm]
-        have h1 := pG_preserves_prZeroReg n pF pG c_prologue.state c_pG' hsteps_pG'
-        have h2 := hprologue_preserves (prZeroReg n pF pG) (prZeroReg_gt_base n pF pG)
-        rw [h1, h2]
+        simp only [state_after_S, State.write_read_diff _ _ _ _ (prCounterReg_ne_prZeroReg n pF pG).symm]
+        simp only [state_after_T, State.write_read_diff _ _ _ _ (prAccumulatorReg_ne_prZeroReg n pF pG).symm]
+        rw [pG_preserves_prZeroReg n pF pG c_prologue.state c_pG' hsteps_pG',
+            hprologue_preserves _ (prZeroReg_gt_base n pF pG)]
     }
 
 /-! ## K Iterations -/
