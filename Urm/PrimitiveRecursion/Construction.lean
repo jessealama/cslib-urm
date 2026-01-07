@@ -197,49 +197,13 @@ def primitiveRecursionProgram (n : ℕ) (pF pG : Program) : Program :=
 
 /-! ## PC position lemmas -/
 
-theorem prLoopCheckPC_eq (n : ℕ) (pF pG : Program) :
-    prLoopCheckPC n pF pG = (prSetupPhase n pF pG).length + (prBaseCasePhase n pF pG).length := by
-  simp only [prLoopCheckPC, prSetupPhase_length, prBaseCasePhase_length]
-
 theorem prLoopBodyPC_eq (n : ℕ) (pF pG : Program) :
     prLoopBodyPC n pF pG = (prSetupPhase n pF pG).length +
       (prBaseCasePhase n pF pG).length + (prLoopCheck n pF pG).length := by
   simp only [prLoopBodyPC, prLoopCheckPC, prSetupPhase_length,
     prBaseCasePhase_length, prLoopCheck_length]
 
-theorem prOutputPC_eq (n : ℕ) (pF pG : Program) :
-    prOutputPC n pF pG = (prSetupPhase n pF pG).length +
-      (prBaseCasePhase n pF pG).length + (prLoopCheck n pF pG).length +
-      (prLoopBody n pF pG).length := by
-  simp only [prOutputPC, prLoopBodyPC, prLoopCheckPC, prSetupPhase_length,
-    prBaseCasePhase_length, prLoopCheck_length, prLoopBody_length]
-
-theorem prPFOffset_eq (n : ℕ) (pF pG : Program) :
-    prPFOffset n pF pG = (prSetupPhase n pF pG).length + (prBaseCasePrologue n pF pG).length := by
-  simp only [prPFOffset, prSetupPhaseLength, prBaseCasePrologueLength,
-    prSetupPhase_length, prBaseCasePrologue_length]
-
-theorem prPGOffset_eq (n : ℕ) (pF pG : Program) :
-    prPGOffset n pF pG = (prSetupPhase n pF pG).length +
-      (prBaseCasePhase n pF pG).length + (prLoopCheck n pF pG).length +
-      (prLoopPrologue n pF pG).length := by
-  simp only [prPGOffset, prLoopBodyPC, prLoopCheckPC, prLoopPrologueLength,
-    prSetupPhase_length, prBaseCasePhase_length, prLoopCheck_length, prLoopPrologue_length]
-
-/-! ## Alternative program structure decompositions -/
-
-theorem primitiveRecursionProgram_eq_phases (n : ℕ) (pF pG : Program) :
-    primitiveRecursionProgram n pF pG =
-      prSetupPhase n pF pG ++
-      prBaseCasePhase n pF pG ++
-      prLoopCheck n pF pG ++
-      prLoopBody n pF pG ++
-      prOutputPhase n pF pG := rfl
-
 /-! ## Key instruction access lemmas -/
-
-/-- PC at start of loop check. -/
-def prLoopCheckInstrPC (n : ℕ) (pF pG : Program) : ℕ := prLoopCheckPC n pF pG
 
 /-- The loop check instruction is a J comparing counter to savedY. -/
 theorem instr_at_loopCheck (n : ℕ) (pF pG : Program) :

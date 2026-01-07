@@ -103,11 +103,6 @@ theorem pF_preserves_prCounterReg (n : ℕ) (pF pG : Program) (s : State)
     c'.state.read (prCounterReg n pF pG) = s.read (prCounterReg n pF pG) :=
   program_preserves_prCounterReg n pF pG pF (primitiveRecursionBase_ge_pF n pF pG) s c' hsteps
 
-theorem pF_preserves_prAccumulatorReg (n : ℕ) (pF pG : Program) (s : State)
-    (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') :
-    c'.state.read (prAccumulatorReg n pF pG) = s.read (prAccumulatorReg n pF pG) :=
-  program_preserves_prAccumulatorReg n pF pG pF (primitiveRecursionBase_ge_pF n pF pG) s c' hsteps
-
 theorem pF_preserves_prZeroReg (n : ℕ) (pF pG : Program) (s : State)
     (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') :
     c'.state.read (prZeroReg n pF pG) = s.read (prZeroReg n pF pG) :=
@@ -129,11 +124,6 @@ theorem pG_preserves_prCounterReg (n : ℕ) (pF pG : Program) (s : State)
     (c' : Config) (hsteps : Steps pG ⟨0, s⟩ c') :
     c'.state.read (prCounterReg n pF pG) = s.read (prCounterReg n pF pG) :=
   program_preserves_prCounterReg n pF pG pG (primitiveRecursionBase_ge_pG n pF pG) s c' hsteps
-
-theorem pG_preserves_prAccumulatorReg (n : ℕ) (pF pG : Program) (s : State)
-    (c' : Config) (hsteps : Steps pG ⟨0, s⟩ c') :
-    c'.state.read (prAccumulatorReg n pF pG) = s.read (prAccumulatorReg n pF pG) :=
-  program_preserves_prAccumulatorReg n pF pG pG (primitiveRecursionBase_ge_pG n pF pG) s c' hsteps
 
 theorem pG_preserves_prZeroReg (n : ℕ) (pF pG : Program) (s : State)
     (c' : Config) (hsteps : Steps pG ⟨0, s⟩ c') :

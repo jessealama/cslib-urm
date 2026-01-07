@@ -133,28 +133,6 @@ theorem URMComputable.comp_unary_total {n : ℕ} {f : (Fin 1 → ℕ) → Part �
 def URMComputable1 (f : ℕ →. ℕ) : Prop :=
   URMComputable 1 (fun x => f (x 0))
 
-namespace URMComputable1
-
-/-! ## Basic Lemmas -/
-
-/-- Convert between URMComputable 1 and URMComputable1 -/
-theorem of_URMComputable {f : (Fin 1 → ℕ) → Part ℕ}
-    (hf : URMComputable 1 f) :
-    URMComputable1 (fun n => f (fun _ => n)) := by
-  unfold URMComputable1
-  convert hf using 1
-  ext x
-  -- Goal: (fun n => f (fun _ => n)) (x 0) = f x
-  -- Since x : Fin 1 → ℕ, we have (fun _ => x 0) = x
-  have h : (fun _ : Fin 1 => x 0) = x := by ext i; simp [Fin.eq_zero i]
-  simp only [h]
-
-theorem to_URMComputable {f : ℕ →. ℕ}
-    (hf : URMComputable1 f) : URMComputable 1 (fun x => f (x 0)) :=
-  hf
-
-end URMComputable1
-
 /-! ## Arithmetic Helpers -/
 
 section Arithmetic
@@ -400,17 +378,6 @@ private theorem le_mul_le_swap_eq_eq (x y : ℕ) :
 private theorem leSwap_computable : URMComputable 2 (fun xy => Part.some (if xy 1 ≤ xy 0 then 1 else 0)) := by
   have h := URMComputable.comp_proj2 le_computable (1 : Fin 2) (0 : Fin 2)
   simp only [mkPair] at h; exact h
-
-/-- Equality check returns 1 if x = y, else 0.
-    eq(x, y) = le(x, y) * le(y, x) -/
-theorem eq_computable : URMComputable 2 (fun xy => Part.some (if xy 0 = xy 1 then 1 else 0)) := by
-  have h := URMComputable.comp_binary_total mul_computable
-    le_computable
-    leSwap_computable
-  convert h using 1
-  funext xy
-  simp only [mkPair_zero, mkPair_one]
-  exact congrArg Part.some (le_mul_le_swap_eq_eq (xy 0) (xy 1)).symm
 
 end Arithmetic
 
