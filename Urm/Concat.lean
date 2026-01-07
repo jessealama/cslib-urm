@@ -179,18 +179,6 @@ theorem Steps.concat_right {c c' : Config}
     have hstep' := Step.concat_right (p1 := p1) (Step.pc_lt_length hstep) hstep
     exact Relation.ReflTransGen.head hstep' ih
 
-/-- Multi-step in the second part of a concatenated program (interior version).
-Unlike concat_right, this version does NOT require the final config to be halted.
-The proof works because each stepping config must have pc < p2.length. -/
-theorem Steps.concat_right_interior {c c' : Config}
-    (hsteps : Steps p2 c c') :
-    Steps (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ ⟨c'.pc + p1.length, c'.state⟩ := by
-  induction hsteps using Relation.ReflTransGen.head_induction_on with
-  | refl => exact Relation.ReflTransGen.refl
-  | @head a b hstep hrest ih =>
-    have hstep' := Step.concat_right (p1 := p1) (Step.pc_lt_length hstep) hstep
-    exact Relation.ReflTransGen.head hstep' ih
-
 /-- Multi-step from within p1 (interior version, no halting required).
 The proof works because each stepping config must have pc < p1.length. -/
 theorem Steps.concat_left_prefix_interior {c c' : Config}

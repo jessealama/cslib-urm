@@ -220,20 +220,6 @@ theorem Instr.capJump_of_hasBoundedJump {instr : Instr} {len : ℕ}
   | Z _ | S _ | T _ _ => rfl
   | J m n q => simp only [hasBoundedJump, decide_eq_true_eq] at h; simp only [capJump, Nat.min_eq_left h]
 
-/-- toStandardForm is identity for programs already in standard form. -/
-theorem Program.toStandardForm_of_isStandardForm {p : Program}
-    (h : p.IsStandardForm) : p.toStandardForm = p := by
-  unfold toStandardForm
-  unfold IsStandardForm isStandardForm at h
-  rw [List.all_eq_true] at h
-  have heq : p.map (Instr.capJump p.length) = p.map id := by
-    apply List.map_congr_left
-    intro instr hinstr
-    simp only [id_eq]
-    exact Instr.capJump_of_hasBoundedJump (h instr hinstr)
-  simp only [List.map_id] at heq
-  exact heq
-
 /-! ### Instruction Access in toStandardForm -/
 
 /-- Accessing an instruction in toStandardForm gives the capJump'd instruction. -/
