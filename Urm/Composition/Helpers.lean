@@ -193,4 +193,19 @@ theorem clearRegisters_exec (maxReg : ℕ) (s : State) :
   exact ⟨c, hsteps, hhalted, hpc, fun r hr => hstate_eq ▸ clearRegisters_zeros' maxReg s r hr,
     fun r hr => hstate_eq ▸ clearRegisters_preserves_above' maxReg s r hr⟩
 
+/-! ## State Agreement Helpers -/
+
+/-- Build agreeOn proof for state after copying inputs and clearing higher registers.
+    This abstracts the common `by_cases hr_n : r < n` pattern used in gPhase proofs. -/
+theorem agreeOn_after_copy_inputs {n base : ℕ} {s : State} {inputs : Fin n → ℕ}
+    (hInputs : ∀ j : ℕ, (hj : j < n) → s.read j = inputs ⟨j, hj⟩)
+    (hZeros : ∀ r, n ≤ r → r ≤ base → s.read r = 0) {p : Program}
+    (hp_max : p.maxRegister ≤ base) :
+    s.agreeOn (State.fromInputs (List.ofFn inputs)) 0 p.maxRegister := by
+  intro r _hr0 hr_max
+  by_cases hr_n : r < n
+  · rw [hInputs r hr_n]; simp [State.fromInputs, State.read, hr_n]
+  · rw [hZeros r (Nat.le_of_not_lt hr_n) (Nat.le_trans hr_max hp_max)]
+    simp [State.fromInputs, State.read, hr_n]
+
 end Urm
