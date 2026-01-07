@@ -251,7 +251,7 @@ private theorem configRegList_getElem (bound : ℕ) (c : Config) (i : ℕ) (hi :
   simp only [configRegList, List.getElem_ofFn]
 
 /-- Setting element in configRegList corresponds to state write. -/
-private theorem configRegList_set (bound : ℕ) (c : Config) (r v : ℕ) (hr : r ≤ bound) :
+private theorem configRegList_set (bound : ℕ) (c : Config) (r v : ℕ) :
     (configRegList bound c).set r v = configRegList bound ⟨c.pc, c.state.write r v⟩ := by
   apply List.ext_getElem
   · simp
@@ -279,7 +279,7 @@ theorem updateNthEncoded_encodeConfig (bound : ℕ) (c : Config) (r v : ℕ) (hr
   rw [updateNthEncoded_encodeRegs _ _ _ hr']
   congr 1
   -- The pc doesn't affect registers, and state.write r v matches set r v
-  rw [configRegList_set bound c r v hr]
+  rw [configRegList_set bound c r v]
   -- configRegList only depends on state, not pc
   rfl
 
@@ -288,7 +288,7 @@ theorem updateNthEncoded_encodeConfig (bound : ℕ) (c : Config) (r v : ℕ) (hr
 -- Per-instruction correctness lemmas to avoid timeout
 
 /-- Helper: List.ofFn set equals ofFn of write for registers. -/
-private theorem ofFn_set_eq_ofFn_write (bound : ℕ) (c : Config) (r v : ℕ) (hr : r ≤ bound) :
+private theorem ofFn_set_eq_ofFn_write (bound : ℕ) (c : Config) (r v : ℕ) :
     (List.ofFn (fun i : Fin (bound + 1) => c.state i)).set r v =
     List.ofFn (fun i : Fin (bound + 1) => (c.state.write r v) i) := by
   apply List.ext_getElem
@@ -322,7 +322,7 @@ private theorem encodedStep_correct_zero (p : Program) (c : Config) (n : ℕ)
   simp only [hn, ↓reduceIte]
   rw [updateNthEncoded_encodeRegs _ _ _ (by simp; omega)]
   congr 1
-  exact congrArg _ (ofFn_set_eq_ofFn_write p.maxRegister c n 0 hn)
+  exact congrArg _ (ofFn_set_eq_ofFn_write p.maxRegister c n 0)
 
 /-- Helper: List.ofFn getElem equals state at that index. -/
 private theorem ofFn_getElem (bound : ℕ) (c : Config) (i : ℕ) (hi : i < bound + 1) :
@@ -356,7 +356,7 @@ private theorem encodedStep_correct_succ (p : Program) (c : Config) (n : ℕ)
     ofFn_getElem p.maxRegister c n (by omega)
   rw [heq1]
   simp only [State.read]
-  exact congrArg _ (ofFn_set_eq_ofFn_write p.maxRegister c n (c.state n + 1) hn)
+  exact congrArg _ (ofFn_set_eq_ofFn_write p.maxRegister c n (c.state n + 1))
 
 /-- Correctness for T instruction. -/
 private theorem encodedStep_correct_trans (p : Program) (c : Config) (m n : ℕ)
@@ -388,7 +388,7 @@ private theorem encodedStep_correct_trans (p : Program) (c : Config) (m n : ℕ)
     ofFn_getElem p.maxRegister c m (by omega)
   rw [heq1]
   simp only [State.read]
-  exact congrArg _ (ofFn_set_eq_ofFn_write p.maxRegister c n (c.state m) hn)
+  exact congrArg _ (ofFn_set_eq_ofFn_write p.maxRegister c n (c.state m))
 
 /-- Correctness for J instruction (equal case). -/
 private theorem encodedStep_correct_jump_eq (p : Program) (c : Config) (m n q : ℕ)
