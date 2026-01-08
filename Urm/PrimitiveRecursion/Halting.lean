@@ -32,9 +32,7 @@ theorem prSetupPhase_embed (n : ℕ) (pF pG : Program) :
   intro i hi
   simp only [primitiveRecursionProgram, getInstr, List.getElem?_append, prSetupPhase_length,
     List.length_append, prBaseCasePhase_length, prLoopCheck_length, prLoopBody_length] at *
-  -- i < setup length, so i is in the first chunk
-  split_ifs with h1 h2 h3 <;> try omega
-  rfl
+  split_ifs <;> first | rfl | omega
 
 /-- Base case prologue is embedded after setup phase. -/
 theorem prBaseCasePrologue_embed (n : ℕ) (pF pG : Program) :
@@ -45,8 +43,7 @@ theorem prBaseCasePrologue_embed (n : ℕ) (pF pG : Program) :
   simp only [primitiveRecursionProgram, prBaseCasePC, prBaseCasePhase, getInstr, List.getElem?_append,
     prSetupPhase_length, prSetupPhaseLength, prBaseCasePrologue_length, prBaseCasePrologueLength,
     List.length_append, prLoopCheck_length, prLoopBody_length, shiftJumps_length] at *
-  split_ifs with h1 h2 h3 h4 h5 h6 <;> try omega
-  congr 1; omega
+  split_ifs <;> first | omega | (congr 1; omega)
 
 /-- Shifted pF is embedded in the base case phase. -/
 theorem prPF_shiftJumps_embed (n : ℕ) (pF pG : Program) :
@@ -57,14 +54,9 @@ theorem prPF_shiftJumps_embed (n : ℕ) (pF pG : Program) :
   simp only [primitiveRecursionProgram, prPFOffset, prBaseCasePhase, getInstr, List.getElem?_append,
     prSetupPhase_length, prSetupPhaseLength, prBaseCasePrologueLength, prBaseCasePrologue_length,
     shiftJumps_length, List.length_append, prLoopCheck_length, prLoopBody_length]
-  split_ifs with h1 h2 h3 h4 h5 h6 <;> try omega
+  split_ifs <;> try omega
   simp only [shiftJumps, List.getElem?_map]
-  -- The index calculation: after subtracting setup and prologue lengths, we get i
-  have hsetup : n + 1 + 2 + (primitiveRecursionBase n pF pG + 1 + n) + i - (n + 1 + 2) =
-      primitiveRecursionBase n pF pG + 1 + n + i := by omega
-  have hprol : primitiveRecursionBase n pF pG + 1 + n + i - (primitiveRecursionBase n pF pG + 1 + n) = i := by
-    omega
-  simp only [hsetup, hprol]
+  congr 2; omega
 
 /-- Loop check instruction embedding. -/
 theorem prLoopCheck_embed (n : ℕ) (pF pG : Program) :
@@ -81,8 +73,7 @@ theorem prLoopPrologue_embed (n : ℕ) (pF pG : Program) :
   simp only [primitiveRecursionProgram, prLoopBodyPC_eq, prLoopBody, getInstr, List.getElem?_append,
     prSetupPhase_length, prBaseCasePhase_length, prLoopCheck_length, prLoopPrologue_length,
     List.length_append, shiftJumps_length, prLoopEpilogue_length] at *
-  split_ifs with h1 h2 h3 h4 h5 h6 <;> try omega
-  congr 1; omega
+  split_ifs <;> first | omega | (congr 1; omega)
 
 /-- Shifted pG is embedded in the loop body. -/
 theorem prPG_shiftJumps_embed (n : ℕ) (pF pG : Program) :
@@ -93,12 +84,9 @@ theorem prPG_shiftJumps_embed (n : ℕ) (pF pG : Program) :
   simp only [primitiveRecursionProgram, prPGOffset, prLoopBodyPC, prLoopCheckPC, prLoopBody, getInstr,
     List.getElem?_append, prSetupPhase_length, prBaseCasePhase_length, prLoopCheck_length,
     prLoopPrologue_length, shiftJumps_length, List.length_append, prLoopEpilogue_length]
-  split_ifs with h1 h2 h3 h4 h5 h6 <;> try omega
+  split_ifs <;> try omega
   simp only [shiftJumps, List.getElem?_map]
-  -- Index calculation: subtract each segment length to get i
-  simp only [prSetupPhaseLength, prBaseCasePhaseLength, prBaseCasePrologueLength,
-    prLoopPrologueLength, prLoopEpilogueLength] at *
-  grind
+  congr 2; omega
 
 /-- Output phase is at outputPC. -/
 theorem prOutputPhase_embed (n : ℕ) (pF pG : Program) :
