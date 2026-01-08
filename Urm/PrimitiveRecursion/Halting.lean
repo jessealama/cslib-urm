@@ -9,6 +9,7 @@ import Urm.Composition.Helpers
 import Urm.Embeddings
 import Urm.Shift
 import Urm.Halting.Common
+import Urm.Halting.PhaseExecution
 
 
 
@@ -114,41 +115,33 @@ noncomputable def prExecuteSetupPhase (n : ℕ) (pF pG : Program) (inputs : Fin 
     PrSetupPhaseResult n pF pG inputs y :=
   let hsl_setup := prSetupPhase_isStraightLine n pF pG
   let initState := State.fromInputs (List.ofFn (Fin.snoc inputs y))
-  let setupResult := straightLineExec hsl_setup initState
-  let cSetup := setupResult.config
-  let hSetup_steps := setupResult.steps
-  let hSetup_halted := setupResult.halted
-  let hSetup_pc := setupResult.pc_eq
+  -- Use phase execution infrastructure
+  let hembed : ∀ i, i < (prSetupPhase n pF pG).length →
+      (primitiveRecursionProgram n pF pG).getInstr (0 + i) = (prSetupPhase n pF pG).getInstr i :=
+    fun i hi => by simp only [Nat.zero_add]; exact prSetupPhase_embed n pF pG i hi
+  let setupExec := execPhaseInHost hsl_setup 0 hembed initState
+  let cSetup := setupExec.phaseResult.config
 
-  -- Lift setup steps to primitiveRecursionProgram
+  -- Lift setup steps: 0 + prSetupPhase.length = prBaseCasePC n
   let hSetup_steps_lifted : Steps (primitiveRecursionProgram n pF pG) ⟨0, initState⟩
-      ⟨(prSetupPhase n pF pG).length, cSetup.state⟩ := by
-    have hembed : ∀ i, i < (prSetupPhase n pF pG).length →
-        (primitiveRecursionProgram n pF pG).getInstr (0 + i) =
-        (prSetupPhase n pF pG).getInstr i := by
-      intro i hi
-      simp only [Nat.zero_add]
-      exact prSetupPhase_embed n pF pG i hi
-    have h := Steps.straightLine_at_offset 0 hsl_setup hembed hSetup_steps
-    simp only [Nat.zero_add] at h
-    rw [hSetup_pc] at h; exact h
+      ⟨prBaseCasePC n, cSetup.state⟩ := by
+    have hpc : 0 + (prSetupPhase n pF pG).length = prBaseCasePC n := by
+      simp only [prBaseCasePC, prSetupPhase_length, Nat.zero_add]
+    exact hpc ▸ setupExec.liftedSteps
 
-  -- Establish invariants using Preservation lemmas
+  -- Establish invariants using local execution result
   let hSavedInputs : ∀ i : Fin n, cSetup.state.read (prSavedInputsStart n pF pG + i) = inputs i :=
-    fun i => prSetupPhase_saves_inputs n pF pG inputs y initState rfl cSetup hSetup_steps hSetup_halted i
+    fun i => prSetupPhase_saves_inputs n pF pG inputs y initState rfl cSetup
+      setupExec.localSteps setupExec.localHalted i
   let hSavedY : cSetup.state.read (prSavedYReg n pF pG) = y :=
-    prSetupPhase_saves_y n pF pG inputs y initState rfl cSetup hSetup_steps hSetup_halted
+    prSetupPhase_saves_y n pF pG inputs y initState rfl cSetup setupExec.localSteps setupExec.localHalted
   let hCounter : cSetup.state.read (prCounterReg n pF pG) = 0 :=
-    prSetupPhase_counter_zero n pF pG inputs y initState rfl cSetup hSetup_steps hSetup_halted
+    prSetupPhase_counter_zero n pF pG inputs y initState rfl cSetup setupExec.localSteps setupExec.localHalted
   let hZero : cSetup.state.read (prZeroReg n pF pG) = 0 :=
-    prSetupPhase_zero_zero n pF pG inputs y initState rfl cSetup hSetup_steps hSetup_halted
-
-  -- PC after setup = prBaseCasePC
-  let hSetup_pc_basecase : (prSetupPhase n pF pG).length = prBaseCasePC n := by
-    simp only [prBaseCasePC, prSetupPhase_length]
+    prSetupPhase_zero_zero n pF pG inputs y initState rfl cSetup setupExec.localSteps setupExec.localHalted
 
   { config := ⟨prBaseCasePC n, cSetup.state⟩
-    steps := by rw [← hSetup_pc_basecase]; exact hSetup_steps_lifted
+    steps := hSetup_steps_lifted
     pc_eq := rfl
     savedInputs_eq := hSavedInputs
     savedY_eq := hSavedY
@@ -176,27 +169,18 @@ noncomputable def prExecuteBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : p
     (hs_saved : ∀ i : Fin n, s.read (prSavedInputsStart n pF pG + i) = inputs i)
     (hpF_halts : Halts pF (List.ofFn inputs)) :
     PrBaseCasePhaseResult n pF pG inputs y s hpF_halts := by
-  -- Phase 1: Execute prBaseCasePrologue (straight-line)
+  -- Phase 1: Execute prBaseCasePrologue (straight-line) using phase execution infrastructure
   have hsl_prologue := prBaseCasePrologue_isStraightLine n pF pG
-  let prologueResult := straightLineExec hsl_prologue s
-  let c_prologue := prologueResult.config
-  let hsteps_prologue := prologueResult.steps
-  let hhalted_prologue := prologueResult.halted
-  let hpc_prologue := prologueResult.pc_eq
+  let prologueExec := execPhaseInHost hsl_prologue (prBaseCasePC n) (prBaseCasePrologue_embed n pF pG) s
+  let c_prologue := prologueExec.phaseResult.config
 
-  -- Lift prologue steps to primitiveRecursionProgram
-  have hembed_prologue : ∀ i, i < (prBaseCasePrologue n pF pG).length →
-      (primitiveRecursionProgram n pF pG).getInstr (prBaseCasePC n + i) =
-      (prBaseCasePrologue n pF pG).getInstr i := prBaseCasePrologue_embed n pF pG
+  -- Lift prologue steps: prBaseCasePC n + prBaseCasePrologue.length = prPFOffset n pF pG
   have hsteps_prologue_lifted : Steps (primitiveRecursionProgram n pF pG) ⟨prBaseCasePC n, s⟩
-      ⟨prBaseCasePC n + c_prologue.pc, c_prologue.state⟩ :=
-    Steps.straightLine_at_offset (prBaseCasePC n) hsl_prologue hembed_prologue hsteps_prologue
-
-  -- After prologue, PC is at prPFOffset
-  have hpc_after_prologue : prBaseCasePC n + c_prologue.pc = prPFOffset n pF pG := by
-    simp only [prBaseCasePC, prPFOffset, prSetupPhaseLength, prBaseCasePrologueLength]
-    rw [hpc_prologue, prBaseCasePrologue_length, prBaseCasePrologueLength]
-  rw [hpc_after_prologue] at hsteps_prologue_lifted
+      ⟨prPFOffset n pF pG, c_prologue.state⟩ := by
+    have hpc : prBaseCasePC n + (prBaseCasePrologue n pF pG).length = prPFOffset n pF pG := by
+      simp only [prBaseCasePC, prPFOffset, prSetupPhaseLength, prBaseCasePrologueLength,
+        prBaseCasePrologue_length]
+    exact hpc ▸ prologueExec.liftedSteps
 
   -- Phase 2: Execute pF (shifted)
   -- After prologue, R[0..n-1] = inputs (restored from saved copies)
@@ -211,8 +195,8 @@ noncomputable def prExecuteBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : p
   -- After prologue, R[0..n-1] = inputs (restored from saved copies) and R[n..base] = 0
   have hR_after_prologue : ∀ i : Fin n, c_prologue.state.read i = inputs i := by
     intro i
-    let h1 := prBaseCasePrologue_restores_inputs n pF pG s c_prologue hsteps_prologue hhalted_prologue i
-    rw [h1, hs_saved i]
+    rw [prBaseCasePrologue_restores_inputs n pF pG s c_prologue
+      prologueExec.localSteps prologueExec.localHalted i, hs_saved i]
 
   -- State agreement: c_prologue.state agrees with initState on 0..pF.maxRegister
   let initState := (Config.init (List.ofFn inputs)).state
@@ -220,7 +204,7 @@ noncomputable def prExecuteBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : p
     agreeOn_after_copy_inputs (base := primitiveRecursionBase n pF pG)
       (fun j hj => hR_after_prologue ⟨j, hj⟩)
       (fun r hr_ge hr_le => prBaseCasePrologue_clears_above_n n pF pG s c_prologue
-        hsteps_prologue hhalted_prologue r hr_ge hr_le)
+        prologueExec.localSteps prologueExec.localHalted r hr_ge hr_le)
       (primitiveRecursionBase_ge_pF n pF pG)
 
   -- Define c₂ to use agreeOn
@@ -337,7 +321,7 @@ noncomputable def prExecuteBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : p
     exact Steps.preserves_high_register hsteps_pF' r hr
 
   have hprologue_preserves : ∀ r, primitiveRecursionBase n pF pG < r → c_prologue.state.read r = s.read r :=
-    fun r hr => prBaseCasePrologue_preserves_high_register n pF pG s c_prologue hsteps_prologue hhalted_prologue r hr
+    fun r hr => prBaseCasePrologue_preserves_high_register n pF pG s c_prologue prologueExec.localSteps prologueExec.localHalted r hr
 
   -- Build the result
   exact {
@@ -449,23 +433,14 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
 
     -- Execute prLoopPrologue (straight-line)
     have hsl_prologue := prLoopPrologue_isStraightLine n pF pG
-    let prologueResult := straightLineExec hsl_prologue s
-    let c_prologue := prologueResult.config
-    let hsteps_prologue := prologueResult.steps
-    let hhalted_prologue := prologueResult.halted
-    let hpc_prologue := prologueResult.pc_eq
-
-    -- Lift prologue steps to primitiveRecursionProgram
-    have hembed_prologue := prLoopPrologue_embed n pF pG
-    have hsteps_prologue_lifted : Steps (primitiveRecursionProgram n pF pG) ⟨prLoopBodyPC n pF pG, s⟩
-        ⟨prLoopBodyPC n pF pG + c_prologue.pc, c_prologue.state⟩ :=
-      Steps.straightLine_at_offset (prLoopBodyPC n pF pG) hsl_prologue hembed_prologue hsteps_prologue
+    let prologueExec := execPhaseInHost hsl_prologue (prLoopBodyPC n pF pG) (prLoopPrologue_embed n pF pG) s
+    let c_prologue := prologueExec.phaseResult.config
 
     -- After prologue, PC is at prPGOffset
-    have hpc_after_prologue : prLoopBodyPC n pF pG + c_prologue.pc = prPGOffset n pF pG := by
-      simp only [prLoopBodyPC, prPGOffset, prLoopCheckPC, prLoopPrologueLength]
-      rw [hpc_prologue, prLoopPrologue_length, prLoopPrologueLength]
-    rw [hpc_after_prologue] at hsteps_prologue_lifted
+    have hpc_after_prologue : prLoopBodyPC n pF pG + (prLoopPrologue n pF pG).length = prPGOffset n pF pG := by
+      simp only [prLoopBodyPC, prPGOffset, prLoopCheckPC, prLoopPrologueLength, prLoopPrologue_length]
+    have hsteps_prologue_lifted : Steps (primitiveRecursionProgram n pF pG) ⟨prLoopBodyPC n pF pG, s⟩
+        ⟨prPGOffset n pF pG, c_prologue.state⟩ := hpc_after_prologue ▸ prologueExec.liftedSteps
 
     -- Steps from J to end of prologue
     have hsteps_to_prologue_end : Steps (primitiveRecursionProgram n pF pG) ⟨prLoopCheckPC n pF pG, s⟩
@@ -484,16 +459,16 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
     -- After prologue, R[0..n-1] = inputs, R[n] = k, R[n+1] = accBefore
     have hR_after_prologue : ∀ i : Fin n, c_prologue.state.read i = inputs i := by
       intro i
-      let h := prLoopPrologue_restores_inputs n pF pG s c_prologue hsteps_prologue hhalted_prologue i (fun _ => rfl)
-      rw [h, hs_saved i]
+      rw [prLoopPrologue_restores_inputs n pF pG s c_prologue
+        prologueExec.localSteps prologueExec.localHalted i (fun _ => rfl), hs_saved i]
 
     have hRn_after_prologue : c_prologue.state.read n = k := by
-      let h := prLoopPrologue_sets_Rn n pF pG s c_prologue hsteps_prologue hhalted_prologue
-      rw [h, hs_counter]
+      rw [prLoopPrologue_sets_Rn n pF pG s c_prologue
+        prologueExec.localSteps prologueExec.localHalted, hs_counter]
 
     have hRn1_after_prologue : c_prologue.state.read (n + 1) = accBefore := by
-      let h := prLoopPrologue_sets_Rn1 n pF pG s c_prologue hsteps_prologue hhalted_prologue
-      rw [h, hs_acc]
+      rw [prLoopPrologue_sets_Rn1 n pF pG s c_prologue
+        prologueExec.localSteps prologueExec.localHalted, hs_acc]
 
     -- State agreement: c_prologue.state agrees with initStateG on 0..pG.maxRegister
     let initStateG := (Config.init (List.ofFn (extendInputsForG inputs k accBefore))).state
@@ -720,7 +695,7 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
       exact Steps.preserves_high_register hsteps_pG' r hr
 
     have hprologue_preserves : ∀ r, primitiveRecursionBase n pF pG < r → c_prologue.state.read r = s.read r :=
-      fun r hr => prLoopPrologue_preserves_high_register n pF pG s c_prologue hsteps_prologue hhalted_prologue r hr
+      fun r hr => prLoopPrologue_preserves_high_register n pF pG s c_prologue prologueExec.localSteps prologueExec.localHalted r hr
 
     -- Counter value in state_after_S
     have hcounter_after_S : state_after_S.read (prCounterReg n pF pG) = k + 1 := by
@@ -736,8 +711,8 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
         let hpG_preserves_counter := pG_preserves_prCounterReg n pF pG c_prologue.state c_pG' hsteps_pG'
         rw [hpG_preserves_counter]
         -- After prologue, counter = k (from T instruction)
-        let h := prLoopPrologue_preserves_high_register n pF pG s c_prologue hsteps_prologue hhalted_prologue
-          (prCounterReg n pF pG) (prCounterReg_gt_base n pF pG)
+        let h := prLoopPrologue_preserves_high_register n pF pG s c_prologue
+          prologueExec.localSteps prologueExec.localHalted (prCounterReg n pF pG) (prCounterReg_gt_base n pF pG)
         rw [h, hs_counter]
       rw [hcounter_after_T]
 
@@ -1062,20 +1037,13 @@ theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
     -- The base case phase runs prBaseCasePrologue (straight-line, always halts)
     -- then runs pF.shiftJumps embedded at prPFOffset
     have hsl_prologue := prBaseCasePrologue_isStraightLine n pF pG
-    let prologueResult := straightLineExec hsl_prologue setup.config.state
-    let c_prologue := prologueResult.config
-    let hsteps_prologue := prologueResult.steps
-    let hhalted_prologue := prologueResult.halted
-    let hpc_prologue := prologueResult.pc_eq
-    -- Lift prologue steps to main program
-    have hembed_prologue := prBaseCasePrologue_embed n pF pG
+    let prologueExec := execPhaseInHost hsl_prologue (prBaseCasePC n) (prBaseCasePrologue_embed n pF pG) setup.config.state
+    let c_prologue := prologueExec.phaseResult.config
+    -- After prologue, PC is at prPFOffset
+    have hpc_after_prologue : prBaseCasePC n + (prBaseCasePrologue n pF pG).length = prPFOffset n pF pG := by
+      simp only [prBaseCasePC, prPFOffset, prSetupPhaseLength, prBaseCasePrologueLength, prBaseCasePrologue_length]
     have hsteps_prologue_lifted : Steps (primitiveRecursionProgram n pF pG) ⟨prBaseCasePC n, setup.config.state⟩
-        ⟨prBaseCasePC n + c_prologue.pc, c_prologue.state⟩ :=
-      Steps.straightLine_at_offset (prBaseCasePC n) hsl_prologue hembed_prologue hsteps_prologue
-    have hpc_after_prologue : prBaseCasePC n + c_prologue.pc = prPFOffset n pF pG := by
-      simp only [prBaseCasePC, prPFOffset, prSetupPhaseLength, prBaseCasePrologueLength]
-      rw [hpc_prologue, prBaseCasePrologue_length, prBaseCasePrologueLength]
-    rw [hpc_after_prologue] at hsteps_prologue_lifted
+        ⟨prPFOffset n pF pG, c_prologue.state⟩ := hpc_after_prologue ▸ prologueExec.liftedSteps
     -- Combined: init → setup → prologue end
     let hsteps_to_pF : Steps (primitiveRecursionProgram n pF pG) (Config.init (List.ofFn (Fin.snoc inputs y)))
         ⟨prPFOffset n pF pG, c_prologue.state⟩ := by
@@ -1088,16 +1056,15 @@ theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
     -- After prologue, R[0..n-1] = inputs (restored from saved copies)
     let hR_after_prologue : ∀ i : Fin n, c_prologue.state.read i = inputs i := by
       intro i
-      let h1 := prBaseCasePrologue_restores_inputs n pF pG setup.config.state c_prologue
-        hsteps_prologue hhalted_prologue i
-      rw [h1, setup.savedInputs_eq i]
+      rw [prBaseCasePrologue_restores_inputs n pF pG setup.config.state c_prologue
+        prologueExec.localSteps prologueExec.localHalted i, setup.savedInputs_eq i]
     -- State agreement for pF execution
     let initState := (Config.init (List.ofFn inputs)).state
     have hagree_pF : c_prologue.state.agreeOn initState 0 pF.maxRegister :=
       agreeOn_after_copy_inputs (base := primitiveRecursionBase n pF pG)
         (fun j hj => hR_after_prologue ⟨j, hj⟩)
         (fun r hr_ge hr_le => prBaseCasePrologue_clears_above_n n pF pG setup.config.state c_prologue
-          hsteps_prologue hhalted_prologue r hr_ge hr_le)
+          prologueExec.localSteps prologueExec.localHalted r hr_ge hr_le)
         (primitiveRecursionBase_ge_pF n pF pG)
     -- Now use agreeOn to transfer pF's divergence
     -- If pF doesn't halt on initState, it doesn't halt on c_prologue.state either (by agreeOn)
@@ -1332,20 +1299,13 @@ theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
       simp only [prLoopBodyPC, prLoopCheckPC, prSetupPhaseLength, prBaseCasePhaseLength]
     -- Execute loop prologue
     have hsl_prologue := prLoopPrologue_isStraightLine n pF pG
-    let prologueResult := straightLineExec hsl_prologue loopResult_k.config.state
-    let c_prologue := prologueResult.config
-    let hsteps_prologue := prologueResult.steps
-    let hhalted_prologue := prologueResult.halted
-    let hpc_prologue := prologueResult.pc_eq
-    have hembed_prologue := prLoopPrologue_embed n pF pG
+    let prologueExec := execPhaseInHost hsl_prologue (prLoopBodyPC n pF pG) (prLoopPrologue_embed n pF pG) loopResult_k.config.state
+    let c_prologue := prologueExec.phaseResult.config
+    have hpc_after_prologue : prLoopBodyPC n pF pG + (prLoopPrologue n pF pG).length = prPGOffset n pF pG := by
+      simp only [prLoopBodyPC, prPGOffset, prLoopCheckPC, prLoopPrologueLength, prLoopPrologue_length]
     have hsteps_prologue_lifted : Steps (primitiveRecursionProgram n pF pG)
         ⟨prLoopBodyPC n pF pG, loopResult_k.config.state⟩
-        ⟨prLoopBodyPC n pF pG + c_prologue.pc, c_prologue.state⟩ :=
-      Steps.straightLine_at_offset (prLoopBodyPC n pF pG) hsl_prologue hembed_prologue hsteps_prologue
-    have hpc_after_prologue : prLoopBodyPC n pF pG + c_prologue.pc = prPGOffset n pF pG := by
-      simp only [prLoopBodyPC, prPGOffset, prLoopCheckPC, prLoopPrologueLength]
-      rw [hpc_prologue, prLoopPrologue_length, prLoopPrologueLength]
-    rw [hpc_after_prologue] at hsteps_prologue_lifted
+        ⟨prPGOffset n pF pG, c_prologue.state⟩ := hpc_after_prologue ▸ prologueExec.liftedSteps
     -- Combined steps to prPGOffset
     let hsteps_to_loop_k : Steps (primitiveRecursionProgram n pF pG)
         (Config.init (List.ofFn (Fin.snoc inputs y)))
@@ -1373,17 +1333,15 @@ theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
     -- After loop prologue, R[0..n-1] = inputs, R[n] = k, R[n+1] = acc = Pr(k).get
     let hR_after_prologue_inputs : ∀ i : Fin n, c_prologue.state.read i = inputs i := by
       intro i
-      let h := prLoopPrologue_restores_inputs n pF pG loopResult_k.config.state c_prologue
-        hsteps_prologue hhalted_prologue i (fun _ => rfl)
-      rw [h, loopResult_k.savedInputs_eq i]
+      rw [prLoopPrologue_restores_inputs n pF pG loopResult_k.config.state c_prologue
+        prologueExec.localSteps prologueExec.localHalted i (fun _ => rfl),
+        loopResult_k.savedInputs_eq i]
     let hRn_after_prologue : c_prologue.state.read n = k := by
-      let h := prLoopPrologue_sets_Rn n pF pG loopResult_k.config.state c_prologue
-        hsteps_prologue hhalted_prologue
-      rw [h, loopResult_k.counter_eq]
+      rw [prLoopPrologue_sets_Rn n pF pG loopResult_k.config.state c_prologue
+        prologueExec.localSteps prologueExec.localHalted, loopResult_k.counter_eq]
     let hRn1_after_prologue : c_prologue.state.read (n + 1) = (Pr f g (Fin.snoc inputs k)).get hPr_k := by
-      let h := prLoopPrologue_sets_Rn1 n pF pG loopResult_k.config.state c_prologue
-        hsteps_prologue hhalted_prologue
-      rw [h, hacc_k]
+      rw [prLoopPrologue_sets_Rn1 n pF pG loopResult_k.config.state c_prologue
+        prologueExec.localSteps prologueExec.localHalted, hacc_k]
     -- So pG runs on (inputs, k, Pr(k).get) = extendInputsForG inputs k (Pr(k).get)
     -- pG state agreement
     let initStateG := (Config.init (List.ofFn (extendInputsForG inputs k ((Pr f g (Fin.snoc inputs k)).get hPr_k)))).state
