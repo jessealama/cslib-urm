@@ -138,4 +138,130 @@ abbrev PhaseExecutionResult.localConfig {host phase : Program} {offset : ℕ} {s
     (r : PhaseExecutionResult host phase offset s) : Config :=
   r.phaseResult.config
 
+/-! ## Subprogram Execution Infrastructure
+
+This section provides infrastructure for executing embedded subprograms (like pF or pG)
+within a host program. The key challenge is handling:
+
+1. State agreement: The current state may differ from the init state, but agrees on
+   registers 0..maxRegister
+2. Lifting via `Steps.shiftJumps_at_offset`: The subprogram is embedded with shifted jumps
+3. Standard form: The subprogram's PC ends at its length when halted
+4. Result extraction: The result is in R[0]
+-/
+
+/-- Result of executing a subprogram embedded within a host program.
+
+This captures the common pattern for "Phase 2" execution where:
+- A subprogram `sub` is embedded at `offset` in `host` via `shiftJumps`
+- The subprogram executes from a state that agrees with its init state
+- The result is extracted from R[0]
+- High registers (above sub.maxRegister) are preserved
+
+Usage: After executing a prologue phase, use this to execute the embedded subprogram. -/
+structure SubprogramExecResult (host sub : Program) (offset : ℕ) (s : State) where
+  /-- The final state after subprogram execution -/
+  finalState : State
+  /-- Steps in the host program from ⟨offset, s⟩ to ⟨offset + sub.length, finalState⟩ -/
+  liftedSteps : Steps host ⟨offset, s⟩ ⟨offset + sub.length, finalState⟩
+  /-- The result value in R[0] -/
+  result : ℕ
+  /-- The result equals what's in R[0] -/
+  result_eq : finalState.read 0 = result
+  /-- Registers above sub.maxRegister are preserved -/
+  highPreserved : ∀ r, sub.maxRegister < r → finalState.read r = s.read r
+
+/-- Execute an embedded subprogram and lift to the host program.
+
+This handles the common "Phase 2" pattern where a standard form subprogram is
+embedded at an offset via shiftJumps. It combines:
+1. `Steps.agreeOn` to transfer execution from the agreeing state
+2. `Steps.shiftJumps_at_offset` to lift the execution to the host
+3. Standard form to establish PC ends at sub.length
+
+Parameters:
+- `hsf`: The subprogram must be standard form (so PC = length when halted)
+- `hembed`: Embedding lemma (host.getInstr (offset + i) = sub.shiftJumps.getInstr i)
+- `hHalts`: Proof that sub halts on the original inputs
+- `hagree`: State agreement (s agrees with init state on 0..sub.maxRegister)
+- `inputs`: The original inputs (used for Result definition)
+
+Returns a `SubprogramExecResult` with:
+- `finalState`: State after execution
+- `liftedSteps`: Steps from ⟨offset, s⟩ to ⟨offset + sub.length, finalState⟩
+- `result`: The value in R[0], equal to `Result sub inputs hHalts`
+- `highPreserved`: Registers above sub.maxRegister unchanged
+-/
+noncomputable def execSubprogramInHost
+    {sub host : Program} {inputs : List ℕ}
+    (hsf : sub.IsStandardForm) (offset : ℕ)
+    (hembed : ∀ i, i < sub.length → host.getInstr (offset + i) = (sub.shiftJumps offset).getInstr i)
+    (hHalts : Halts sub inputs)
+    (s : State)
+    (hagree : s.agreeOn (Config.init inputs).state 0 sub.maxRegister) :
+    SubprogramExecResult host sub offset s := by
+  -- Get the halting configuration from the original execution
+  let cSub := Classical.choose hHalts
+  have hspec := Classical.choose_spec hHalts
+  let hsteps := hspec.1
+  let hhalted := hspec.2
+
+  -- Use Steps.agreeOn to transfer execution to our state
+  let initState := (Config.init inputs).state
+  let c₂ : Config := ⟨0, s⟩
+  have hpc_c2 : (Config.init inputs).pc = c₂.pc := rfl
+  have hagree_symm : initState.agreeOn c₂.state 0 sub.maxRegister := State.agreeOn_symm hagree
+  let hagree_result := Steps.agreeOn hsteps hpc_c2 hagree_symm
+  let cSub' := Classical.choose hagree_result
+  have hspec' := Classical.choose_spec hagree_result
+  let hsteps' := hspec'.1
+  let hpc' := hspec'.2.1
+  have hagree' : cSub.state.agreeOn cSub'.state 0 sub.maxRegister := hspec'.2.2
+
+  -- Show PC ends at sub.length (standard form)
+  have hhalted' : cSub'.isHalted sub := by
+    unfold Config.isHalted; rw [← hpc']; exact hhalted
+  have hpc_length : cSub'.pc = sub.length :=
+    hsf.pc_eq_length_of_halted hsteps' (Nat.zero_le _) hhalted'
+
+  -- Lift steps using shiftJumps_at_offset
+  have hsteps_lifted := Steps.shiftJumps_at_offset offset hembed hsteps'
+
+  -- Simplify lifted steps to use sub.length
+  have hsteps_lifted' : Steps host ⟨offset, s⟩ ⟨offset + sub.length, cSub'.state⟩ := by
+    have h1 : offset + c₂.pc = offset := by rfl
+    have h2 : offset + cSub'.pc = offset + sub.length := by rw [hpc_length]
+    rw [h1, h2] at hsteps_lifted
+    exact hsteps_lifted
+
+  -- The result equals what's in R[0]
+  have hresult_eq : cSub'.state.read 0 = Result sub inputs hHalts := by
+    let h_agree_at_0 := hagree' 0 (Nat.zero_le 0) (Nat.zero_le _)
+    simp only [Result, State.output]
+    exact h_agree_at_0.symm
+
+  -- High registers are preserved
+  have hhigh : ∀ r, sub.maxRegister < r → cSub'.state.read r = s.read r := by
+    intro r hr
+    exact Steps.preserves_high_register hsteps' r hr
+
+  exact {
+    finalState := cSub'.state
+    liftedSteps := hsteps_lifted'
+    result := Result sub inputs hHalts
+    result_eq := hresult_eq
+    highPreserved := hhigh
+  }
+
+/-- Chain a phase execution with a subprogram execution.
+
+This is the common pattern where a straight-line prologue phase is followed
+by an embedded subprogram execution. -/
+def PhaseExecutionResult.andThenSubprogram
+    {host phase sub : Program} {offset : ℕ} {s : State}
+    (phaseResult : PhaseExecutionResult host phase offset s)
+    (subResult : SubprogramExecResult host sub (offset + phase.length) phaseResult.finalState) :
+    Steps host ⟨offset, s⟩ ⟨offset + phase.length + sub.length, subResult.finalState⟩ :=
+  phaseResult.liftedSteps.trans subResult.liftedSteps
+
 end Urm
