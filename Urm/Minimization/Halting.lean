@@ -8,6 +8,7 @@ import Urm.Minimization.Preservation
 import Urm.Embeddings
 import Urm.Shift
 import Urm.Halting.Common
+import Urm.Halting.PhaseExecution
 
 
 
@@ -81,48 +82,36 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
     (hs_saved : ∀ i : Fin n, s.read (savedInputsStart n pF + i) = inputs i)
     (hf_halts : Halts pF (List.ofFn (extendInputs inputs k))) :
     LoopIterationResult n pF inputs s k := by
-  -- Phase 1: Execute loopPrologue (straight-line)
+  -- Phase 1: Execute loopPrologue (straight-line) using phase execution infrastructure
   -- After loopPrologue: R[0..n-1] = saved inputs, R[n] = k
   have hsl_prologue := loopPrologue_isStraightLine n pF
-  -- Get loopPrologue execution using common infrastructure
-  let prologueResult := straightLineExec hsl_prologue s
-  let c_prologue := prologueResult.config
-  let hsteps_prologue := prologueResult.steps
-  let hhalted_prologue := prologueResult.halted
-  let hpc_prologue := prologueResult.pc_eq
+  let prologueExec := execPhaseInHost hsl_prologue (loopStartPC n) (loopPrologue_embed n pF) s
+  let c_prologue := prologueExec.phaseResult.config
   -- After prologue: R[i] = inputs i for i < n, R[n] = k
   have hR_after_prologue : ∀ i : Fin n, c_prologue.state.read i = inputs i := by
     intro i
-    let h := loopPrologue_restores_inputs n pF s c_prologue hsteps_prologue hhalted_prologue i
-    rw [h]
+    rw [loopPrologue_restores_inputs n pF s c_prologue prologueExec.localSteps prologueExec.localHalted i]
     exact hs_saved i
   have hRn_after_prologue : c_prologue.state.read n = k := by
-    let h := loopPrologue_sets_counter_input n pF s c_prologue hsteps_prologue hhalted_prologue
-    rw [h, hs_counter]
+    rw [loopPrologue_sets_counter_input n pF s c_prologue prologueExec.localSteps prologueExec.localHalted,
+        hs_counter]
   have hcounter_after_prologue : c_prologue.state.read (counterReg n pF) = k := by
-    let h := loopPrologue_preserves_high_register n pF s c_prologue hsteps_prologue hhalted_prologue
-      (counterReg n pF) (counterReg_gt_base n pF)
-    rw [h, hs_counter]
+    rw [loopPrologue_preserves_high_register n pF s c_prologue prologueExec.localSteps prologueExec.localHalted
+      (counterReg n pF) (counterReg_gt_base n pF), hs_counter]
   have hzero_after_prologue : c_prologue.state.read (zeroReg n pF) = 0 := by
-    let h := loopPrologue_preserves_high_register n pF s c_prologue hsteps_prologue hhalted_prologue
-      (zeroReg n pF) (zeroReg_gt_base n pF)
-    rw [h, hs_zero]
+    rw [loopPrologue_preserves_high_register n pF s c_prologue prologueExec.localSteps prologueExec.localHalted
+      (zeroReg n pF) (zeroReg_gt_base n pF), hs_zero]
   have hsaved_after_prologue : ∀ i : Fin n, c_prologue.state.read (savedInputsStart n pF + i) = inputs i := by
     intro i
-    let h := loopPrologue_preserves_high_register n pF s c_prologue hsteps_prologue hhalted_prologue
-      (savedInputsStart n pF + i) (by let h := savedInputsStart_gt_base n pF; omega)
-    rw [h]
+    rw [loopPrologue_preserves_high_register n pF s c_prologue prologueExec.localSteps prologueExec.localHalted
+      (savedInputsStart n pF + i) (by let h := savedInputsStart_gt_base n pF; omega)]
     exact hs_saved i
-  -- Lift prologue steps to minimizeProgram
-  have hembed_prologue := loopPrologue_embed n pF
+  -- Lifted steps with corrected PC (loopStartPC n + loopPrologue.length = pFOffset n pF)
+  have hpc_after_prologue : loopStartPC n + (loopPrologue n pF).length = pFOffset n pF := by
+    simp only [loopStartPC, pFOffset, setupPhaseLength, loopPrologueLength, loopPrologue_length]
   have hsteps_prologue_lifted : Steps (minimizeProgram n pF) ⟨loopStartPC n, s⟩
-      ⟨loopStartPC n + c_prologue.pc, c_prologue.state⟩ :=
-    Steps.straightLine_at_offset (loopStartPC n) hsl_prologue hembed_prologue hsteps_prologue
-  -- After prologue, PC = loopStartPC n + loopPrologue.length = pFOffset n pF
-  have hpc_after_prologue : loopStartPC n + c_prologue.pc = pFOffset n pF := by
-    simp only [loopStartPC, pFOffset, setupPhaseLength, loopPrologueLength]
-    rw [hpc_prologue, loopPrologue_length, loopPrologueLength]
-  rw [hpc_after_prologue] at hsteps_prologue_lifted
+      ⟨pFOffset n pF, c_prologue.state⟩ :=
+    hpc_after_prologue ▸ prologueExec.liftedSteps
 
   -- Phase 2: Execute pF
   -- c_prologue.state has the correct inputs for pF: R[0..n-1] = inputs, R[n] = k
