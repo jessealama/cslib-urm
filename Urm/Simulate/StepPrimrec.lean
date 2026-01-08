@@ -7,6 +7,8 @@ Authors: Jesse Alama
 import Urm.Simulate.EncodedStep
 import Mathlib.Computability.Primrec
 
+
+
 /-! # Primitive Recursiveness of Step Functions
 
 This file proves that the URM step function, when operating on encoded configurations,
@@ -172,19 +174,19 @@ private theorem iterBuildState_primrec₂ : Primrec₂ iterBuildState := by
       (nIH.2.1.unpair.2, pair nIH.2.1.unpair.1 nIH.2.2)) := by
     -- Work at the Primrec level and convert to Primrec₂
     -- First component: p.2.2.1.unpair.2 (where p = (x, nIH))
-    have hfst : Primrec (fun p : ℕ × (ℕ × (ℕ × ℕ)) => p.2.2.1.unpair.2) :=
+    let hfst : Primrec (fun p : ℕ × (ℕ × (ℕ × ℕ)) => p.2.2.1.unpair.2) :=
       (Primrec.snd.comp Primrec.unpair).comp
         (Primrec.fst.comp (Primrec.snd.comp Primrec.snd))
     -- Second component: pair p.2.2.1.unpair.1 p.2.2.2
-    have h1 : Primrec (fun p : ℕ × (ℕ × (ℕ × ℕ)) => p.2.2.1.unpair.1) :=
+    let h1 : Primrec (fun p : ℕ × (ℕ × (ℕ × ℕ)) => p.2.2.1.unpair.1) :=
       (Primrec.fst.comp Primrec.unpair).comp
         (Primrec.fst.comp (Primrec.snd.comp Primrec.snd))
-    have h2 : Primrec (fun p : ℕ × (ℕ × (ℕ × ℕ)) => p.2.2.2) :=
+    let h2 : Primrec (fun p : ℕ × (ℕ × (ℕ × ℕ)) => p.2.2.2) :=
       Primrec.snd.comp (Primrec.snd.comp Primrec.snd)
-    have hsnd : Primrec (fun p : ℕ × (ℕ × (ℕ × ℕ)) => pair p.2.2.1.unpair.1 p.2.2.2) :=
+    let hsnd : Primrec (fun p : ℕ × (ℕ × (ℕ × ℕ)) => pair p.2.2.1.unpair.1 p.2.2.2) :=
       Primrec₂.natPair.comp h1 h2
     -- Combine into a pair-valued function
-    have hpair : Primrec (fun p : ℕ × (ℕ × (ℕ × ℕ)) =>
+    let hpair : Primrec (fun p : ℕ × (ℕ × (ℕ × ℕ)) =>
         (p.2.2.1.unpair.2, pair p.2.2.1.unpair.1 p.2.2.2)) :=
       Primrec.pair hfst hsnd
     -- Convert directly to Primrec₂ using to₂
@@ -231,17 +233,17 @@ private theorem rebuildFromStack_primrec :
   have hstep : Primrec₂ (fun (_p : ℕ × ℕ) (nIH : ℕ × (ℕ × ℕ)) =>
       (nIH.2.1.unpair.2, pair nIH.2.1.unpair.1 nIH.2.2)) := by
     -- Work at the Primrec level (q = (_p, nIH))
-    have hfst : Primrec (fun q : (ℕ × ℕ) × (ℕ × (ℕ × ℕ)) => q.2.2.1.unpair.2) :=
+    let hfst : Primrec (fun q : (ℕ × ℕ) × (ℕ × (ℕ × ℕ)) => q.2.2.1.unpair.2) :=
       (Primrec.snd.comp Primrec.unpair).comp
         (Primrec.fst.comp (Primrec.snd.comp Primrec.snd))
-    have h1 : Primrec (fun q : (ℕ × ℕ) × (ℕ × (ℕ × ℕ)) => q.2.2.1.unpair.1) :=
+    let h1 : Primrec (fun q : (ℕ × ℕ) × (ℕ × (ℕ × ℕ)) => q.2.2.1.unpair.1) :=
       (Primrec.fst.comp Primrec.unpair).comp
         (Primrec.fst.comp (Primrec.snd.comp Primrec.snd))
-    have h2 : Primrec (fun q : (ℕ × ℕ) × (ℕ × (ℕ × ℕ)) => q.2.2.2) :=
+    let h2 : Primrec (fun q : (ℕ × ℕ) × (ℕ × (ℕ × ℕ)) => q.2.2.2) :=
       Primrec.snd.comp (Primrec.snd.comp Primrec.snd)
-    have hsnd : Primrec (fun q : (ℕ × ℕ) × (ℕ × (ℕ × ℕ)) => pair q.2.2.1.unpair.1 q.2.2.2) :=
+    let hsnd : Primrec (fun q : (ℕ × ℕ) × (ℕ × (ℕ × ℕ)) => pair q.2.2.1.unpair.1 q.2.2.2) :=
       Primrec₂.natPair.comp h1 h2
-    have hpair : Primrec (fun q : (ℕ × ℕ) × (ℕ × (ℕ × ℕ)) =>
+    let hpair : Primrec (fun q : (ℕ × ℕ) × (ℕ × (ℕ × ℕ)) =>
         (q.2.2.1.unpair.2, pair q.2.2.1.unpair.1 q.2.2.2)) :=
       Primrec.pair hfst hsnd
     -- Convert directly to Primrec₂ using to₂
@@ -329,24 +331,24 @@ theorem updateNthEncoded_primrec₃ : Primrec fun p : ℕ × ℕ × ℕ =>
         (pair p.2.2 (iterUnpairRight p.1 p.2.1).unpair.2) := by
     -- Build the composition step by step
     -- iterBuildState p.1 p.2.1 is Primrec
-    have hIterBuild : Primrec fun p : ℕ × ℕ × ℕ => iterBuildState p.1 p.2.1 :=
+    let hIterBuild : Primrec fun p : ℕ × ℕ × ℕ => iterBuildState p.1 p.2.1 :=
       iterBuildState_primrec₂.comp Primrec.fst (Primrec.fst.comp Primrec.snd)
     -- (iterBuildState p.1 p.2.1).2 is Primrec
-    have hStack : Primrec fun p : ℕ × ℕ × ℕ => (iterBuildState p.1 p.2.1).2 :=
+    let hStack : Primrec fun p : ℕ × ℕ × ℕ => (iterBuildState p.1 p.2.1).2 :=
       Primrec.snd.comp hIterBuild
     -- iterUnpairRight p.1 p.2.1 is Primrec
-    have hIterRight : Primrec fun p : ℕ × ℕ × ℕ => iterUnpairRight p.1 p.2.1 :=
+    let hIterRight : Primrec fun p : ℕ × ℕ × ℕ => iterUnpairRight p.1 p.2.1 :=
       iterUnpairRight_primrec₂.comp Primrec.fst (Primrec.fst.comp Primrec.snd)
     -- (iterUnpairRight p.1 p.2.1).unpair.2 is Primrec
-    have hTail : Primrec fun p : ℕ × ℕ × ℕ => (iterUnpairRight p.1 p.2.1).unpair.2 :=
+    let hTail : Primrec fun p : ℕ × ℕ × ℕ => (iterUnpairRight p.1 p.2.1).unpair.2 :=
       (Primrec.snd.comp Primrec.unpair).comp hIterRight
     -- pair p.2.2 (iterUnpairRight p.1 p.2.1).unpair.2 is Primrec
-    have hNewTail : Primrec fun p : ℕ × ℕ × ℕ =>
+    let hNewTail : Primrec fun p : ℕ × ℕ × ℕ =>
         pair p.2.2 (iterUnpairRight p.1 p.2.1).unpair.2 :=
       Primrec₂.natPair.comp (Primrec.snd.comp Primrec.snd) hTail
     -- rebuildFromStack p.1 stack newTail is Primrec via composition
     -- We need to build the triple (p.1, stack, newTail) and apply rebuildFromStack_primrec
-    have hTriple : Primrec fun p : ℕ × ℕ × ℕ =>
+    let hTriple : Primrec fun p : ℕ × ℕ × ℕ =>
         (p.1, (iterBuildState p.1 p.2.1).2, pair p.2.2 (iterUnpairRight p.1 p.2.1).unpair.2) :=
       Primrec.pair Primrec.fst (Primrec.pair hStack hNewTail)
     exact rebuildFromStack_primrec.comp hTriple

@@ -6,6 +6,8 @@ Authors: Jesse Alama
 
 import Urm.Execution
 
+
+
 /-! # Shifted Program Semantics
 
 This file formalizes Cutland's notion of "shifted" programs, where all register
@@ -533,9 +535,8 @@ theorem Halts.shift_from_state {p : Program} {inputs : List ℕ} {σ : State}
   obtain ⟨c_shift, hsteps_shift, hhalted_shift⟩ := Halts.shift offset h
   have hagree' : σ.agreeOn ((State.fromInputs inputs).shift offset) offset (offset + p.maxRegister) := by
     intro r hlo hhi
-    have hread_eq := hagree (r - offset) (by omega)
-    simp only [State.read] at hread_eq; rw [show r - offset + offset = r by omega] at hread_eq
-    simp only [State.read, State.shift, hlo, ↓reduceIte, State.fromInputs, List.getD, hread_eq]
+    simp only [State.read, State.shift, hlo, ↓reduceIte, State.fromInputs, List.getD]
+    simpa [State.read, show r - offset + offset = r from by omega] using hagree (r - offset) (by omega)
   have hpc : ((Config.init inputs).shift offset).pc = (⟨0, σ⟩ : Config).pc := rfl
   obtain ⟨c, hsteps, hpc', hagree''⟩ := Steps.agreeOn_shifted hsteps_shift hpc (State.agreeOn_symm hagree')
   refine ⟨c, hsteps, by simp only [Config.isHalted, Program.shiftRegisters_length] at hhalted_shift ⊢; omega, ?_⟩
@@ -546,8 +547,8 @@ theorem Halts.shift_from_state {p : Program} {inputs : List ℕ} {σ : State}
     simp only [hd_eq, Config.shift_state, State.shift_read (hr := Nat.le_refl offset)]; simp
   rw [hread_shift]
   have hd_halted : d.isHalted p := by rw [← Config.isHalted_shift d p offset, ← hd_eq]; exact hhalted_shift
+  have hch := Classical.choose_spec h
   have hd_eq_choose : d = Classical.choose h := by
-    have hch := Classical.choose_spec h
     cases Steps.deterministic_continuation hd_steps hch.1 hch.2 using Relation.ReflTransGen.head_induction_on with
     | refl => rfl
     | head hstep _ => exact absurd hstep (Step.halted_no_step hd_halted)

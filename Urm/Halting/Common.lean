@@ -9,6 +9,8 @@ import Urm.StraightLine
 import Urm.Shift
 import Urm.StandardForm
 
+
+
 /-! # Common Infrastructure for Halting Proofs
 
 This module provides shared infrastructure for halting proofs used by both
@@ -118,8 +120,7 @@ theorem halts_of_exits_embedded_region
       have hnum_pos : numSteps > 0 := by
         by_contra hnum_zero
         push_neg at hnum_zero
-        have hc_eq : c = ⟨offset + k, state⟩ := StepsN.zero_inv ((Nat.le_zero.mp hnum_zero) ▸ hstepsN)
-        have hc_pc : c.pc = offset + k := by rw [hc_eq]
+        simp only [StepsN.zero_inv ((Nat.le_zero.mp hnum_zero) ▸ hstepsN)] at hpc_ge
         omega
       -- Decompose into first step + rest
       obtain ⟨c_mid, m, hfirst_step, hrest_steps, hm_eq⟩ := StepsN.succ_inv (Nat.pos_iff_ne_zero.mp hnum_pos) hstepsN
@@ -170,9 +171,7 @@ theorem halts_of_exits_embedded_region
         have hhost_instr' : host.getInstr (offset + k) = some (Instr.J m' r' (q + offset)) := by
           rw [hhost_instr]; rfl
         have hq_le : q ≤ sub.length := by
-          have hbounded := hsub_sf.getInstr_hasBoundedJump hsub_instr
-          simp only [Instr.hasBoundedJump, decide_eq_true_eq] at hbounded
-          exact hbounded
+          simpa [Instr.hasBoundedJump] using hsub_sf.getInstr_hasBoundedJump hsub_instr
         by_cases heq : state.read m' = state.read r'
         · -- Equal: jump to q
           have hsub_step : Step sub ⟨k, state⟩ ⟨q, state⟩ := Step.jump_eq hsub_instr heq

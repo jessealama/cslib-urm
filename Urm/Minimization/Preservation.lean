@@ -6,6 +6,8 @@ Authors: Jesse Alama
 
 import Urm.Minimization.StandardForm
 
+
+
 /-! # Preservation Lemmas for Minimization
 
 This file proves register preservation during minimization program execution.
@@ -67,12 +69,12 @@ theorem setupPhase_saves_inputs (n : ℕ) (pF : Program) (inputs : Fin n → ℕ
       omega
     · -- In [Z counter, Z zero]: neither writes to savedInputsStart + i
       simp only [hj_copy, dite_false]
-      have hj_suffix : j - n < 2 := by omega
+      let hj_suffix : j - n < 2 := by omega
       cases Nat.eq_zero_or_pos (j - n) with
       | inl h0 => simp only [h0, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq,
           savedInputsStart, counterReg, minimizationBase]; omega
       | inr hpos =>
-        have h1 : j - n = 1 := by omega
+        let h1 : j - n = 1 := by omega
         simp only [h1, List.getElem_cons_succ, List.getElem_cons_zero, Instr.writesTo, ne_eq,
           Option.some.injEq, savedInputsStart, zeroReg, minimizationBase]; omega
   -- Use straightLine_transfer_result
@@ -81,7 +83,7 @@ theorem setupPhase_saves_inputs (n : ℕ) (pF : Program) (inputs : Fin n → ℕ
   -- s_before.read i = s.read i (nothing before position i writes to register i)
   have hs_before_val : s_before.read ↑i = s.read ↑i := by
     rw [← hs_before]
-    have hnowrite_before : ∀ instr, instr ∈ setupPhase n pF → instr.writesTo ≠ some ↑i := by
+    let hnowrite_before : ∀ instr, instr ∈ setupPhase n pF → instr.writesTo ≠ some ↑i := by
       intro instr hinstr
       simp only [setupPhase, List.mem_append, List.mem_cons, List.mem_nil_iff, or_false] at hinstr
       cases hinstr with
@@ -93,11 +95,11 @@ theorem setupPhase_saves_inputs (n : ℕ) (pF : Program) (inputs : Fin n → ℕ
         cases hz with
         | inl hcounter =>
           rw [hcounter]; simp only [Instr.writesTo, ne_eq, Option.some.injEq]
-          have : counterReg n pF > i := by simp [counterReg, minimizationBase]; omega
+          let _ : counterReg n pF > i := by simp [counterReg, minimizationBase]; omega
           omega
         | inr hzero =>
           rw [hzero]; simp only [Instr.writesTo, ne_eq, Option.some.injEq]
-          have : zeroReg n pF > i := by simp [zeroReg, minimizationBase]; omega
+          let _ : zeroReg n pF > i := by simp [zeroReg, minimizationBase]; omega
           omega
     exact Steps.straightLine_preserves hsl hsteps_i hnowrite_before
   -- s.read i = inputs i
@@ -126,8 +128,7 @@ theorem setupPhase_counter_zero (n : ℕ) (pF : Program) (inputs : Fin n → ℕ
   have hnowrite : ∀ j (hj : j < (setupPhase n pF).length), n < j → ((setupPhase n pF)[j]'hj).writesTo ≠ some (counterReg n pF) := by
     intro j hj hjn
     simp only [setupPhase, List.length_append, copyRegisterRange_length, List.length] at hj
-    have hj' : j = n + 1 := by omega
-    subst hj'
+    obtain rfl : j = n + 1 := by omega
     -- setupPhase[n+1] = (copyRegisterRange ++ [Z counter, Z zero])[n+1]
     -- Since n+1 ≥ n (length of copyRegisterRange), this is [Z counter, Z zero][1] = Z zero
     simp only [setupPhase, List.getElem_append, copyRegisterRange_length]
@@ -184,19 +185,19 @@ theorem loopPrologue_restores_inputs (n : ℕ) (pF : Program)
   have hwrite : (loopPrologue n pF)[k] = Instr.T (savedInputsStart n pF + i) i := by
     simp only [loopPrologue]
     -- First get past clearRegisters
-    have hk_ge_clear : k ≥ (clearRegisters (minimizationBase n pF)).length := by
+    let hk_ge_clear : k ≥ (clearRegisters (minimizationBase n pF)).length := by
       simp [clearRegisters_length]; omega
     rw [List.getElem_append]
     simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]
-    have hk_lt_clear_copy : k < (minimizationBase n pF + 1) + n := by omega
+    let hk_lt_clear_copy : k < (minimizationBase n pF + 1) + n := by omega
     simp only [hk_lt_clear_copy, dite_true]
     -- Now get past clearRegisters part
     rw [List.getElem_append]
     simp only [clearRegisters_length]
-    have hk_not_in_clear : ¬k < minimizationBase n pF + 1 := by omega
+    let hk_not_in_clear : ¬k < minimizationBase n pF + 1 := by omega
     simp only [hk_not_in_clear, dite_false]
     -- Now in copyRegisterRange
-    have hidx : k - (minimizationBase n pF + 1) = ↑i := by omega
+    let hidx : k - (minimizationBase n pF + 1) = ↑i := by omega
     simp only [hidx]
     simp only [Program.copyRegisterRange, List.getElem_map, List.getElem_range, Nat.zero_add]
   -- No instruction after position k writes to register i
@@ -220,7 +221,7 @@ theorem loopPrologue_restores_inputs (n : ℕ) (pF : Program)
         omega
     · -- In [T counter n]: writes to n ≠ i
       simp only [hj_copy, dite_false]
-      have hj_suffix : j - ((minimizationBase n pF + 1) + n) = 0 := by omega
+      let hj_suffix : j - ((minimizationBase n pF + 1) + n) = 0 := by omega
       simp only [hj_suffix, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
       omega
   -- Use straightLine_transfer_result
@@ -230,7 +231,7 @@ theorem loopPrologue_restores_inputs (n : ℕ) (pF : Program)
   -- Nothing before position k writes to savedInputsStart + i
   have hs_before_val : s_before.read (savedInputsStart n pF + ↑i) = s.read (savedInputsStart n pF + ↑i) := by
     rw [← hs_before]
-    have hnowrite_before : ∀ instr, instr ∈ loopPrologue n pF →
+    let hnowrite_before : ∀ instr, instr ∈ loopPrologue n pF →
         instr.writesTo ≠ some (savedInputsStart n pF + ↑i) := by
       intro instr hinstr
       simp only [loopPrologue, List.mem_append, List.mem_singleton] at hinstr
@@ -271,10 +272,10 @@ theorem loopPrologue_sets_counter_input (n : ℕ) (pF : Program)
   have hwrite : (loopPrologue n pF)[k] = Instr.T (counterReg n pF) n := by
     simp only [loopPrologue]
     rw [List.getElem_append]
-    have h1 : ¬k < (clearRegisters (minimizationBase n pF) ++ copyRegisterRange (savedInputsStart n pF) 0 n).length := by
+    let h1 : ¬k < (clearRegisters (minimizationBase n pF) ++ copyRegisterRange (savedInputsStart n pF) 0 n).length := by
       simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]; omega
     simp only [h1, dite_false]
-    have h2 : k - (clearRegisters (minimizationBase n pF) ++ copyRegisterRange (savedInputsStart n pF) 0 n).length = 0 := by
+    let h2 : k - (clearRegisters (minimizationBase n pF) ++ copyRegisterRange (savedInputsStart n pF) 0 n).length = 0 := by
       simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]; omega
     simp only [h2, List.getElem_cons_zero]
   -- k is the last instruction, so hnowrite is vacuously true
@@ -289,7 +290,7 @@ theorem loopPrologue_sets_counter_input (n : ℕ) (pF : Program)
   -- No instruction in loopPrologue writes to counterReg
   have hcounter_at_k : s_before.read (counterReg n pF) = s.read (counterReg n pF) := by
     rw [← hs_before]
-    have hnowrite_counter : ∀ instr, instr ∈ loopPrologue n pF → instr.writesTo ≠ some (counterReg n pF) := by
+    let hnowrite_counter : ∀ instr, instr ∈ loopPrologue n pF → instr.writesTo ≠ some (counterReg n pF) := by
       intro instr hinstr
       simp only [loopPrologue, List.mem_append, List.mem_singleton] at hinstr
       cases hinstr with
@@ -378,7 +379,7 @@ theorem loopPrologue_clears_high_registers (n : ℕ) (pF : Program)
                  Instr.writesTo, ne_eq, Option.some.injEq, Nat.zero_add]
       omega
     · -- j in [T counterReg n], writes to n < n + 1 ≤ r
-      have hj_suffix : j - ((minimizationBase n pF + 1) + n) = 0 := by omega
+      let hj_suffix : j - ((minimizationBase n pF + 1) + n) = 0 := by omega
       simp only [hj_suffix, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
       omega
   have ⟨hsteps', hhalted', _⟩ := straightLineFinalState_spec hsl s

@@ -11,6 +11,8 @@ import Urm.Composition.Basic
 import Mathlib.Tactic.FinCases
 import Aesop
 
+
+
 /-! # Arithmetic Operations for URMs
 
 This file proves that basic arithmetic operations are URM-computable,
@@ -615,11 +617,11 @@ open URMComputable in
     - Step: g(m, k, acc) = pred(acc) -/
 theorem sub_computable : URMComputable 2 (fun mn => Part.some (mn 0 - mn 1)) := by
   -- The step function g(m, k, acc) = pred(acc) is composition of pred with projection
+  have h_sub_step := URMComputable.comp_general (m := 1) (n := 3)
+    pred_computable
+    (fun _ => proj_computable 3 2)
   have hStepSF : URMComputableSF 3 (fun inputs => Part.some (inputs 2 - 1)) := by
-    have h := URMComputable.comp_general (m := 1) (n := 3)
-      pred_computable
-      (fun _ => proj_computable 3 2)
-    convert h using 1
+    convert h_sub_step using 1
     funext inputs
     exact (sub_pr_step_eq inputs).symm
   have hStep : URMComputable 3 (fun inputs => Part.some (inputs 2 - 1)) :=
@@ -718,11 +720,11 @@ open URMComputable in
     - Step: g(x, k, acc) = x + acc (add x to accumulator) -/
 theorem mul_computable : URMComputable 2 (fun xy => Part.some (xy 0 * xy 1)) := by
   -- The step function g(x, k, acc) = x + acc is composition of add with projections
+  have hgs : ∀ i, URMComputable 3 (mulStepGs i) := by
+    intro i; fin_cases i <;> simp only [mulStepGs] <;> exact proj_computable 3 _
+  have h_mul_step := URMComputable.comp_general (m := 2) (n := 3) add_computable hgs
   have hStepSF : URMComputableSF 3 (fun inputs => Part.some (inputs 0 + inputs 2)) := by
-    have hgs : ∀ i, URMComputable 3 (mulStepGs i) := by
-      intro i; fin_cases i <;> simp only [mulStepGs] <;> exact proj_computable 3 _
-    have h := URMComputable.comp_general (m := 2) (n := 3) add_computable hgs
-    convert h using 1
+    convert h_mul_step using 1
     funext inputs
     exact (mul_pr_step_eq inputs).symm
   have hStep : URMComputable 3 (fun inputs => Part.some (inputs 0 + inputs 2)) :=

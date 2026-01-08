@@ -12,6 +12,8 @@ import Urm.Minimization.Basic
 import Mathlib.Computability.Partrec
 import Mathlib.Data.Nat.Sqrt
 
+
+
 /-! # URM Computability and Partial Recursive Functions
 
 This file proves that all partial recursive functions (as defined by Mathlib's `Nat.Partrec`)
@@ -291,7 +293,7 @@ private theorem sign_sub_swap_eq_lt (x y : ℕ) :
 theorem lt_computable : URMComputable 2 (fun xy => Part.some (if xy 0 < xy 1 then 1 else 0)) := by
   -- Compute (y - x) via comp_proj2
   have hRevSub : URMComputable 2 (fun xy => Part.some (xy 1 - xy 0)) := by
-    have h := URMComputable.comp_proj2 sub_computable (1 : Fin 2) (0 : Fin 2)
+    let h := URMComputable.comp_proj2 sub_computable (1 : Fin 2) (0 : Fin 2)
     simp only [mkPair] at h; exact h
   -- Compose sign with reversed subtraction
   have h := URMComputable.comp_unary_total sign_computable hRevSub
@@ -318,7 +320,7 @@ private def leSignXY : (Fin 2 → ℕ) → Part ℕ :=
 /-- sign(x - y) is computable in standard form. -/
 private theorem leSignXY_computable : URMComputableSF 2 leSignXY := by
   have hSub : URMComputable 2 (fun xy => Part.some (xy 0 - xy 1)) := by
-    have h := URMComputable.comp_proj2 sub_computable (0 : Fin 2) (1 : Fin 2)
+    let h := URMComputable.comp_proj2 sub_computable (0 : Fin 2) (1 : Fin 2)
     simp only [mkPair] at h; exact h
   have h := URMComputable.comp_unary_total sign_computable hSub
   convert h.toSF using 1
@@ -788,18 +790,18 @@ theorem URMComputable1.prec {f g : ℕ →. ℕ}
 
   -- Inner pair: pair(xka 1, xka 2) via comp_proj2
   have h_innerPair : URMComputable 3 (fun xka => Part.some (Nat.pair (xka 1) (xka 2))) := by
-    have h := URMComputable.comp_proj2 pair_computable (1 : Fin 3) (2 : Fin 3)
+    let h := URMComputable.comp_proj2 pair_computable (1 : Fin 3) (2 : Fin 3)
     simp only [mkPair] at h; exact h
 
   -- Outer pair: compose pair with (proj 0, innerPair) to get pair(xka 0, pair(xka 1, xka 2))
   have h_nestedPair : URMComputable 3 (fun xka => Part.some (Nat.pair (xka 0) (Nat.pair (xka 1) (xka 2)))) := by
-    have h := URMComputable.comp_binary_total pair_computable
+    let h := URMComputable.comp_binary_total pair_computable
       (URMComputable.proj_computable 3 0) h_innerPair
     convert h using 1
 
   -- Step 2: Build g_step = g ∘ nestedPair via comp_unary_total
   have h_gstep_computable : URMComputable 3 (fun xka => g (Nat.pair (xka 0) (Nat.pair (xka 1) (xka 2)))) := by
-    have h := URMComputable.comp_unary_total hg h_nestedPair
+    let h := URMComputable.comp_unary_total hg h_nestedPair
     convert h using 1
 
   -- Step 3: Apply primRec
