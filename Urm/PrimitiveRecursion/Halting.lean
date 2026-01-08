@@ -408,12 +408,6 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
       exact Relation.ReflTransGen.trans h1 hsteps_prologue_lifted
 
     -- Phase 2: Execute pG (shifted)
-    -- Get pG halting configuration
-    let cpG := Classical.choose hpG_halts
-    have hspec_pG := Classical.choose_spec hpG_halts
-    let hsteps_pG := hspec_pG.1
-    let hhalted_pG := hspec_pG.2
-
     -- After prologue, R[0..n-1] = inputs, R[n] = k, R[n+1] = accBefore
     have hR_after_prologue : ∀ i : Fin n, c_prologue.state.read i = inputs i := by
       intro i
@@ -527,47 +521,15 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
               simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn, hr_ge, dite_false, Option.getD_none]
             rw [hleft, hright]
 
-    -- Define c₂ to use agreeOn
-    let c₂ : Config := ⟨0, c_prologue.state⟩
-    have hpc_c2 : (Config.init (List.ofFn (extendInputsForG inputs k accBefore))).pc = c₂.pc := rfl
-
-    -- Use Steps.agreeOn to get execution from c_prologue.state
-    have hagree_pG_symm : initStateG.agreeOn c₂.state 0 pG.maxRegister := State.agreeOn_symm hagree_pG
-    let hagree_result := Steps.agreeOn hsteps_pG hpc_c2 hagree_pG_symm
-    let c_pG' := Classical.choose hagree_result
-    have hspec_pG' := Classical.choose_spec hagree_result
-    let hsteps_pG' := hspec_pG'.1
-    let hpc_pG' := hspec_pG'.2.1
-    have hagree_pG' : cpG.state.agreeOn c_pG'.state 0 pG.maxRegister := hspec_pG'.2.2
-
-    -- pG_result_eq: c_pG'.state.read 0 = Result pG ... hpG_halts
-    have hpG_result_eq : c_pG'.state.read 0 = Result pG (List.ofFn (extendInputsForG inputs k accBefore)) hpG_halts := by
-      let h_agree_at_0 := hagree_pG' 0 (Nat.zero_le 0) (Nat.zero_le _)
-      simp only [Result, State.output]
-      exact h_agree_at_0.symm
-
-    -- Lift pG steps to primitiveRecursionProgram using shiftJumps_at_offset
-    have hembed_pG := prPG_shiftJumps_embed n pF pG
-    have hsteps_pG_lifted := Steps.shiftJumps_at_offset (prPGOffset n pF pG) hembed_pG hsteps_pG'
-
-    -- Show that c_pG'.pc = pG.length (since pG is standard form)
-    have hhalted_pG' : c_pG'.isHalted pG := by
-      unfold Config.isHalted; rw [← hpc_pG']; exact hhalted_pG
-    have hpc_pG'_length : c_pG'.pc = pG.length :=
-      hpG_sf.pc_eq_length_of_halted hsteps_pG' (Nat.zero_le _) hhalted_pG'
-
-    -- Simplify the lifted steps: from prPGOffset to prPGOffset + pG.length
-    have hsteps_pG_lifted' : Steps (primitiveRecursionProgram n pF pG) ⟨prPGOffset n pF pG, c_prologue.state⟩
-        ⟨prPGOffset n pF pG + pG.length, c_pG'.state⟩ := by
-      let h1 : prPGOffset n pF pG + c₂.pc = prPGOffset n pF pG := rfl
-      let h2 : prPGOffset n pF pG + c_pG'.pc = prPGOffset n pF pG + pG.length := by rw [hpc_pG'_length]
-      rw [h1, h2] at hsteps_pG_lifted
-      exact hsteps_pG_lifted
+    -- Execute pG using subprogram execution infrastructure
+    let pGExec := execSubprogramInHost hpG_sf (prPGOffset n pF pG) (prPG_shiftJumps_embed n pF pG)
+      hpG_halts c_prologue.state hagree_pG
+    let c_pG' := pGExec.finalState
 
     -- Combined steps to end of pG
     have hsteps_to_pG_end : Steps (primitiveRecursionProgram n pF pG) ⟨prLoopCheckPC n pF pG, s⟩
-        ⟨prPGOffset n pF pG + pG.length, c_pG'.state⟩ :=
-      Relation.ReflTransGen.trans hsteps_to_prologue_end hsteps_pG_lifted'
+        ⟨prPGOffset n pF pG + pG.length, c_pG'⟩ :=
+      Relation.ReflTransGen.trans hsteps_to_prologue_end pGExec.liftedSteps
 
     -- Phase 3: Execute loop epilogue (T, S, J)
     -- Epilogue PC positions
@@ -618,8 +580,8 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
       simp only [hidx, List.getElem?_cons_succ, List.getElem?_cons_zero]
 
     -- Execute T instruction
-    let state_after_T := c_pG'.state.write (prAccumulatorReg n pF pG) (c_pG'.state.read 0)
-    have hstep_T : Step (primitiveRecursionProgram n pF pG) ⟨prPGOffset n pF pG + pG.length, c_pG'.state⟩
+    let state_after_T := c_pG'.write (prAccumulatorReg n pF pG) (c_pG'.read 0)
+    have hstep_T : Step (primitiveRecursionProgram n pF pG) ⟨prPGOffset n pF pG + pG.length, c_pG'⟩
         ⟨prPGOffset n pF pG + pG.length + 1, state_after_T⟩ :=
       Step.trans hT_instr
 
@@ -636,7 +598,7 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
       Step.jump_eq hJ_instr_epilogue hzero_eq
 
     -- Combined epilogue steps
-    have hsteps_epilogue : Steps (primitiveRecursionProgram n pF pG) ⟨prPGOffset n pF pG + pG.length, c_pG'.state⟩
+    have hsteps_epilogue : Steps (primitiveRecursionProgram n pF pG) ⟨prPGOffset n pF pG + pG.length, c_pG'⟩
         ⟨prLoopCheckPC n pF pG, state_after_S⟩ := by
       apply Relation.ReflTransGen.trans (Relation.ReflTransGen.single hstep_T)
       apply Relation.ReflTransGen.trans (Relation.ReflTransGen.single hstep_S)
@@ -647,10 +609,9 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
         ⟨prLoopCheckPC n pF pG, state_after_S⟩ :=
       Relation.ReflTransGen.trans hsteps_to_pG_end hsteps_epilogue
 
-    -- Preservation lemmas
-    have hpG_preserves_high : ∀ r, pG.maxRegister < r → c_pG'.state.read r = c_prologue.state.read r := by
-      intro r hr
-      exact Steps.preserves_high_register hsteps_pG' r hr
+    -- Preservation lemmas (using pGExec.highPreserved)
+    have hpG_preserves_high : ∀ r, pG.maxRegister < r → c_pG'.read r = c_prologue.state.read r :=
+      pGExec.highPreserved
 
     have hprologue_preserves : ∀ r, primitiveRecursionBase n pF pG < r → c_prologue.state.read r = s.read r :=
       fun r hr => prLoopPrologue_preserves_high_register n pF pG s c_prologue prologueExec.localSteps prologueExec.localHalted r hr
@@ -666,8 +627,7 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
         simp only [prCounterReg, prAccumulatorReg]; omega
       let hcounter_after_T : state_after_T.read (prCounterReg n pF pG) = k := by
         simp only [state_after_T, State.write_read_diff _ _ _ _ hne]
-        let hpG_preserves_counter := pG_preserves_prCounterReg n pF pG c_prologue.state c_pG' hsteps_pG'
-        rw [hpG_preserves_counter]
+        rw [pGExec.highPreserved (prCounterReg n pF pG) (pG_doesnt_touch_prCounterReg n pF pG)]
         -- After prologue, counter = k (from T instruction)
         let h := prLoopPrologue_preserves_high_register n pF pG s c_prologue
           prologueExec.localSteps prologueExec.localHalted (prCounterReg n pF pG) (prCounterReg_gt_base n pF pG)
@@ -685,7 +645,7 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
       accumulator_updated := fun _ => by
         -- state_after_S.read accumulatorReg = Result pG ...
         -- state_after_S = state_after_T.write counterReg (...)
-        -- state_after_T = c_pG'.state.write accumulatorReg (c_pG'.state.read 0)
+        -- state_after_T = c_pG'.write accumulatorReg (c_pG'.read 0)
         let hne_acc_counter : prAccumulatorReg n pF pG ≠ prCounterReg n pF pG := by
           let h1 := prCounterReg_gt_base n pF pG
           let h2 := prAccumulatorReg_gt_base n pF pG
@@ -693,26 +653,26 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
         show state_after_S.read (prAccumulatorReg n pF pG) = _
         simp only [state_after_S, State.write_read_diff _ _ _ _ hne_acc_counter]
         simp only [state_after_T, State.write_read_same]
-        exact hpG_result_eq
+        exact pGExec.result_eq
       savedInputs_preserved := fun i => by
         show state_after_S.read _ = s.read _
         simp only [state_after_S, State.write_read_diff _ _ _ _ (prSavedInput_ne_prCounterReg n pF pG i)]
         simp only [state_after_T, State.write_read_diff _ _ _ _ (prSavedInput_ne_prAccumulatorReg n pF pG i)]
         let hgt : primitiveRecursionBase n pF pG < prSavedInputsStart n pF pG + i := by
           let h := prSavedInputsStart_gt_base n pF pG; omega
-        rw [pG_preserves_prSavedInputs n pF pG c_prologue.state c_pG' hsteps_pG' i,
+        rw [pGExec.highPreserved (prSavedInputsStart n pF pG + i) (pG_doesnt_touch_prSavedInputs n pF pG i),
             hprologue_preserves (prSavedInputsStart n pF pG + i) hgt]
       savedY_preserved := by
         show state_after_S.read _ = s.read _
         simp only [state_after_S, State.write_read_diff _ _ _ _ (prSavedYReg_ne_prCounterReg n pF pG)]
         simp only [state_after_T, State.write_read_diff _ _ _ _ (prSavedYReg_ne_prAccumulatorReg n pF pG)]
-        rw [pG_preserves_prSavedYReg n pF pG c_prologue.state c_pG' hsteps_pG',
+        rw [pGExec.highPreserved (prSavedYReg n pF pG) (pG_doesnt_touch_prSavedYReg n pF pG),
             hprologue_preserves _ (prSavedYReg_gt_base n pF pG)]
       zero_preserved := by
         show state_after_S.read _ = s.read _
         simp only [state_after_S, State.write_read_diff _ _ _ _ (prCounterReg_ne_prZeroReg n pF pG).symm]
         simp only [state_after_T, State.write_read_diff _ _ _ _ (prAccumulatorReg_ne_prZeroReg n pF pG).symm]
-        rw [pG_preserves_prZeroReg n pF pG c_prologue.state c_pG' hsteps_pG',
+        rw [pGExec.highPreserved (prZeroReg n pF pG) (pG_doesnt_touch_prZeroReg n pF pG),
             hprologue_preserves _ (prZeroReg_gt_base n pF pG)]
     }
 

@@ -211,75 +211,31 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
           straightLine_zeros_register hsl_prologue s r r hk hwrite hnowrite
         rw [hleft, hright]
 
-  -- Get pF execution from Config.init
-  let c_pF := Classical.choose hf_halts
-  have hspec_pF := Classical.choose_spec hf_halts
-  let hsteps_pF := hspec_pF.1
-  let hhalted_pF := hspec_pF.2
-  -- Define c₂ explicitly to avoid rfl unification issues
-  let c₂ : Config := ⟨0, c_prologue.state⟩
-  have hpc_c2 : (Config.init (List.ofFn (extendInputs inputs k))).pc = c₂.pc := rfl
-  -- Use Steps.agreeOn to get execution from c_prologue.state
-  have hagree_pF_symm : initState.agreeOn c₂.state 0 pF.maxRegister := State.agreeOn_symm hagree_pF
-  let hagree_result := Steps.agreeOn hsteps_pF hpc_c2 hagree_pF_symm
-  let c_pF' := Classical.choose hagree_result
-  have hspec_pF' := Classical.choose_spec hagree_result
-  let hsteps_pF' := hspec_pF'.1
-  let hpc_pF' := hspec_pF'.2.1
-  have hagree_pF' : c_pF.state.agreeOn c_pF'.state 0 pF.maxRegister := hspec_pF'.2.2
-
-  -- pF_result_eq proof: connect c_pF'.state.read 0 to Result pF ... hf_halts
-  -- Result pF ... hf_halts = (Classical.choose hf_halts).state.output = c_pF.state.read 0
-  -- By agreeOn, c_pF.state.read 0 = c_pF'.state.read 0
-  have hpF_result_eq : c_pF'.state.read 0 = Result pF (List.ofFn (extendInputs inputs k)) hf_halts := by
-    let h_agree_at_0 := hagree_pF' 0 (Nat.zero_le 0) (Nat.zero_le _)
-    simp only [Result, State.output]
-    exact h_agree_at_0.symm
-
-  -- Lift pF steps to minimizeProgram using shiftJumps_at_offset
-  have hembed_pF := pF_shiftJumps_embed n pF
-  have hsteps_pF_lifted := Steps.shiftJumps_at_offset (pFOffset n pF) hembed_pF hsteps_pF'
-
-  -- Show that c_pF'.pc = pF.length (since pF is standard form)
-  have hhalted_pF' : c_pF'.isHalted pF := by
-    unfold Config.isHalted; rw [← hpc_pF']; exact hhalted_pF
-  have hpc_pF'_length : c_pF'.pc = pF.length :=
-    hpF_sf.pc_eq_length_of_halted hsteps_pF' (Nat.zero_le _) hhalted_pF'
-
-  -- Simplify the lifted steps: we go from pFOffset to pFOffset + pF.length
-  -- Note: c₂.state = c_prologue.state by definition
-  have hsteps_pF_lifted' : Steps (minimizeProgram n pF) ⟨pFOffset n pF, c_prologue.state⟩
-      ⟨pFOffset n pF + pF.length, c_pF'.state⟩ := by
-    let h1 : pFOffset n pF + c₂.pc = pFOffset n pF := rfl
-    let h2 : pFOffset n pF + c_pF'.pc = pFOffset n pF + pF.length := by rw [hpc_pF'_length]
-    rw [h1, h2] at hsteps_pF_lifted
-    exact hsteps_pF_lifted
+  -- Execute pF using subprogram execution infrastructure
+  let pFExec := execSubprogramInHost hpF_sf (pFOffset n pF) (pF_shiftJumps_embed n pF)
+    hf_halts c_prologue.state hagree_pF
+  let c_pF' := pFExec.finalState
 
   -- Combined steps: from loopStartPC to pFOffset + pF.length
   have hsteps_to_epilogue : Steps (minimizeProgram n pF) ⟨loopStartPC n, s⟩
-      ⟨pFOffset n pF + pF.length, c_pF'.state⟩ :=
-    Relation.ReflTransGen.trans hsteps_prologue_lifted hsteps_pF_lifted'
+      ⟨pFOffset n pF + pF.length, c_pF'⟩ :=
+    Relation.ReflTransGen.trans hsteps_prologue_lifted pFExec.liftedSteps
 
   -- Phase 3: Execute loopEpilogue
   -- loopEpilogue = [J 0 zeroReg outputPC, S counter, J zeroReg zeroReg loopStartPC]
 
-  -- Preservation: zeroReg and counter are unchanged by pF
-  have hzero_after_pF : c_pF'.state.read (zeroReg n pF) = 0 := by
-    let h := pF_preserves_high_reg pF c_prologue.state c_pF'.state c_pF' hsteps_pF' rfl
-      (zeroReg n pF) (pF_doesnt_touch_zeroReg n pF)
-    rw [h, hzero_after_prologue]
-  have hcounter_after_pF : c_pF'.state.read (counterReg n pF) = k := by
-    let h := pF_preserves_high_reg pF c_prologue.state c_pF'.state c_pF' hsteps_pF' rfl
-      (counterReg n pF) (pF_doesnt_touch_counter n pF)
-    rw [h, hcounter_after_prologue]
-  have hsaved_after_pF : ∀ i : Fin n, c_pF'.state.read (savedInputsStart n pF + i) = inputs i := by
+  -- Preservation: zeroReg and counter are unchanged by pF (using pFExec.highPreserved)
+  have hzero_after_pF : c_pF'.read (zeroReg n pF) = 0 := by
+    rw [pFExec.highPreserved (zeroReg n pF) (pF_doesnt_touch_zeroReg n pF), hzero_after_prologue]
+  have hcounter_after_pF : c_pF'.read (counterReg n pF) = k := by
+    rw [pFExec.highPreserved (counterReg n pF) (pF_doesnt_touch_counter n pF), hcounter_after_prologue]
+  have hsaved_after_pF : ∀ i : Fin n, c_pF'.read (savedInputsStart n pF + i) = inputs i := by
     intro i
-    let h := pF_preserves_high_reg pF c_prologue.state c_pF'.state c_pF' hsteps_pF' rfl
-      (savedInputsStart n pF + i) (pF_doesnt_touch_savedInputs n pF i)
-    rw [h, hsaved_after_prologue]
+    rw [pFExec.highPreserved (savedInputsStart n pF + i) (pF_doesnt_touch_savedInputs n pF i),
+        hsaved_after_prologue]
 
   -- The pF result is in R[0]
-  let pF_result := c_pF'.state.read 0
+  let pF_result := c_pF'.read 0
 
   -- loopEpilogue starts at PC = pFOffset + pF.length
   have hJ0_instr := instr_at_epilogue_J0 n pF
@@ -288,31 +244,31 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
   by_cases hresult : pF_result = 0
   · -- Case: pF returned 0, exit loop via J 0 zeroReg outputPC
     -- R[0] = 0 = R[zeroReg], so the jump is taken
-    have heq_zero : c_pF'.state.read 0 = c_pF'.state.read (zeroReg n pF) := by
+    have heq_zero : c_pF'.read 0 = c_pF'.read (zeroReg n pF) := by
       simp only [pF_result] at hresult
       rw [hresult, hzero_after_pF]
-    have hstep_J0 : Step (minimizeProgram n pF) ⟨epilogueStartPC n pF, c_pF'.state⟩
-        ⟨outputPC n pF, c_pF'.state⟩ := Step.jump_eq hJ0_instr heq_zero
+    have hstep_J0 : Step (minimizeProgram n pF) ⟨epilogueStartPC n pF, c_pF'⟩
+        ⟨outputPC n pF, c_pF'⟩ := Step.jump_eq hJ0_instr heq_zero
     have hsteps_exit := Relation.ReflTransGen.single hstep_J0
     have hsteps_total := Relation.ReflTransGen.trans hsteps_to_epilogue hsteps_exit
     -- zero_preserved and saved_preserved are vacuously true since pF_result = 0
     -- counter_preserved_exit: in exit case, counter = k (from hcounter_after_pF)
-    exact ⟨⟨outputPC n pF, c_pF'.state⟩, hsteps_total, pF_result, Or.inl ⟨rfl, hresult⟩,
+    exact ⟨⟨outputPC n pF, c_pF'⟩, hsteps_total, pF_result, Or.inl ⟨rfl, hresult⟩,
            fun h => absurd hresult h, fun h => absurd hresult h,
-           fun _ => hcounter_after_pF, hf_halts, hpF_result_eq⟩
+           fun _ => hcounter_after_pF, hf_halts, pFExec.result_eq⟩
 
   · -- Case: pF returned non-zero, continue loop
     -- Execute J 0 zeroReg outputPC (doesn't jump since R[0] ≠ R[zeroReg])
-    have hne_zero : c_pF'.state.read 0 ≠ c_pF'.state.read (zeroReg n pF) := by
+    have hne_zero : c_pF'.read 0 ≠ c_pF'.read (zeroReg n pF) := by
       simp only [pF_result] at hresult
       rw [hzero_after_pF]; exact hresult
-    have hstep_J0 : Step (minimizeProgram n pF) ⟨epilogueStartPC n pF, c_pF'.state⟩
-        ⟨epilogueStartPC n pF + 1, c_pF'.state⟩ := Step.jump_ne hJ0_instr hne_zero
+    have hstep_J0 : Step (minimizeProgram n pF) ⟨epilogueStartPC n pF, c_pF'⟩
+        ⟨epilogueStartPC n pF + 1, c_pF'⟩ := Step.jump_ne hJ0_instr hne_zero
 
     -- Execute S counter
     have hS_instr := instr_at_epilogue_S n pF
-    let state_after_S := c_pF'.state.write (counterReg n pF) (c_pF'.state.read (counterReg n pF) + 1)
-    have hstep_S : Step (minimizeProgram n pF) ⟨epilogueStartPC n pF + 1, c_pF'.state⟩
+    let state_after_S := c_pF'.write (counterReg n pF) (c_pF'.read (counterReg n pF) + 1)
+    have hstep_S : Step (minimizeProgram n pF) ⟨epilogueStartPC n pF + 1, c_pF'⟩
         ⟨epilogueStartPC n pF + 2, state_after_S⟩ := Step.succ hS_instr
 
     -- Execute J zeroReg zeroReg loopStartPC (unconditional jump)
@@ -336,7 +292,7 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
     have hzero_preserved : state_after_S.read (zeroReg n pF) = s.read (zeroReg n pF) := by
       let hne : zeroReg n pF ≠ counterReg n pF := Nat.ne_of_gt (zeroReg_gt_counterReg n pF)
       calc state_after_S.read (zeroReg n pF)
-          = c_pF'.state.read (zeroReg n pF) := by
+          = c_pF'.read (zeroReg n pF) := by
             simp only [state_after_S, State.write, State.read, Function.update_of_ne hne]
         _ = 0 := hzero_after_pF
         _ = s.read (zeroReg n pF) := hs_zero.symm
@@ -345,7 +301,7 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
       let hne : savedInputsStart n pF + ↑i ≠ counterReg n pF := by
         simp only [savedInputsStart, counterReg, minimizationBase]; omega
       calc state_after_S.read (savedInputsStart n pF + ↑i)
-          = c_pF'.state.read (savedInputsStart n pF + ↑i) := by
+          = c_pF'.read (savedInputsStart n pF + ↑i) := by
             simp only [state_after_S, State.write, State.read, Function.update_of_ne hne]
         _ = inputs i := hsaved_after_pF i
         _ = s.read (savedInputsStart n pF + ↑i) := (hs_saved i).symm
@@ -353,7 +309,7 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
     -- counter_preserved_exit is vacuously true since pF_result ≠ 0
     exact ⟨⟨loopStartPC n, state_after_S⟩, hsteps_total, pF_result, Or.inr ⟨rfl, hcounter_k1, hresult⟩,
            fun _ => hzero_preserved, fun _ => hsaved_preserved,
-           fun h => absurd h hresult, hf_halts, hpF_result_eq⟩
+           fun h => absurd h hresult, hf_halts, pFExec.result_eq⟩
 
 /-- The pF_result from loop_iteration equals the Result of running pF.
     This connects the internal construction to the abstract Result function. -/
