@@ -29,56 +29,21 @@ theorem loopPrologue_embed (n : ℕ) (pF : Program) :
     ∀ i, i < (loopPrologue n pF).length →
     (minimizeProgram n pF).getInstr (loopStartPC n + i) = (loopPrologue n pF).getInstr i := by
   intro i hi
-  simp only [minimizeProgram, loopStartPC, setupPhaseLength, getInstr]
-  -- Use omega to deal with the nested conditionals
-  have hlen1 : n + 2 + i < (setupPhase n pF ++ loopPrologue n pF).length := by
-    simp only [List.length_append, setupPhase_length, setupPhaseLength]; omega
-  have hlen2 : ¬ n + 2 + i < (setupPhase n pF).length := by
-    simp only [setupPhase_length, setupPhaseLength]; omega
-  simp only [List.getElem?_append, hlen1, ↓reduceIte]
-  simp only [List.length_append, setupPhase_length, loopPrologue_length, shiftJumps_length, loopEpilogue_length,
-    setupPhaseLength, loopPrologueLength]
-  have h1 : n + 2 + i < n + 2 + (loopPrologue n pF).length := by omega
-  have hcond1 : n + 2 + i < n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 := by
-    simp only [loopPrologue_length, loopPrologueLength] at h1; omega
-  have hcond2 : n + 2 + i < n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length := by
-    simp only [loopPrologue_length, loopPrologueLength] at h1; omega
-  have hcond3 : ¬ n + 2 + i < n + 2 := by omega
-  simp only [hcond1, hcond2, hcond3, ↓reduceIte]
-  have h2 : n + 2 + i - (n + 2) = i := by omega
-  simp only [h2]
+  simp only [minimizeProgram, loopStartPC, setupPhaseLength, getInstr, List.getElem?_append,
+    List.length_append, setupPhase_length, loopPrologue_length, shiftJumps_length,
+    loopEpilogue_length, loopPrologueLength] at *
+  split_ifs <;> first | omega | (congr 1; omega)
 
 /-- pF.shiftJumps is embedded in minimizeProgram at offset pFOffset n pF. -/
 theorem pF_shiftJumps_embed (n : ℕ) (pF : Program) :
     ∀ i, i < pF.length →
     (minimizeProgram n pF).getInstr (pFOffset n pF + i) = (pF.shiftJumps (pFOffset n pF)).getInstr i := by
   intro i hi
-  simp only [minimizeProgram, pFOffset, setupPhaseLength, loopPrologueLength, getInstr]
-  -- Setup length calculations
-  let offset := n + 2 + (minimizationBase n pF + 1 + n + 1)
-  have hoffset : offset = n + 2 + (minimizationBase n pF + 1 + n + 1) := rfl
-  -- Position is offset + i
-  have hpos : offset + i < (setupPhase n pF ++ loopPrologue n pF ++ pF.shiftJumps (n + 2 + (minimizationBase n pF + 1 + n + 1))).length := by
-    simp only [List.length_append, setupPhase_length, loopPrologue_length, shiftJumps_length, setupPhaseLength, loopPrologueLength]; omega
-  have hpos1 : ¬ offset + i < (setupPhase n pF).length := by
-    simp only [setupPhase_length, setupPhaseLength]; omega
-  have hpos2 : ¬ offset + i - (setupPhase n pF).length < (loopPrologue n pF).length := by
-    simp only [setupPhase_length, loopPrologue_length, setupPhaseLength, loopPrologueLength]; omega
-  have hpos3 : i < (pF.shiftJumps (n + 2 + (minimizationBase n pF + 1 + n + 1))).length := by
-    simp only [shiftJumps_length]; exact hi
-  have heq1 : offset + i - (n + 2) - (loopPrologue n pF).length = i := by
-    simp only [loopPrologue_length, loopPrologueLength]; omega
-  simp only [List.getElem?_append]
-  simp only [List.length_append, setupPhase_length, loopPrologue_length, shiftJumps_length, loopEpilogue_length,
-    setupPhaseLength, loopPrologueLength]
-  -- Discharge the nested conditionals
-  have hcond1 : offset + i < offset + pF.length + 3 := by omega
-  have hcond2 : offset + i < offset + pF.length := by omega
-  have hcond3 : ¬ offset + i < offset := by omega
-  have hcond4 : ¬ offset + i < n + 2 := by omega
-  have heq2 : offset + i - offset = i := by omega
-  simp only [hoffset] at hcond1 hcond2 hcond3 hcond4 heq2
-  simp only [hcond1, hcond2, hcond3, ↓reduceIte, heq2]
+  simp only [minimizeProgram, pFOffset, setupPhaseLength, loopPrologueLength, getInstr,
+    List.getElem?_append, List.length_append, setupPhase_length, loopPrologue_length,
+    shiftJumps_length, loopEpilogue_length]
+  split_ifs <;> try omega
+  simp only [shiftJumps, List.getElem?_map, Nat.add_sub_cancel_left]
 
 /-! ## Loop Iteration Lemmas -/
 
@@ -1112,23 +1077,9 @@ theorem setupPhase_embed (n : ℕ) (pF : Program) :
     ∀ i, i < (setupPhase n pF).length →
     (minimizeProgram n pF).getInstr (0 + i) = (setupPhase n pF).getInstr i := by
   intro i hi
-  simp only [Nat.zero_add]
-  unfold minimizeProgram getInstr
-  have hlen_setup : (setupPhase n pF).length = n + 2 := setupPhase_length n pF
-  have hlen_prologue : (loopPrologue n pF).length = minimizationBase n pF + 1 + n + 1 :=
-    loopPrologue_length n pF
-  have hlen_epilogue : (loopEpilogue n pF).length = 3 := loopEpilogue_length n pF
-  have hlen_output : (outputPhase n pF).length = 1 := outputPhase_length n pF
-  simp only [List.getElem?_append, List.length_append, hlen_setup, hlen_prologue,
-    shiftJumps_length, hlen_epilogue]
-  have hi' : i < n + 2 := by omega
-  simp only [hi', ↓reduceIte]
-  have h2 : i < n + 2 + (minimizationBase n pF + 1 + n + 1) := by omega
-  simp only [h2, ↓reduceIte]
-  have h3 : i < n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length := by omega
-  simp only [h3, ↓reduceIte]
-  have h4 : i < n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 := by omega
-  simp only [h4, ↓reduceIte]
+  simp only [Nat.zero_add, minimizeProgram, getInstr, List.getElem?_append, List.length_append,
+    setupPhase_length, loopPrologue_length, shiftJumps_length, loopEpilogue_length] at *
+  split_ifs <;> first | rfl | omega
 
 /-- outputPhase instruction is at outputPC in minimizeProgram. -/
 theorem outputPhase_instr (n : ℕ) (pF : Program) :
