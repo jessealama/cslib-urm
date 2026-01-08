@@ -87,18 +87,37 @@ def savedInputsStart (n : ℕ) (pF : Program) : ℕ :=
     savedInputsStart n pF + i ≠ counterReg n pF := by
   simp only [savedInputsStart, counterReg, minimizationBase]; omega
 
+/-! ## Generic "doesn't touch" lemmas
+
+Any program bounded by minimizationBase doesn't touch high registers. -/
+
+theorem program_doesnt_touch_savedInputs (n : ℕ) (pF : Program) (p : Program)
+    (hp : p.maxRegister ≤ minimizationBase n pF) (i : Fin n) :
+    p.maxRegister < savedInputsStart n pF + i := by
+  simp only [savedInputsStart]; omega
+
+theorem program_doesnt_touch_counter (n : ℕ) (pF : Program) (p : Program)
+    (hp : p.maxRegister ≤ minimizationBase n pF) :
+    p.maxRegister < counterReg n pF := by
+  simp only [counterReg]; omega
+
+theorem program_doesnt_touch_zeroReg (n : ℕ) (pF : Program) (p : Program)
+    (hp : p.maxRegister ≤ minimizationBase n pF) :
+    p.maxRegister < zeroReg n pF := by
+  simp only [zeroReg]; omega
+
 /-! ## pF doesn't touch high registers -/
 
 @[simp] theorem pF_doesnt_touch_savedInputs (n : ℕ) (pF : Program) (i : Fin n) :
-    pF.maxRegister < savedInputsStart n pF + i := by
-  simp only [savedInputsStart]; have := minimizationBase_ge_pF n pF; omega
+    pF.maxRegister < savedInputsStart n pF + i :=
+  program_doesnt_touch_savedInputs n pF pF (minimizationBase_ge_pF n pF) i
 
 @[simp] theorem pF_doesnt_touch_counter (n : ℕ) (pF : Program) :
-    pF.maxRegister < counterReg n pF := by
-  simp only [counterReg]; have := minimizationBase_ge_pF n pF; omega
+    pF.maxRegister < counterReg n pF :=
+  program_doesnt_touch_counter n pF pF (minimizationBase_ge_pF n pF)
 
 @[simp] theorem pF_doesnt_touch_zeroReg (n : ℕ) (pF : Program) :
-    pF.maxRegister < zeroReg n pF := by
-  simp only [zeroReg]; have := minimizationBase_ge_pF n pF; omega
+    pF.maxRegister < zeroReg n pF :=
+  program_doesnt_touch_zeroReg n pF pF (minimizationBase_ge_pF n pF)
 
 end Urm
