@@ -9,6 +9,8 @@ import Urm.Embeddings
 import Urm.Shift
 import Urm.Halting.Common
 
+
+
 /-! # Halting Proofs for Minimization
 
 This file proves halting properties for the minimization witness program.
@@ -91,25 +93,25 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
   -- After prologue: R[i] = inputs i for i < n, R[n] = k
   have hR_after_prologue : ∀ i : Fin n, c_prologue.state.read i = inputs i := by
     intro i
-    have := loopPrologue_restores_inputs n pF s c_prologue hsteps_prologue hhalted_prologue i
-    rw [this]
+    let h := loopPrologue_restores_inputs n pF s c_prologue hsteps_prologue hhalted_prologue i
+    rw [h]
     exact hs_saved i
   have hRn_after_prologue : c_prologue.state.read n = k := by
-    have := loopPrologue_sets_counter_input n pF s c_prologue hsteps_prologue hhalted_prologue
-    rw [this, hs_counter]
+    let h := loopPrologue_sets_counter_input n pF s c_prologue hsteps_prologue hhalted_prologue
+    rw [h, hs_counter]
   have hcounter_after_prologue : c_prologue.state.read (counterReg n pF) = k := by
-    have := loopPrologue_preserves_high_register n pF s c_prologue hsteps_prologue hhalted_prologue
+    let h := loopPrologue_preserves_high_register n pF s c_prologue hsteps_prologue hhalted_prologue
       (counterReg n pF) (counterReg_gt_base n pF)
-    rw [this, hs_counter]
+    rw [h, hs_counter]
   have hzero_after_prologue : c_prologue.state.read (zeroReg n pF) = 0 := by
-    have := loopPrologue_preserves_high_register n pF s c_prologue hsteps_prologue hhalted_prologue
+    let h := loopPrologue_preserves_high_register n pF s c_prologue hsteps_prologue hhalted_prologue
       (zeroReg n pF) (zeroReg_gt_base n pF)
-    rw [this, hs_zero]
+    rw [h, hs_zero]
   have hsaved_after_prologue : ∀ i : Fin n, c_prologue.state.read (savedInputsStart n pF + i) = inputs i := by
     intro i
-    have := loopPrologue_preserves_high_register n pF s c_prologue hsteps_prologue hhalted_prologue
-      (savedInputsStart n pF + i) (by have := savedInputsStart_gt_base n pF; omega)
-    rw [this]
+    let h := loopPrologue_preserves_high_register n pF s c_prologue hsteps_prologue hhalted_prologue
+      (savedInputsStart n pF + i) (by let h := savedInputsStart_gt_base n pF; omega)
+    rw [h]
     exact hs_saved i
   -- Lift prologue steps to minimizeProgram
   have hembed_prologue := loopPrologue_embed n pF
@@ -134,10 +136,10 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
     -- Case split: r < n, r = n, or r > n
     by_cases hr_lt_n : r < n
     · -- Case r < n: both sides equal inputs r
-      have hleft : c_prologue.state.read r = inputs ⟨r, hr_lt_n⟩ := hR_after_prologue ⟨r, hr_lt_n⟩
-      have hright : initState.read r = inputs ⟨r, hr_lt_n⟩ := by
+      let hleft : c_prologue.state.read r = inputs ⟨r, hr_lt_n⟩ := hR_after_prologue ⟨r, hr_lt_n⟩
+      let hright : initState.read r = inputs ⟨r, hr_lt_n⟩ := by
         unfold initState Config.init State.fromInputs State.read
-        have hr_lt_n1 : r < n + 1 := Nat.lt_add_right 1 hr_lt_n
+        let hr_lt_n1 : r < n + 1 := Nat.lt_add_right 1 hr_lt_n
         simp only [List.getD, List.getElem?_ofFn, hr_lt_n1, dite_true]
         simp only [Option.getD_some, extendInputs, Fin.snoc, hr_lt_n, dite_true]
         rfl
@@ -145,40 +147,40 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
     · by_cases hr_eq_n : r = n
       · -- Case r = n: both sides equal k
         subst hr_eq_n
-        have hleft : c_prologue.state.read r = k := hRn_after_prologue
-        have hright : initState.read r = k := by
+        let hleft : c_prologue.state.read r = k := hRn_after_prologue
+        let hright : initState.read r = k := by
           unfold initState Config.init State.fromInputs State.read
-          have hr_lt_r1 : r < r + 1 := Nat.lt_succ_self r
+          let hr_lt_r1 : r < r + 1 := Nat.lt_succ_self r
           simp only [List.getD, List.getElem?_ofFn, hr_lt_r1, dite_true]
           simp only [Option.getD_some, extendInputs, Fin.snoc, Nat.lt_irrefl, dite_false]
           simp
         rw [hleft, hright]
       · -- Case r > n: both sides equal 0
-        have hr_gt_n : n < r := Nat.lt_of_le_of_ne (Nat.not_lt.mp hr_lt_n) (Ne.symm hr_eq_n)
+        let hr_gt_n : n < r := Nat.lt_of_le_of_ne (Nat.not_lt.mp hr_lt_n) (Ne.symm hr_eq_n)
         -- Right side: initState.read r = 0 (beyond List.ofFn length)
-        have hright : initState.read r = 0 := by
+        let hright : initState.read r = 0 := by
           unfold initState Config.init State.fromInputs State.read
-          have hr_ge_n1 : ¬ r < n + 1 := by omega
+          let hr_ge_n1 : ¬ r < n + 1 := by omega
           simp only [List.getD, List.getElem?_ofFn, hr_ge_n1, dite_false]
           simp only [Option.getD_none]
         -- Left side: c_prologue.state.read r = 0 (cleared by loopPrologue, then not touched)
-        have hleft : c_prologue.state.read r = 0 := by
-          have hr_le_base : r ≤ minimizationBase n pF := Nat.le_trans hr_hi (minimizationBase_ge_pF n pF)
+        let hleft : c_prologue.state.read r = 0 := by
+          let hr_le_base : r ≤ minimizationBase n pF := Nat.le_trans hr_hi (minimizationBase_ge_pF n pF)
           -- Register r is in clearRegisters range (0..base) but not touched by copy (0..n-1) or T (n)
           -- Use straight-line analysis: Z r at position r, no later writes to r
-          have hk : r < (loopPrologue n pF).length := by
+          let hk : r < (loopPrologue n pF).length := by
             simp only [loopPrologue, List.length_append, clearRegisters_length, copyRegisterRange_length,
               List.length]; omega
-          have hwrite : (loopPrologue n pF)[r] = Instr.Z r := by
+          let hwrite : (loopPrologue n pF)[r] = Instr.Z r := by
             simp only [loopPrologue]
-            have h_in_clear : r < (clearRegisters (minimizationBase n pF)).length := by
+            let h_in_clear : r < (clearRegisters (minimizationBase n pF)).length := by
               simp only [clearRegisters_length]; exact Nat.lt_succ_of_le hr_le_base
-            have h_in_clear_ext : r < (clearRegisters (minimizationBase n pF) ++
+            let h_in_clear_ext : r < (clearRegisters (minimizationBase n pF) ++
                 copyRegisterRange (savedInputsStart n pF) 0 n).length := by
               simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]; omega
             rw [List.getElem_append_left h_in_clear_ext, List.getElem_append_left h_in_clear]
             simp only [Program.clearRegisters, List.getElem_map, List.getElem_range]
-          have hnowrite : ∀ j (hj : j < (loopPrologue n pF).length), r < j →
+          let hnowrite : ∀ j (hj : j < (loopPrologue n pF).length), r < j →
               ((loopPrologue n pF)[j]).writesTo ≠ some r := by
             intro j hj hjr
             simp only [loopPrologue, List.length_append, clearRegisters_length, copyRegisterRange_length,
@@ -192,16 +194,16 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
               rw [List.getElem_append_left hj_clear1]
               by_cases hj_clear : j < minimizationBase n pF + 1
               · -- In clearRegisters: writes to j ≠ r since j > r
-                have h2 : j < (clearRegisters (minimizationBase n pF)).length := by
+                let h2 : j < (clearRegisters (minimizationBase n pF)).length := by
                   simp only [clearRegisters_length]; exact hj_clear
                 rw [List.getElem_append_left h2]
                 simp only [Program.clearRegisters, List.getElem_map, List.getElem_range,
                   Instr.writesTo, ne_eq, Option.some.injEq]
                 intro heq; exact Nat.ne_of_lt hjr heq.symm
               · -- In copyRegisterRange
-                have h2 : ¬ j < (clearRegisters (minimizationBase n pF)).length := by
+                let h2 : ¬ j < (clearRegisters (minimizationBase n pF)).length := by
                   simp only [clearRegisters_length]; omega
-                have h2' : (clearRegisters (minimizationBase n pF)).length ≤ j := Nat.not_lt.mp h2
+                let h2' : (clearRegisters (minimizationBase n pF)).length ≤ j := Nat.not_lt.mp h2
                 rw [List.getElem_append_right h2']
                 simp only [clearRegisters_length, Program.copyRegisterRange,
                   List.getElem_map, List.getElem_range, Nat.zero_add, Instr.writesTo, ne_eq, Option.some.injEq]
@@ -209,10 +211,10 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
                 simp only [List.length_append, clearRegisters_length, copyRegisterRange_length] at hj_clear1
                 omega
             · -- j is in the final [T counter n]
-              have hge : (clearRegisters (minimizationBase n pF) ++
+              let hge : (clearRegisters (minimizationBase n pF) ++
                   copyRegisterRange (savedInputsStart n pF) 0 n).length ≤ j := Nat.not_lt.mp hj_clear1
               rw [List.getElem_append_right hge]
-              have hidx : j - (clearRegisters (minimizationBase n pF) ++
+              let hidx : j - (clearRegisters (minimizationBase n pF) ++
                   copyRegisterRange (savedInputsStart n pF) 0 n).length = 0 := by
                 simp only [List.length_append, clearRegisters_length, copyRegisterRange_length] at hj_clear1 ⊢; omega
               simp only [hidx, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
@@ -241,7 +243,7 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
   -- Result pF ... hf_halts = (Classical.choose hf_halts).state.output = c_pF.state.read 0
   -- By agreeOn, c_pF.state.read 0 = c_pF'.state.read 0
   have hpF_result_eq : c_pF'.state.read 0 = Result pF (List.ofFn (extendInputs inputs k)) hf_halts := by
-    have h_agree_at_0 := hagree_pF' 0 (Nat.zero_le 0) (Nat.zero_le _)
+    let h_agree_at_0 := hagree_pF' 0 (Nat.zero_le 0) (Nat.zero_le _)
     simp only [Result, State.output]
     exact h_agree_at_0.symm
 
@@ -259,8 +261,8 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
   -- Note: c₂.state = c_prologue.state by definition
   have hsteps_pF_lifted' : Steps (minimizeProgram n pF) ⟨pFOffset n pF, c_prologue.state⟩
       ⟨pFOffset n pF + pF.length, c_pF'.state⟩ := by
-    have h1 : pFOffset n pF + c₂.pc = pFOffset n pF := rfl
-    have h2 : pFOffset n pF + c_pF'.pc = pFOffset n pF + pF.length := by rw [hpc_pF'_length]
+    let h1 : pFOffset n pF + c₂.pc = pFOffset n pF := rfl
+    let h2 : pFOffset n pF + c_pF'.pc = pFOffset n pF + pF.length := by rw [hpc_pF'_length]
     rw [h1, h2] at hsteps_pF_lifted
     exact hsteps_pF_lifted
 
@@ -274,16 +276,16 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
 
   -- Preservation: zeroReg and counter are unchanged by pF
   have hzero_after_pF : c_pF'.state.read (zeroReg n pF) = 0 := by
-    have h := pF_preserves_high_reg pF c_prologue.state c_pF'.state c_pF' hsteps_pF' rfl
+    let h := pF_preserves_high_reg pF c_prologue.state c_pF'.state c_pF' hsteps_pF' rfl
       (zeroReg n pF) (pF_doesnt_touch_zeroReg n pF)
     rw [h, hzero_after_prologue]
   have hcounter_after_pF : c_pF'.state.read (counterReg n pF) = k := by
-    have h := pF_preserves_high_reg pF c_prologue.state c_pF'.state c_pF' hsteps_pF' rfl
+    let h := pF_preserves_high_reg pF c_prologue.state c_pF'.state c_pF' hsteps_pF' rfl
       (counterReg n pF) (pF_doesnt_touch_counter n pF)
     rw [h, hcounter_after_prologue]
   have hsaved_after_pF : ∀ i : Fin n, c_pF'.state.read (savedInputsStart n pF + i) = inputs i := by
     intro i
-    have h := pF_preserves_high_reg pF c_prologue.state c_pF'.state c_pF' hsteps_pF' rfl
+    let h := pF_preserves_high_reg pF c_prologue.state c_pF'.state c_pF' hsteps_pF' rfl
       (savedInputsStart n pF + i) (pF_doesnt_touch_savedInputs n pF i)
     rw [h, hsaved_after_prologue]
 
@@ -343,7 +345,7 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
 
     -- Preservation: writing to counterReg doesn't affect zeroReg or savedInputs
     have hzero_preserved : state_after_S.read (zeroReg n pF) = s.read (zeroReg n pF) := by
-      have hne : zeroReg n pF ≠ counterReg n pF := Nat.ne_of_gt (zeroReg_gt_counterReg n pF)
+      let hne : zeroReg n pF ≠ counterReg n pF := Nat.ne_of_gt (zeroReg_gt_counterReg n pF)
       calc state_after_S.read (zeroReg n pF)
           = c_pF'.state.read (zeroReg n pF) := by
             simp only [state_after_S, State.write, State.read, Function.update_of_ne hne]
@@ -351,7 +353,7 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
         _ = s.read (zeroReg n pF) := hs_zero.symm
     have hsaved_preserved : ∀ i : Fin n, state_after_S.read (savedInputsStart n pF + i) = s.read (savedInputsStart n pF + i) := by
       intro i
-      have hne : savedInputsStart n pF + ↑i ≠ counterReg n pF := by
+      let hne : savedInputsStart n pF + ↑i ≠ counterReg n pF := by
         simp only [savedInputsStart, counterReg, minimizationBase]; omega
       calc state_after_S.read (savedInputsStart n pF + ↑i)
           = c_pF'.state.read (savedInputsStart n pF + ↑i) := by
@@ -441,8 +443,8 @@ noncomputable def loop_k_iterations_strong (n : ℕ) (pF : Program) (hpF_sf : pF
       fun i hi => hf_halts_below i (Nat.lt_succ_of_lt hi)
     have hf_nonzero_j : ∀ i (hi : i < j), Result pF (List.ofFn (extendInputs inputs i)) (hf_halts_j i hi) ≠ 0 := by
       intro i hi
-      have hi' := Nat.lt_succ_of_lt hi
-      have h := hf_nonzero_below i hi'
+      let hi' := Nat.lt_succ_of_lt hi
+      let h := hf_nonzero_below i hi'
       -- Need to show Result with hf_halts_j equals Result with hf_halts_below
       -- Both are proof-irrelevant, so the Results are equal
       convert h using 2
@@ -487,7 +489,7 @@ noncomputable def loop_k_iterations_strong (n : ℕ) (pF : Program) (hpF_sf : pF
         · rfl
 
       have hsteps_combined : Steps (minimizeProgram n pF) ⟨loopStartPC n, s⟩ iter.config := by
-        have h1 : Steps (minimizeProgram n pF) ⟨loopStartPC n, s⟩ ⟨loopStartPC n, res_j.config.state⟩ := by
+        let h1 : Steps (minimizeProgram n pF) ⟨loopStartPC n, s⟩ ⟨loopStartPC n, res_j.config.state⟩ := by
           rw [← hres_j_pc]; exact res_j.steps
         exact h1.trans iter.steps
 
@@ -549,8 +551,8 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
   -- Lift prologue steps to minimizeProgram
   have hPrologue_steps_lifted : Steps (minimizeProgram n pF) ⟨loopStartPC n, s⟩
       ⟨pFOffset n pF, cPrologue.state⟩ := by
-    have hembed := loopPrologue_embed n pF
-    have h := Steps.straightLine_at_offset (loopStartPC n) hsl_prologue hembed hPrologue_steps
+    let hembed := loopPrologue_embed n pF
+    let h := Steps.straightLine_at_offset (loopStartPC n) hsl_prologue hembed hPrologue_steps
     rw [hPrologue_pc, loopPrologue_length] at h
     simp only [pFOffset, loopStartPC] at h ⊢
     convert h using 2
@@ -603,24 +605,24 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
   -- Extract that after loopPrologue, registers 0..n-1 have inputs and register n has counter
   have hPrologue_sets_inputs : ∀ i : Fin n, pFStartState.read i = inputs i := by
     intro i
-    have h1 := loopPrologue_restores_inputs n pF s cPrologue hPrologue_steps hPrologue_halted i
-    have h2 := hs_saved i
+    let h1 := loopPrologue_restores_inputs n pF s cPrologue hPrologue_steps hPrologue_halted i
+    let h2 := hs_saved i
     simp only at h1 h2 ⊢
     rw [h1, h2]
 
   have hPrologue_sets_counter_reg : pFStartState.read n = counter := by
-    have h1 := loopPrologue_sets_counter_input n pF s cPrologue hPrologue_steps hPrologue_halted
+    let h1 := loopPrologue_sets_counter_input n pF s cPrologue hPrologue_steps hPrologue_halted
     rw [h1, hs_counter]
 
   -- pF inputs match the extended inputs
   have hpFStartState_matches : ∀ i : Fin (n + 1), pFStartState.read i = extendInputs inputs counter i := by
     intro i
     rcases Nat.lt_or_eq_of_le (Nat.lt_succ_iff.mp i.isLt) with h | h
-    · have hi : (i : ℕ) < n := h
+    · let hi : (i : ℕ) < n := h
       rw [extendInputs, Fin.snoc]
       simp only [hi, dite_true]
       exact hPrologue_sets_inputs ⟨i, hi⟩
-    · have hi : (i : ℕ) = n := h
+    · let hi : (i : ℕ) = n := h
       rw [extendInputs, Fin.snoc]
       simp only [hi, lt_irrefl, dite_false]
       exact hPrologue_sets_counter_reg
@@ -727,13 +729,13 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
         cPrologue.state.read r = (State.fromInputs (List.ofFn (extendInputs inputs counter))).read r := by
       intro r hr
       by_cases hr_lt : r < n + 1
-      · have := hpFStartState_fromInputs ⟨r, hr_lt⟩
-        exact this
+      · let h := hpFStartState_fromInputs ⟨r, hr_lt⟩
+        exact h
       · -- r ≥ n + 1, both read 0
         simp only [State.fromInputs, State.read]
         rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none (by simp; omega), Option.getD_none]
         -- cPrologue.state.read r = 0 for r ≥ n + 1 (since loopPrologue clears high registers)
-        have hr_le_base : r ≤ minimizationBase n pF := by
+        let hr_le_base : r ≤ minimizationBase n pF := by
           simp only [minimizationBase]; omega
         exact loopPrologue_clears_high_registers n pF s cPrologue hPrologue_steps hPrologue_halted
           r (Nat.le_of_not_lt hr_lt) hr_le_base
@@ -835,9 +837,9 @@ noncomputable def loop_halts_exit_gen_aux (n : ℕ) (pF : Program) (hpF_sf : pF.
           intro heq
           -- If start = iter.config, then s = iter.config.state
           -- But iter.config.state has counter = startCounter + 1 ≠ startCounter
-          have hs_eq : s = iter.config.state := by
-            have : (⟨loopStartPC n, s⟩ : Config).state = iter.config.state := by rw [heq]
-            exact this
+          let hs_eq : s = iter.config.state := by
+            let h : (⟨loopStartPC n, s⟩ : Config).state = iter.config.state := by rw [heq]
+            exact h
           rw [← hs_eq] at hcounter_incr
           rw [hs_counter] at hcounter_incr
           omega
@@ -1138,21 +1140,21 @@ theorem minimizeProgram_halts (n : ℕ) (pF : Program)
   -- Step 7: Chain all steps
   have hTotal : Steps (minimizeProgram n pF) ⟨0, State.fromInputs (List.ofFn inputs)⟩ cOutput := by
     -- Setup: from initial state to loopStartPC
-    have h1 : Steps (minimizeProgram n pF) ⟨0, State.fromInputs (List.ofFn inputs)⟩
+    let h1 : Steps (minimizeProgram n pF) ⟨0, State.fromInputs (List.ofFn inputs)⟩
         ⟨loopStartPC n, setup.state⟩ := setup.steps
     -- K iterations: from loopStartPC to resK.config
-    have h2 : Steps (minimizeProgram n pF) ⟨loopStartPC n, setup.state⟩ resK.config := resK.steps
+    let h2 : Steps (minimizeProgram n pF) ⟨loopStartPC n, setup.state⟩ resK.config := resK.steps
     -- resK.config is at loopStartPC with state resK.config.state
-    have hresK_eq : resK.config = ⟨loopStartPC n, resK.config.state⟩ := by
+    let hresK_eq : resK.config = ⟨loopStartPC n, resK.config.state⟩ := by
       ext; exact resK.pc_eq; rfl
     -- Final iteration: from resK.config to iterK.config
-    have h3 : Steps (minimizeProgram n pF) resK.config iterK.config := by
+    let h3 : Steps (minimizeProgram n pF) resK.config iterK.config := by
       convert iterK.steps using 1
     -- iterK.config is at outputPC
-    have hIterK_eq : iterK.config = ⟨outputPC n pF, iterK.config.state⟩ := by
+    let hIterK_eq : iterK.config = ⟨outputPC n pF, iterK.config.state⟩ := by
       ext; exact hiterK_exit; rfl
     -- Output: from iterK.config to cOutput
-    have h4 : Steps (minimizeProgram n pF) iterK.config cOutput := by
+    let h4 : Steps (minimizeProgram n pF) iterK.config cOutput := by
       convert hOutput_steps using 1
     exact h1.trans (h2.trans (h3.trans h4))
 
@@ -1182,9 +1184,9 @@ theorem minimizeProgram_halts_imp_dom (n : ℕ) (pF : Program)
     -- We have Steps from init to setup.state (at loopStartPC)
     -- We have Steps from init to cFinal (halted)
     -- By deterministic_continuation, Steps from setup to cFinal
-    have hInit_eq : Config.init (List.ofFn inputs) = ⟨0, State.fromInputs (List.ofFn inputs)⟩ := rfl
+    let hInit_eq : Config.init (List.ofFn inputs) = ⟨0, State.fromInputs (List.ofFn inputs)⟩ := rfl
     rw [hInit_eq] at hFinal_steps
-    have hContinuation := Steps.deterministic_continuation setup.steps hFinal_steps hFinal_halted
+    let hContinuation := Steps.deterministic_continuation setup.steps hFinal_steps hFinal_halted
     exact ⟨cFinal, hContinuation, hFinal_halted⟩
 
   -- Step 3: Use loop_halts_exit to extract the witness k
@@ -1205,7 +1207,7 @@ theorem minimizeProgram_halts_imp_dom (n : ℕ) (pF : Program)
       rw [← (hpF_spec (extendInputs inputs exitResult.k)).1]
       exact hpF_halts_k
     have hf_get : (f (extendInputs inputs exitResult.k)).get hf_dom = 0 := by
-      have h := (hpF_spec (extendInputs inputs exitResult.k)).2 hpF_halts_k hf_dom
+      let h := (hpF_spec (extendInputs inputs exitResult.k)).2 hpF_halts_k hf_dom
       rw [← h]
       convert hpF_result_zero using 2
     -- Combine hf_dom and hf_get to show f ... = Part.some 0

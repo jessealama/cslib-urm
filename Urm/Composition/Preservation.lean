@@ -6,6 +6,8 @@ Authors: Jesse Alama
 
 import Urm.Composition.StandardForm
 
+
+
 /-! # Preservation Lemmas
 
 Lemmas about register preservation during composition execution.
@@ -140,12 +142,12 @@ theorem allGPhases_prefix_preserves_saved_inputs (m n base : ℕ) (pGs : Fin m �
   | succ k' ih =>
     have hk'_lt : k' < m := Nat.lt_of_succ_le hk
     let k'_fin : Fin m := ⟨k', hk'_lt⟩
+    have htake_eq : (List.finRange m).take (k' + 1) = (List.finRange m).take k' ++ [k'_fin] := by
+      rw [List.take_add_one, getElem?_pos (List.finRange m) k' (by simp [hk'_lt]), Option.toList_some]
+      simp only [List.finRange, List.getElem_ofFn, k'_fin]
     have hPrefix_succ_eq : allGPhases_prefix m n base pGs (k' + 1) =
         (allGPhases_prefix m n base pGs k').concat (gPhase base n (pGs k'_fin) k') := by
       simp only [allGPhases_prefix]
-      have htake_eq : (List.finRange m).take (k' + 1) = (List.finRange m).take k' ++ [k'_fin] := by
-        rw [List.take_add_one, getElem?_pos (List.finRange m) k' (by simp [hk'_lt]), Option.toList_some]
-        simp only [List.finRange, List.getElem_ofFn, k'_fin]
       rw [htake_eq, List.foldl_append, List.foldl_cons, List.foldl_nil]
     rw [hPrefix_succ_eq] at hsteps hhalted
     obtain ⟨sMid, hMid_steps, ⟨cGPhase, hGPhase_steps, hGPhase_halted⟩⟩ :=

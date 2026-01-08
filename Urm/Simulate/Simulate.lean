@@ -8,6 +8,8 @@ import Urm.Simulate.StepPrimrec
 import Urm.Partrec
 import Mathlib.Computability.Partrec
 
+
+
 /-! # URM Computability implies Partial Recursiveness
 
 This file proves the main theorem: every URM-computable function is partial recursive.
@@ -126,10 +128,10 @@ theorem stepsN_of_not_halted_before (p : Program) (input : ℕ) (n : ℕ)
     obtain ⟨c_n, hstepsN⟩ := ih hBefore'
     have hn_false := hBefore n (Nat.lt_succ_self n)
     have h_not_halted : ¬c_n.isHalted p := by
-      have hcorrect := isHaltedAtStep_correct p n (Config.init [input]) c_n hstepsN
+      let hcorrect := isHaltedAtStep_correct p n (Config.init [input]) c_n hstepsN
       unfold encodeInput1 at hn_false
       intro hHalted
-      have htrue := hcorrect.mpr hHalted
+      let htrue := hcorrect.mpr hHalted
       simp only [htrue] at hn_false
       exact nomatch hn_false
     obtain ⟨c', hstep⟩ := Step.of_not_halted p c_n h_not_halted
@@ -204,7 +206,7 @@ theorem evalEncoded_correct (p : Program) (input : ℕ) :
       fun m hm => (hfalse_before hm).symm
     obtain ⟨c', hstepsN⟩ := stepsN_of_not_halted_before p input n hBefore
     have hhalted : c'.isHalted p := by
-      have hcorrect := isHaltedAtStep_correct p n (Config.init [input]) c' hstepsN
+      let hcorrect := isHaltedAtStep_correct p n (Config.init [input]) c' hstepsN
       unfold encodeInput1 at htrue_n
       exact hcorrect.mp htrue_n.symm
     have hHalts : Halts p [input] := ⟨c', StepsN.toSteps hstepsN, hhalted⟩
@@ -273,22 +275,22 @@ theorem URMComputable1.toPartrec' {f : ℕ →. ℕ} (hf : URMComputable1 f) :
   -- Step 1: Show eval p [n] = f n
   have heval : ∀ n, eval p [n] = f n := by
     intro n
-    have hp_n := hp (fun _ => n)
+    let hp_n := hp (fun _ => n)
     simp only [List.ofFn_const, List.replicate] at hp_n
     obtain ⟨hiff, hres⟩ := hp_n
     ext m
     simp only [eval, Part.mem_mk_iff]
     constructor
     · rintro ⟨hHalts, rfl⟩
-      have hDom := hiff.mp hHalts
-      have heq := hres hHalts hDom
+      let hDom := hiff.mp hHalts
+      let heq := hres hHalts hDom
       rw [heq]
       exact Part.get_mem hDom
     · intro hm
-      have hDom : (f n).Dom := Part.dom_iff_mem.mpr ⟨m, hm⟩
-      have hHalts := hiff.mpr hDom
+      let hDom : (f n).Dom := Part.dom_iff_mem.mpr ⟨m, hm⟩
+      let hHalts := hiff.mpr hDom
       refine ⟨hHalts, ?_⟩
-      have heq := hres hHalts hDom
+      let heq := hres hHalts hDom
       rw [heq]
       exact Part.mem_unique (Part.get_mem hDom) hm
   -- Step 2: Show evalEncoded equals eval via evalEncoded_correct
@@ -303,7 +305,7 @@ theorem URMComputable1.toPartrec' {f : ℕ →. ℕ} (hf : URMComputable1 f) :
     unfold encodeInput1 encodeConfig Config.init
     simp only [State.fromInputs]
     let C := encodeRegs (List.replicate bound 0)
-    have heq : ∀ input, encodeRegs (List.ofFn fun i : Fin (bound + 1) =>
+    let heq : ∀ input, encodeRegs (List.ofFn fun i : Fin (bound + 1) =>
         List.getD [input] i 0) = Nat.pair input C := by
       intro input
       rw [List.ofFn_succ]
@@ -311,7 +313,7 @@ theorem URMComputable1.toPartrec' {f : ℕ →. ℕ} (hf : URMComputable1 f) :
                  encodeRegs, Fin.val_succ, List.getElem?_cons_succ]
       congr 1
       -- Show: List.ofFn (fun i => [].getElem? i.val |>.getD 0) = List.replicate bound 0
-      have h_regs : (List.ofFn fun i : Fin bound => ([] : List ℕ)[i.val]?.getD 0) =
+      let h_regs : (List.ofFn fun i : Fin bound => ([] : List ℕ)[i.val]?.getD 0) =
                     List.replicate bound 0 := by
         apply List.ext_getElem
         · simp
@@ -328,22 +330,22 @@ theorem URMComputable1.toPartrec' {f : ℕ →. ℕ} (hf : URMComputable1 f) :
       let step := p.unpair.2
       let inputConfig := encodeInput1 bound input
       if isHaltedAtStep progCode bound inputConfig step then 0 else 1) := by
-    have hIter : Primrec₂ (iterateEncodedStep progCode bound) :=
+    let hIter : Primrec₂ (iterateEncodedStep progCode bound) :=
       iterateEncodedStep_primrec_fixed progCode bound
-    have hHalted : Nat.Primrec (encodedIsHaltedNat progCode) :=
+    let hHalted : Nat.Primrec (encodedIsHaltedNat progCode) :=
       encodedIsHaltedNat_primrec_fixed progCode
-    have hEnc1' : Primrec (encodeInput1 bound) := Primrec.nat_iff.mpr hEnc1
-    have hInputConfig : Primrec (fun p : ℕ => encodeInput1 bound p.unpair.1) :=
+    let hEnc1' : Primrec (encodeInput1 bound) := Primrec.nat_iff.mpr hEnc1
+    let hInputConfig : Primrec (fun p : ℕ => encodeInput1 bound p.unpair.1) :=
       hEnc1'.comp (Primrec.fst.comp Primrec.unpair)
-    have hStep : Primrec (fun p : ℕ => p.unpair.2) := Primrec.snd.comp Primrec.unpair
-    have hIterFull : Primrec (fun p : ℕ =>
+    let hStep : Primrec (fun p : ℕ => p.unpair.2) := Primrec.snd.comp Primrec.unpair
+    let hIterFull : Primrec (fun p : ℕ =>
         iterateEncodedStep progCode bound p.unpair.2 (encodeInput1 bound p.unpair.1)) :=
       hIter.comp hStep hInputConfig
-    have hCheck : Primrec (fun p : ℕ =>
+    let hCheck : Primrec (fun p : ℕ =>
         encodedIsHaltedNat progCode (iterateEncodedStep progCode bound p.unpair.2
           (encodeInput1 bound p.unpair.1))) :=
       (Primrec.nat_iff.mpr hHalted).comp hIterFull
-    have hFlip : Primrec (fun p : ℕ =>
+    let hFlip : Primrec (fun p : ℕ =>
         1 - encodedIsHaltedNat progCode (iterateEncodedStep progCode bound p.unpair.2
           (encodeInput1 bound p.unpair.1))) :=
       Primrec.nat_sub.comp (Primrec.const 1) hCheck
@@ -358,24 +360,24 @@ theorem URMComputable1.toPartrec' {f : ℕ →. ℕ} (hf : URMComputable1 f) :
   have hHaltPred₂ : Computable₂ (fun input step =>
       isHaltedAtStep progCode bound (encodeInput1 bound input) step) := by
     -- Build Primrec₂ first, then convert to Computable₂
-    have h1 : Primrec₂ (iterateEncodedStep progCode bound) :=
+    let h1 : Primrec₂ (iterateEncodedStep progCode bound) :=
       iterateEncodedStep_primrec_fixed progCode bound
-    have h2 : Primrec (encodeInput1 bound) := Primrec.nat_iff.mpr hEnc1
+    let h2 : Primrec (encodeInput1 bound) := Primrec.nat_iff.mpr hEnc1
     -- Build: fun (input, step) => iterateEncodedStep step (encodeInput1 input)
-    have hConfig : Primrec₂ (fun input step =>
+    let hConfig : Primrec₂ (fun input step =>
         iterateEncodedStep progCode bound step (encodeInput1 bound input)) :=
       h1.comp Primrec.snd (h2.comp Primrec.fst)
     -- Convert to Primrec on pairs using unpaired
-    have hConfigP : Primrec (fun p : ℕ × ℕ =>
+    let hConfigP : Primrec (fun p : ℕ × ℕ =>
         iterateEncodedStep progCode bound p.2 (encodeInput1 bound p.1)) :=
       Primrec.nat_iff.mpr (Primrec₂.unpaired'.mpr hConfig)
     -- encodedIsHalted: check if progCode.unpair.1 ≤ configCode.unpair.1
     let progLen := progCode.unpair.1
     -- Build the pc extraction
-    have hPc : Primrec (fun p : ℕ × ℕ =>
+    let hPc : Primrec (fun p : ℕ × ℕ =>
         (iterateEncodedStep progCode bound p.2 (encodeInput1 bound p.1)).unpair.1) :=
       (Primrec.fst.comp Primrec.unpair).comp hConfigP
-    have hLeq : Primrec (fun p : ℕ × ℕ =>
+    let hLeq : Primrec (fun p : ℕ × ℕ =>
         decide (progLen ≤ (iterateEncodedStep progCode bound p.2 (encodeInput1 bound p.1)).unpair.1)) :=
       (Primrec.nat_le.comp (Primrec.const progLen) hPc).decide
     -- Show this equals isHaltedAtStep (progLen = progCode.unpair.1 by definition)
@@ -391,11 +393,11 @@ theorem URMComputable1.toPartrec' {f : ℕ →. ℕ} (hf : URMComputable1 f) :
   -- Step 6: Compose with output extraction using Partrec.map
   have hExtract₂ : Computable₂ (fun input step =>
       extractOutput (iterateEncodedStep progCode bound step (encodeInput1 bound input))) := by
-    have h1 : Primrec₂ (iterateEncodedStep progCode bound) :=
+    let h1 : Primrec₂ (iterateEncodedStep progCode bound) :=
       iterateEncodedStep_primrec_fixed progCode bound
-    have h2 : Primrec (encodeInput1 bound) := Primrec.nat_iff.mpr hEnc1
-    have h3 : Primrec extractOutput := Primrec.nat_iff.mpr extractOutput_primrec
-    have hConfig : Primrec₂ (fun input step =>
+    let h2 : Primrec (encodeInput1 bound) := Primrec.nat_iff.mpr hEnc1
+    let h3 : Primrec extractOutput := Primrec.nat_iff.mpr extractOutput_primrec
+    let hConfig : Primrec₂ (fun input step =>
         iterateEncodedStep progCode bound step (encodeInput1 bound input)) :=
       h1.comp Primrec.snd (h2.comp Primrec.fst)
     exact (h3.comp₂ hConfig).to_comp

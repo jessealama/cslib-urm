@@ -6,6 +6,8 @@ Authors: Jesse Alama
 
 import Urm.PrimitiveRecursion.Halting
 
+
+
 /-! # Correctness Proofs for Primitive Recursion
 
 This file proves that the primitive recursion program computes the correct result.
@@ -46,7 +48,7 @@ theorem primitiveRecursionProgram_result (n : ℕ) (pF pG : Program)
   have hacc_eq_f : baseCase.config.state.read (prAccumulatorReg n pF pG) =
       (Pr f g (Fin.snoc inputs 0)).get hPr_dom_0 := by
     rw [baseCase.accumulator_eq]
-    have hResult_eq := (hpF_spec inputs).2 hpF_halts hf_dom
+    let hResult_eq := (hpF_spec inputs).2 hpF_halts hf_dom
     rw [hResult_eq]
     simp only [Pr_zero_spec]
 
@@ -85,22 +87,22 @@ theorem primitiveRecursionProgram_result (n : ℕ) (pF pG : Program)
   have hTotal : Steps (primitiveRecursionProgram n pF pG)
       (Config.init (List.ofFn (Fin.snoc inputs y))) cOutput := by
     -- init → prBaseCasePC (setup)
-    have h1 := setup.steps
+    let h1 := setup.steps
     -- prBaseCasePC → prLoopCheckPC (base case)
-    have h2 : Steps (primitiveRecursionProgram n pF pG) setup.config baseCase.config :=
+    let h2 : Steps (primitiveRecursionProgram n pF pG) setup.config baseCase.config :=
       baseCase.steps
     -- prLoopCheckPC → prLoopCheckPC with counter=y (loop iterations)
-    have h3 : Steps (primitiveRecursionProgram n pF pG) baseCase.config loopResult.config :=
+    let h3 : Steps (primitiveRecursionProgram n pF pG) baseCase.config loopResult.config :=
       loopResult.steps
     -- prLoopCheckPC → prOutputPC (exit jump)
-    have h4 : Steps (primitiveRecursionProgram n pF pG) loopResult.config
+    let h4 : Steps (primitiveRecursionProgram n pF pG) loopResult.config
         ⟨prOutputPC n pF pG, loopResult.config.state⟩ := by
-      have hconfig : loopResult.config = ⟨prLoopCheckPC n pF pG, loopResult.config.state⟩ := by
+      let hconfig : loopResult.config = ⟨prLoopCheckPC n pF pG, loopResult.config.state⟩ := by
         ext; exact loopResult.pc_eq; rfl
       rw [hconfig]
       exact Relation.ReflTransGen.single hstep_exit
     -- prOutputPC → halted (output)
-    have h5 : Steps (primitiveRecursionProgram n pF pG)
+    let h5 : Steps (primitiveRecursionProgram n pF pG)
         ⟨prOutputPC n pF pG, loopResult.config.state⟩ cOutput := hOutput_steps
     exact h1.trans (h2.trans (h3.trans (h4.trans h5)))
 
@@ -114,7 +116,7 @@ theorem primitiveRecursionProgram_result (n : ℕ) (pF pG : Program)
 
   -- Step 8: Result = cFinal.state.read 0 = cOutput.state.read 0 = Pr value
   have hcFinal_is_witness : cFinal = Classical.choose hHalts := by
-    have hwit := Classical.choose_spec hHalts
+    let hwit := Classical.choose_spec hHalts
     exact Steps.halts_unique hFinal_steps hFinal_halted hwit.1 hwit.2
 
   simp only [Result, State.output]

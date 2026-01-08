@@ -8,6 +8,8 @@ import Urm.Simulate.Encoding
 import Urm.Execution
 import Urm.Shift
 
+
+
 /-! # Encoded Step Function
 
 This file defines the URM step function operating on encoded configurations and proves
@@ -278,11 +280,11 @@ private theorem encodedStep_correct_zero (p : Program) (c : Config) (n : ℕ)
   rw [nthEncoded_encodeRegs_map_encodeInstr p c.pc hpc]
   simp only [hinstr, encodeInstr, Nat.unpair_pair]
   have hn : n ≤ p.maxRegister := by
-    have hinstr' : p.getInstr c.pc = some (Instr.Z n) := by
+    let hinstr' : p.getInstr c.pc = some (Instr.Z n) := by
       simp only [Program.getInstr, List.getElem?_eq_getElem hpc, hinstr]
-    have := Program.getInstr_maxRegister hinstr'
-    simp only [Instr.maxRegister] at this
-    exact this
+    let h := Program.getInstr_maxRegister hinstr'
+    simp only [Instr.maxRegister] at h
+    exact h
   simp only [hn, ↓reduceIte]
   rw [updateNthEncoded_encodeRegs _ _ _ (by simp; omega)]
   congr 1
@@ -307,11 +309,11 @@ private theorem encodedStep_correct_succ (p : Program) (c : Config) (n : ℕ)
   -- For S instruction, tag = 1, so we need to simplify the if-then-else chain
   simp only [show (1 : ℕ) = 0 ↔ False from ⟨fun h => Nat.one_ne_zero h, False.elim⟩, ↓reduceIte]
   have hn : n ≤ p.maxRegister := by
-    have hinstr' : p.getInstr c.pc = some (Instr.S n) := by
+    let hinstr' : p.getInstr c.pc = some (Instr.S n) := by
       simp only [Program.getInstr, List.getElem?_eq_getElem hpc, hinstr]
-    have := Program.getInstr_maxRegister hinstr'
-    simp only [Instr.maxRegister] at this
-    exact this
+    let h := Program.getInstr_maxRegister hinstr'
+    simp only [Instr.maxRegister] at h
+    exact h
   simp only [hn, ↓reduceIte]
   rw [nthEncoded_encodeRegs _ n (by simp; omega)]
   rw [updateNthEncoded_encodeRegs _ _ _ (by simp; omega)]
@@ -337,11 +339,11 @@ private theorem encodedStep_correct_trans (p : Program) (c : Config) (m n : ℕ)
   simp only [show (2 : ℕ) = 0 ↔ False from ⟨fun h => by omega, False.elim⟩,
              show (2 : ℕ) = 1 ↔ False from ⟨fun h => by omega, False.elim⟩, ↓reduceIte]
   have hmn : max m n ≤ p.maxRegister := by
-    have hinstr' : p.getInstr c.pc = some (Instr.T m n) := by
+    let hinstr' : p.getInstr c.pc = some (Instr.T m n) := by
       simp only [Program.getInstr, List.getElem?_eq_getElem hpc, hinstr]
-    have := Program.getInstr_maxRegister hinstr'
-    simp only [Instr.maxRegister] at this
-    exact this
+    let h := Program.getInstr_maxRegister hinstr'
+    simp only [Instr.maxRegister] at h
+    exact h
   have hm : m ≤ p.maxRegister := le_of_max_le_left hmn
   have hn : n ≤ p.maxRegister := le_of_max_le_right hmn
   simp only [hn, hm, ↓reduceIte]
@@ -370,11 +372,11 @@ private theorem encodedStep_correct_jump_eq (p : Program) (c : Config) (m n q : 
              show (3 : ℕ) = 1 ↔ False from ⟨fun h => by omega, False.elim⟩,
              show (3 : ℕ) = 2 ↔ False from ⟨fun h => by omega, False.elim⟩, ↓reduceIte]
   have hmn : max m n ≤ p.maxRegister := by
-    have hinstr' : p.getInstr c.pc = some (Instr.J m n q) := by
+    let hinstr' : p.getInstr c.pc = some (Instr.J m n q) := by
       simp only [Program.getInstr, List.getElem?_eq_getElem hpc, hinstr]
-    have := Program.getInstr_maxRegister hinstr'
-    simp only [Instr.maxRegister] at this
-    exact this
+    let h := Program.getInstr_maxRegister hinstr'
+    simp only [Instr.maxRegister] at h
+    exact h
   have hm : m ≤ p.maxRegister := le_of_max_le_left hmn
   have hn : n ≤ p.maxRegister := le_of_max_le_right hmn
   simp only [hm, hn, ↓reduceIte]
@@ -404,11 +406,11 @@ private theorem encodedStep_correct_jump_ne (p : Program) (c : Config) (m n q : 
              show (3 : ℕ) = 1 ↔ False from ⟨fun h => by omega, False.elim⟩,
              show (3 : ℕ) = 2 ↔ False from ⟨fun h => by omega, False.elim⟩, ↓reduceIte]
   have hmn : max m n ≤ p.maxRegister := by
-    have hinstr' : p.getInstr c.pc = some (Instr.J m n q) := by
+    let hinstr' : p.getInstr c.pc = some (Instr.J m n q) := by
       simp only [Program.getInstr, List.getElem?_eq_getElem hpc, hinstr]
-    have := Program.getInstr_maxRegister hinstr'
-    simp only [Instr.maxRegister] at this
-    exact this
+    let h := Program.getInstr_maxRegister hinstr'
+    simp only [Instr.maxRegister] at h
+    exact h
   have hm : m ≤ p.maxRegister := le_of_max_le_left hmn
   have hn : n ≤ p.maxRegister := le_of_max_le_right hmn
   simp only [hm, hn, ↓reduceIte]

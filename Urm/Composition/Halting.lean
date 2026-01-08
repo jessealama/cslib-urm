@@ -7,6 +7,7 @@ Authors: Jesse Alama
 import Urm.Composition.Preservation
 import Mathlib.Data.List.GetD
 
+
 /-! # Forward Direction Helpers: Dom → Halts -/
 
 namespace Urm
@@ -215,38 +216,38 @@ theorem allGPhases_saves_result {m n : ℕ} [NeZero m] {pF : Program} {pGs : Fin
     suffix_of_concat_from_zero hSavePrefix_steps hSavePrefixI_halted hSavePrefixI_sf
   have hpGs_max : ∀ j, (pGs j).maxRegister ≤ base := fun j => compositionBase_ge_pGs_max m n pF pGs j
   have hn_le_base : n ≤ base + 1 := compositionBase_ge_n m n pF pGs
+  -- Hoisted invariants for hSaved_i that don't depend on k
+  have hSave_sl := copyRegisterRange_isStraightLine 0 (base + 1) n
+  obtain ⟨sSave, hsSave_eq, hSave_copies, _⟩ :=
+    copyRegisterRange_state 0 (base + 1) n (State.fromInputs (List.ofFn inputs)) (Or.inl (by omega))
+  obtain ⟨cSave, hSave_steps', hSave_halted', _⟩ :=
+    straightLine_halts_from_state hSave_sl (State.fromInputs (List.ofFn inputs))
+  have hSave_state_sSave : cSave.state = sSave := by
+    rw [straightLineFinalState_eq_of_halted hSave_sl _ cSave hSave_steps' hSave_halted', hsSave_eq]
+  have hAfterSave : ∀ k : ℕ, (hk : k < n) → sSave.read (base + 1 + k) = inputs ⟨k, hk⟩ := fun k hk => by
+    rw [hSave_copies k hk]; simp [State.fromInputs, State.read, hk]
   have hSaved_i : ∀ k : ℕ, (hk : k < n) → sSavePrefixI.read (base + 1 + k) = inputs ⟨k, hk⟩ := by
     intro k hk
-    have hSave_sl := copyRegisterRange_isStraightLine 0 (base + 1) n
-    obtain ⟨sSave, hsSave_eq, hSave_copies, _⟩ :=
-      copyRegisterRange_state 0 (base + 1) n (State.fromInputs (List.ofFn inputs)) (Or.inl (by omega))
-    have hAfterSave : sSave.read (base + 1 + k) = inputs ⟨k, hk⟩ := by
-      rw [hSave_copies k hk]; simp [State.fromInputs, State.read, hk]
-    obtain ⟨cSave, hSave_steps', hSave_halted', hSave_pc'⟩ :=
-      straightLine_halts_from_state hSave_sl (State.fromInputs (List.ofFn inputs))
-    have hSave_state_sSave : cSave.state = sSave := by
-      rw [straightLineFinalState_eq_of_halted hSave_sl _ cSave hSave_steps' hSave_halted', hsSave_eq]
     by_cases hi_zero : i.val = 0
-    · have hPrefix_empty : allGPhases_prefix m n base pGs i.val = [] := by
-        simp only [hi_zero, allGPhases_prefix, List.take_zero, List.foldl_nil]
-      rw [hPrefix_empty, concat_nil_right] at hSavePrefixI_steps
-      have hstate_eq' : sSavePrefixI = cSave.state := congrArg Config.state
-        (Steps.halts_unique hSavePrefixI_steps (by simp) hSave_steps' hSave_halted')
-      rw [hstate_eq', hSave_state_sSave, hAfterSave]
+    · simp only [hi_zero, allGPhases_prefix, List.take_zero, List.foldl_nil, concat_nil_right] at hSavePrefixI_steps
+      rw [show sSavePrefixI = cSave.state from
+            congrArg Config.state (Steps.halts_unique hSavePrefixI_steps (by simp) hSave_steps' hSave_halted'),
+          hSave_state_sSave, hAfterSave k hk]
     · obtain ⟨sSave', hSave_steps'', cPrefix, hPrefix_steps, hPrefix_halted⟩ :=
         suffix_of_concat_from_zero hSavePrefixI_steps (by simp) hSave_sf
-      have hsSave'_eq_cSave : sSave' = cSave.state := congrArg Config.state
-        (Steps.halts_unique hSave_steps'' (by simp) hSave_steps' hSave_halted')
-      have hsSave'_eq : sSave' = sSave := by rw [hsSave'_eq_cSave, hSave_state_sSave]
-      conv at hPrefix_steps => rw [hsSave'_eq]
-      have hPrefix_steps' : Steps (allGPhases_prefix m n base pGs i.val) ⟨0, cSave.state⟩ cPrefix :=
-        hSave_state_sSave ▸ hPrefix_steps
-      have hPrefixChain := Steps.chain_concat_sf (copyRegisterRange_isStandardForm 0 (base + 1) n) hSave_steps' hSave_halted' hPrefix_steps' hPrefix_halted
-      have hcPrefix_state : cPrefix.state = sSavePrefixI :=
-        (congrArg Config.state (Steps.halts_unique hSavePrefixI_steps (by simp) hPrefixChain.1 hPrefixChain.2)).symm
-      rw [← hcPrefix_state, allGPhases_prefix_preserves_saved_inputs m n base pGs hGs_sf hpGs_max hn_le_base
-        i.val (Nat.le_of_lt i.isLt) sSave cPrefix.state cPrefix hPrefix_steps hPrefix_halted rfl
-        (base + 1 + k) (by omega) (by omega), hAfterSave]
+      -- Use .trans to combine intermediate equality and let bindings for non-nested definitions
+      let hsSave'_eq : sSave' = sSave :=
+        (congrArg Config.state (Steps.halts_unique hSave_steps'' (by simp) hSave_steps' hSave_halted')).trans
+          hSave_state_sSave
+      let hPrefix_steps_sSave := hsSave'_eq ▸ hPrefix_steps
+      let hPrefix_steps' := hSave_state_sSave ▸ hPrefix_steps_sSave
+      let hPrefixChain := Steps.chain_concat_sf (copyRegisterRange_isStandardForm 0 (base + 1) n)
+        hSave_steps' hSave_halted' hPrefix_steps' hPrefix_halted
+      rw [← show cPrefix.state = sSavePrefixI from
+            (congrArg Config.state (Steps.halts_unique hSavePrefixI_steps (by simp) hPrefixChain.1 hPrefixChain.2)).symm,
+          allGPhases_prefix_preserves_saved_inputs m n base pGs hGs_sf hpGs_max hn_le_base
+            i.val (Nat.le_of_lt i.isLt) sSave cPrefix.state cPrefix hPrefix_steps_sSave hPrefix_halted rfl
+            (base + 1 + k) (by omega) (by omega), hAfterSave k hk]
   have hGPhase_halts_i := (hGs_spec i inputs).1.mpr (hGs_dom i)
   have hGPhase_i_result := gPhase_writes_result (hGs_sf i) (hpGs_max i) hn_le_base hGPhase_halts_i
     sSavePrefixI hSaved_i cGPhase_i hGPhase_i_steps hGPhase_i_halted

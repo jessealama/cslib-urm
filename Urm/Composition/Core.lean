@@ -11,6 +11,8 @@ import Urm.StandardForm
 import Mathlib.Data.Finset.Basic
 import Mathlib.Data.Fin.Tuple.Basic
 
+
+
 /-! # Composition Infrastructure -/
 
 namespace Urm
@@ -173,8 +175,7 @@ theorem Steps.of_concat_right {s : State} {c' : Config}
       cases hstep with
       | zero _ | succ _ | trans _ | jump_ne _ _ => simp only []; omega
       | jump_eq h _ =>
-        have hconcat := Program.getInstr_concat_right a.pc hstart ha_in_range
-        rw [hconcat, Program.getInstr_shiftJumps] at h
+        rw [Program.getInstr_concat_right a.pc hstart ha_in_range, Program.getInstr_shiftJumps] at h
         cases hp2 : p2.getInstr (a.pc - p1.length) with
         | none => simp only [hp2, Option.map_none] at h; nomatch h
         | some instr => simp only [hp2, Option.map_some] at h; cases instr with
@@ -187,9 +188,8 @@ theorem suffix_of_concat_from_zero {p1 p2 : Program} {s : State} {c : Config}
     (hsteps : Steps (p1.concat p2) ⟨0, s⟩ c) (hhalted : c.isHalted (p1.concat p2)) (h1 : p1.IsStandardForm) :
     ∃ s', Steps p1 ⟨0, s⟩ ⟨p1.length, s'⟩ ∧ (∃ c', Steps p2 ⟨0, s'⟩ c' ∧ c'.isHalted p2) := by
   obtain ⟨c1, hsteps_p1, hhalted_p1⟩ := prefix_of_concat_from_zero hsteps hhalted h1
-  have hc1_pc : c1.pc = p1.length := by
-    simp only [Config.isHalted] at hhalted_p1
-    have hc1_le := h1.pc_le_length hsteps_p1 (by simp : (⟨0, s⟩ : Config).pc ≤ p1.length); omega
+  have hc1_le := h1.pc_le_length hsteps_p1 (by simp : (⟨0, s⟩ : Config).pc ≤ p1.length)
+  have hc1_pc : c1.pc = p1.length := by simp only [Config.isHalted] at hhalted_p1; omega
   refine ⟨c1.state, ?_, ?_⟩
   · convert hsteps_p1 using 1; ext <;> simp [hc1_pc]
   · have hsteps_p1_lifted : Steps (p1.concat p2) ⟨0, s⟩ ⟨p1.length, c1.state⟩ := by

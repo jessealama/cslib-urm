@@ -8,6 +8,8 @@ import Urm.Basic
 import Mathlib.Logic.Relation
 import Mathlib.Data.Part
 
+
+
 /-! # URM Execution Semantics
 
 Single-step and multi-step execution semantics for URMs.
@@ -343,9 +345,7 @@ theorem split_strictly_smaller {init mid final : Config} {n : ℕ}
   have hm1_pos : m1 > 0 := by
     by_contra hm1_zero
     push_neg at hm1_zero
-    have hm1_eq_zero : m1 = 0 := Nat.le_zero.mp hm1_zero
-    have : mid = init := zero_inv (hm1_eq_zero ▸ hm1)
-    exact h_moved this.symm
+    exact h_moved (zero_inv (Nat.le_zero.mp hm1_zero ▸ hm1)).symm
   omega
 
 end StepsN

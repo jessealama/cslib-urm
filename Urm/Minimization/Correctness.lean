@@ -6,6 +6,8 @@ Authors: Jesse Alama
 
 import Urm.Minimization.Halting
 
+
+
 /-! # Correctness Proofs for Minimization
 
 This file proves the correctness of the minimization witness program:
@@ -51,9 +53,9 @@ theorem minimizeProgram_result (n : ℕ) (pF : Program)
 
   have hLoopHalts : ∃ c, Steps (minimizeProgram n pF) ⟨loopStartPC n, setup.state⟩ c ∧
       c.isHalted (minimizeProgram n pF) := by
-    have hInit_eq : Config.init (List.ofFn inputs) = ⟨0, State.fromInputs (List.ofFn inputs)⟩ := rfl
+    let hInit_eq : Config.init (List.ofFn inputs) = ⟨0, State.fromInputs (List.ofFn inputs)⟩ := rfl
     rw [hInit_eq] at hFinal_steps
-    have hContinuation := Steps.deterministic_continuation setup.steps hFinal_steps hFinal_halted
+    let hContinuation := Steps.deterministic_continuation setup.steps hFinal_steps hFinal_halted
     exact ⟨cFinal, hContinuation, hFinal_halted⟩
 
   -- Step 3: Use loop_halts_exit to get the exit result
@@ -73,26 +75,26 @@ theorem minimizeProgram_result (n : ℕ) (pF : Program)
   -- Step 5: Show that cOutput is the halted config for hHalts (by uniqueness)
   -- Total execution: init → setup → loop → output
   have hTotal : Steps (minimizeProgram n pF) ⟨0, State.fromInputs (List.ofFn inputs)⟩ cOutput := by
-    have h1 : Steps (minimizeProgram n pF) ⟨0, State.fromInputs (List.ofFn inputs)⟩
+    let h1 : Steps (minimizeProgram n pF) ⟨0, State.fromInputs (List.ofFn inputs)⟩
         ⟨loopStartPC n, setup.state⟩ := setup.steps
-    have h2 : Steps (minimizeProgram n pF) ⟨loopStartPC n, setup.state⟩ exitResult.config := exitResult.steps
-    have h3 : Steps (minimizeProgram n pF) ⟨outputPC n pF, exitResult.config.state⟩ cOutput := hOutput_steps
-    have h2' : Steps (minimizeProgram n pF) ⟨loopStartPC n, setup.state⟩
+    let h2 : Steps (minimizeProgram n pF) ⟨loopStartPC n, setup.state⟩ exitResult.config := exitResult.steps
+    let h3 : Steps (minimizeProgram n pF) ⟨outputPC n pF, exitResult.config.state⟩ cOutput := hOutput_steps
+    let h2' : Steps (minimizeProgram n pF) ⟨loopStartPC n, setup.state⟩
         ⟨outputPC n pF, exitResult.config.state⟩ := by
       convert h2 using 2; exact exitResult.pc_eq.symm
     exact h1.trans (h2'.trans h3)
 
   -- By uniqueness of halting, cFinal = cOutput
   have hFinal_eq_Output : cFinal = cOutput := by
-    have hInit_eq : Config.init (List.ofFn inputs) = ⟨0, State.fromInputs (List.ofFn inputs)⟩ := rfl
+    let hInit_eq : Config.init (List.ofFn inputs) = ⟨0, State.fromInputs (List.ofFn inputs)⟩ := rfl
     rw [hInit_eq] at hFinal_steps
     exact Steps.halts_unique hFinal_steps hFinal_halted hTotal hOutput_halted
 
   -- So Result = cFinal.state.read 0 = cOutput.state.read 0 = k
   have hResult_eq_k : Result (minimizeProgram n pF) (List.ofFn inputs) hHalts = k := by
     -- Result = (Classical.choose hHalts).state.output = cFinal.state.read 0
-    have hcFinal_is_witness : cFinal = Classical.choose hHalts := by
-      have hwit := Classical.choose_spec hHalts
+    let hcFinal_is_witness : cFinal = Classical.choose hHalts := by
+      let hwit := Classical.choose_spec hHalts
       exact Steps.halts_unique hFinal_steps hFinal_halted hwit.1 hwit.2
     simp only [Result, State.output]
     rw [← hcFinal_is_witness, hFinal_eq_Output]
@@ -117,7 +119,7 @@ theorem minimizeProgram_result (n : ℕ) (pF : Program)
     exact hpF_halts_k
 
   have hf_k_get_zero : (f (extendInputs inputs k)).get hf_k_dom = 0 := by
-    have h := (hpF_spec (extendInputs inputs k)).2 hpF_halts_k hf_k_dom
+    let h := (hpF_spec (extendInputs inputs k)).2 hpF_halts_k hf_k_dom
     rw [← h]
     convert hpF_result_zero using 2
 
@@ -131,24 +133,24 @@ theorem minimizeProgram_result (n : ℕ) (pF : Program)
     · -- k ≤ k': If k > k', then f(k') = 0 but exitResult says f(j) ≠ 0 for j < k
       by_contra hk_gt
       push_neg at hk_gt
-      have hk'_lt_k : k' < k := hk_gt
+      let hk'_lt_k : k' < k := hk_gt
       -- For j < k, pF returns non-zero, hence f returns non-zero
-      have hpF_halts_k' := exitResult.pF_halts k' (Nat.le_of_lt hk'_lt_k)
-      have hpF_nonzero_k' := exitResult.pF_nonzero_below k' hk'_lt_k
+      let hpF_halts_k' := exitResult.pF_halts k' (Nat.le_of_lt hk'_lt_k)
+      let hpF_nonzero_k' := exitResult.pF_nonzero_below k' hk'_lt_k
       -- But f(k') = Part.some 0
-      have hf_k'_dom : (f (extendInputs inputs k')).Dom := by
+      let hf_k'_dom : (f (extendInputs inputs k')).Dom := by
         rw [← (hpF_spec (extendInputs inputs k')).1]; exact hpF_halts_k'
-      have hf_k'_get : (f (extendInputs inputs k')).get hf_k'_dom = 0 := by
+      let hf_k'_get : (f (extendInputs inputs k')).get hf_k'_dom = 0 := by
         rw [Part.eq_some_iff] at hf_k'_zero
         exact Part.get_eq_of_mem hf_k'_zero hf_k'_dom
-      have hpF_result_k' := (hpF_spec (extendInputs inputs k')).2 hpF_halts_k' hf_k'_dom
+      let hpF_result_k' := (hpF_spec (extendInputs inputs k')).2 hpF_halts_k' hf_k'_dom
       -- pF result = f.get = 0, contradicting pF_nonzero_k'
       rw [hpF_result_k', hf_k'_get] at hpF_nonzero_k'
       exact hpF_nonzero_k' rfl
     · -- k' ≤ k: If k' > k, then f(k) = 0 but μ_min says f(j) ≠ 0 for j < k'
       by_contra hk'_gt
       push_neg at hk'_gt
-      have hk_lt_k' : k < k' := hk'_gt
+      let hk_lt_k' : k < k' := hk'_gt
       -- By μ_min, for y' < k', f returns non-zero
       obtain ⟨v, hv_eq, hv_ne0⟩ := μ_min hDom hk_lt_k'
       rw [hf_k_zero] at hv_eq
