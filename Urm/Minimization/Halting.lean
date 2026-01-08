@@ -530,21 +530,16 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
   -- Step 1: loopPrologue is straight-line and halts at pFOffset
   have hsl_prologue := loopPrologue_isStraightLine n pF
 
-  -- Execute loopPrologue using common infrastructure
-  let prologueResult := straightLineExec hsl_prologue s
-  let cPrologue := prologueResult.config
-  let hPrologue_steps := prologueResult.steps
-  let hPrologue_halted := prologueResult.halted
-  let hPrologue_pc := prologueResult.pc_eq
+  -- Execute loopPrologue using phase execution infrastructure
+  let prologueExec := execPhaseInHost hsl_prologue (loopStartPC n) (loopPrologue_embed n pF) s
+  let cPrologue := prologueExec.phaseResult.config
 
-  -- Lift prologue steps to minimizeProgram
+  -- Lift prologue steps: loopStartPC n + loopPrologue.length = pFOffset n pF
   have hPrologue_steps_lifted : Steps (minimizeProgram n pF) ⟨loopStartPC n, s⟩
       ⟨pFOffset n pF, cPrologue.state⟩ := by
-    let hembed := loopPrologue_embed n pF
-    let h := Steps.straightLine_at_offset (loopStartPC n) hsl_prologue hembed hPrologue_steps
-    rw [hPrologue_pc, loopPrologue_length] at h
-    simp only [pFOffset, loopStartPC] at h ⊢
-    convert h using 2
+    have hpc : loopStartPC n + (loopPrologue n pF).length = pFOffset n pF := by
+      simp only [pFOffset, loopStartPC, loopPrologue_length, setupPhaseLength, loopPrologueLength]
+    exact hpc ▸ prologueExec.liftedSteps
 
   -- Get continuation from pFOffset to cFinal
   have hContinuation := Steps.deterministic_continuation hPrologue_steps_lifted hsteps_final hhalted_final
@@ -594,13 +589,13 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
   -- Extract that after loopPrologue, registers 0..n-1 have inputs and register n has counter
   have hPrologue_sets_inputs : ∀ i : Fin n, pFStartState.read i = inputs i := by
     intro i
-    let h1 := loopPrologue_restores_inputs n pF s cPrologue hPrologue_steps hPrologue_halted i
+    let h1 := loopPrologue_restores_inputs n pF s cPrologue prologueExec.localSteps prologueExec.localHalted i
     let h2 := hs_saved i
     simp only at h1 h2 ⊢
     rw [h1, h2]
 
   have hPrologue_sets_counter_reg : pFStartState.read n = counter := by
-    let h1 := loopPrologue_sets_counter_input n pF s cPrologue hPrologue_steps hPrologue_halted
+    let h1 := loopPrologue_sets_counter_input n pF s cPrologue prologueExec.localSteps prologueExec.localHalted
     rw [h1, hs_counter]
 
   -- pF inputs match the extended inputs
@@ -726,7 +721,7 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
         -- cPrologue.state.read r = 0 for r ≥ n + 1 (since loopPrologue clears high registers)
         let hr_le_base : r ≤ minimizationBase n pF := by
           simp only [minimizationBase]; omega
-        exact loopPrologue_clears_high_registers n pF s cPrologue hPrologue_steps hPrologue_halted
+        exact loopPrologue_clears_high_registers n pF s cPrologue prologueExec.localSteps prologueExec.localHalted
           r (Nat.le_of_not_lt hr_lt) hr_le_base
     exact hpF_diverges (Halts.of_agreeing_state hsteps_pF hhalted_pF hagree)
   -- Now prove the suffices clause by strong induction on STEP COUNT (not pF.length - k)
@@ -1028,34 +1023,26 @@ noncomputable def executeSetupPhase (n : ℕ) (pF : Program) (inputs : Fin n →
     SetupPhaseResult n pF inputs :=
   let hsl_setup := setupPhase_isStraightLine n pF
   let initState := State.fromInputs (List.ofFn inputs)
-  let setupResult := straightLineExec hsl_setup initState
-  let cSetup := setupResult.config
-  let hSetup_steps := setupResult.steps
-  let hSetup_halted := setupResult.halted
-  let hSetup_pc := setupResult.pc_eq
+  -- Use phase execution infrastructure
+  let setupExec := execPhaseInHost hsl_setup 0 (setupPhase_embed n pF) initState
+  let cSetup := setupExec.phaseResult.config
 
-  -- Lift setup steps to minimizeProgram
+  -- Lift setup steps: 0 + setupPhase.length = loopStartPC n
   let hSetup_steps_lifted : Steps (minimizeProgram n pF) ⟨0, initState⟩
-      ⟨(setupPhase n pF).length, cSetup.state⟩ := by
-    have hembed := setupPhase_embed n pF
-    have h := Steps.straightLine_at_offset 0 hsl_setup hembed hSetup_steps
-    simp only [Nat.zero_add] at h
-    rw [hSetup_pc] at h; exact h
+      ⟨loopStartPC n, cSetup.state⟩ := by
+    have hpc : 0 + (setupPhase n pF).length = loopStartPC n := by
+      simp only [loopStartPC, setupPhase_length, Nat.zero_add]
+    exact hpc ▸ setupExec.liftedSteps
 
-  -- Establish invariants
+  -- Establish invariants using local execution result
   let hSetup_counter : cSetup.state.read (counterReg n pF) = 0 :=
-    setupPhase_counter_zero n pF inputs initState rfl cSetup hSetup_steps hSetup_halted
+    setupPhase_counter_zero n pF inputs initState rfl cSetup setupExec.localSteps setupExec.localHalted
   let hSetup_zero : cSetup.state.read (zeroReg n pF) = 0 :=
-    setupPhase_zeroReg_zero n pF inputs initState rfl cSetup hSetup_steps hSetup_halted
+    setupPhase_zeroReg_zero n pF inputs initState rfl cSetup setupExec.localSteps setupExec.localHalted
   let hSetup_saved : ∀ i : Fin n, cSetup.state.read (savedInputsStart n pF + i) = inputs i :=
-    fun i => setupPhase_saves_inputs n pF inputs initState rfl cSetup hSetup_steps hSetup_halted i
+    fun i => setupPhase_saves_inputs n pF inputs initState rfl cSetup setupExec.localSteps setupExec.localHalted i
 
-  -- PC after setup = loopStartPC
-  let hSetup_pc_loopStart : (setupPhase n pF).length = loopStartPC n := by
-    simp only [loopStartPC, setupPhase_length]
-
-  ⟨cSetup.state, by rw [← hSetup_pc_loopStart]; exact hSetup_steps_lifted,
-   hSetup_counter, hSetup_zero, hSetup_saved⟩
+  ⟨cSetup.state, hSetup_steps_lifted, hSetup_counter, hSetup_zero, hSetup_saved⟩
 
 /-! ## Main Halting Theorems -/
 
