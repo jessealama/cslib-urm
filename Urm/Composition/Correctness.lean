@@ -87,8 +87,9 @@ theorem comp_general_halts_imp_gi_dom
     · obtain ⟨_, hsCopy_final_eq, hsCopy_copies, _⟩ :=
         copyRegisterRange_state (base + 1) 0 n dClear.state
           (Or.inr (by let _ := compositionBase_ge_n m n pF pGs; omega))
+      let hr' := hsCopy_copies r hr_lt_n
       let hsCopy_r : dCopy.state.read r = dClear.state.read (base + 1 + r) := by
-        let hr' := hsCopy_copies r hr_lt_n; simp only [Nat.zero_add] at hr'
+        simp only [Nat.zero_add] at hr'
         rw [decompose_concat_state_straightLine (copyRegisterRange_isStraightLine (base + 1) 0 n), hsCopy_final_eq]
         convert hr' using 2
       let hsClear_preserves : dClear.state.read (base + 1 + r) = sSavePrefix.read (base + 1 + r) := by
@@ -106,7 +107,8 @@ theorem comp_general_halts_imp_gi_dom
         straightLine_suffix_of_concat_state hSave_sl hSavePrefix_halts.choose_spec.1
           hSavePrefix_halts.choose_spec.2 hSaveInputs_sf
       let hpGs_max : ∀ j, (pGs j).maxRegister ≤ base := fun j => compositionBase_ge_Gi m n pF pGs j
-      let hn_le_base : n ≤ base + 1 := by let _ := compositionBase_ge_n_sub_one m n pF pGs; omega
+      let _base_ge := compositionBase_ge_n_sub_one m n pF pGs
+      let hn_le_base : n ≤ base + 1 := by omega
       let hsSave_value : dSave.state.read (base + 1 + r) = inputs ⟨r, hr_lt_n⟩ := by
         rw [hsSave_eq]; exact saveInputs_state base n hn_le_base inputs r hr_lt_n
       let hSavePrefixChain := Steps.chain_concat_sf hSaveInputs_sf dSave.steps_left hSave_halted' hPrefix_steps hPrefix_halted

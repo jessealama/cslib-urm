@@ -137,9 +137,9 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
     by_cases hr_lt_n : r < n
     · -- Case r < n: both sides equal inputs r
       let hleft : c_prologue.state.read r = inputs ⟨r, hr_lt_n⟩ := hR_after_prologue ⟨r, hr_lt_n⟩
+      let hr_lt_n1 : r < n + 1 := Nat.lt_add_right 1 hr_lt_n
       let hright : initState.read r = inputs ⟨r, hr_lt_n⟩ := by
         unfold initState Config.init State.fromInputs State.read
-        let hr_lt_n1 : r < n + 1 := Nat.lt_add_right 1 hr_lt_n
         simp only [List.getD, List.getElem?_ofFn, hr_lt_n1, dite_true]
         simp only [Option.getD_some, extendInputs, Fin.snoc, hr_lt_n, dite_true]
         rfl
@@ -148,9 +148,9 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
       · -- Case r = n: both sides equal k
         subst hr_eq_n
         let hleft : c_prologue.state.read r = k := hRn_after_prologue
+        let hr_lt_r1 : r < r + 1 := Nat.lt_succ_self r
         let hright : initState.read r = k := by
           unfold initState Config.init State.fromInputs State.read
-          let hr_lt_r1 : r < r + 1 := Nat.lt_succ_self r
           simp only [List.getD, List.getElem?_ofFn, hr_lt_r1, dite_true]
           simp only [Option.getD_some, extendInputs, Fin.snoc, Nat.lt_irrefl, dite_false]
           simp
@@ -158,68 +158,68 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
       · -- Case r > n: both sides equal 0
         let hr_gt_n : n < r := Nat.lt_of_le_of_ne (Nat.not_lt.mp hr_lt_n) (Ne.symm hr_eq_n)
         -- Right side: initState.read r = 0 (beyond List.ofFn length)
+        let hr_ge_n1 : ¬ r < n + 1 := by omega
         let hright : initState.read r = 0 := by
           unfold initState Config.init State.fromInputs State.read
-          let hr_ge_n1 : ¬ r < n + 1 := by omega
           simp only [List.getD, List.getElem?_ofFn, hr_ge_n1, dite_false]
           simp only [Option.getD_none]
         -- Left side: c_prologue.state.read r = 0 (cleared by loopPrologue, then not touched)
-        let hleft : c_prologue.state.read r = 0 := by
-          let hr_le_base : r ≤ minimizationBase n pF := Nat.le_trans hr_hi (minimizationBase_ge_pF n pF)
-          -- Register r is in clearRegisters range (0..base) but not touched by copy (0..n-1) or T (n)
-          -- Use straight-line analysis: Z r at position r, no later writes to r
-          let hk : r < (loopPrologue n pF).length := by
-            simp only [loopPrologue, List.length_append, clearRegisters_length, copyRegisterRange_length,
-              List.length]; omega
-          let hwrite : (loopPrologue n pF)[r] = Instr.Z r := by
-            simp only [loopPrologue]
-            let h_in_clear : r < (clearRegisters (minimizationBase n pF)).length := by
-              simp only [clearRegisters_length]; exact Nat.lt_succ_of_le hr_le_base
-            let h_in_clear_ext : r < (clearRegisters (minimizationBase n pF) ++
-                copyRegisterRange (savedInputsStart n pF) 0 n).length := by
-              simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]; omega
-            rw [List.getElem_append_left h_in_clear_ext, List.getElem_append_left h_in_clear]
-            simp only [Program.clearRegisters, List.getElem_map, List.getElem_range]
-          let hnowrite : ∀ j (hj : j < (loopPrologue n pF).length), r < j →
-              ((loopPrologue n pF)[j]).writesTo ≠ some r := by
-            intro j hj hjr
-            simp only [loopPrologue, List.length_append, clearRegisters_length, copyRegisterRange_length,
-              List.length] at hj
-            -- Simplify the goal using loopPrologue unfolding
-            simp only [loopPrologue]
-            -- Case split on which part of the list j indexes into
-            by_cases hj_clear1 : j < (clearRegisters (minimizationBase n pF) ++
-                copyRegisterRange (savedInputsStart n pF) 0 n).length
-            · -- j is in clearRegisters ++ copyRegisterRange
-              rw [List.getElem_append_left hj_clear1]
-              by_cases hj_clear : j < minimizationBase n pF + 1
-              · -- In clearRegisters: writes to j ≠ r since j > r
-                let h2 : j < (clearRegisters (minimizationBase n pF)).length := by
-                  simp only [clearRegisters_length]; exact hj_clear
-                rw [List.getElem_append_left h2]
-                simp only [Program.clearRegisters, List.getElem_map, List.getElem_range,
-                  Instr.writesTo, ne_eq, Option.some.injEq]
-                intro heq; exact Nat.ne_of_lt hjr heq.symm
-              · -- In copyRegisterRange
-                let h2 : ¬ j < (clearRegisters (minimizationBase n pF)).length := by
-                  simp only [clearRegisters_length]; omega
-                let h2' : (clearRegisters (minimizationBase n pF)).length ≤ j := Nat.not_lt.mp h2
-                rw [List.getElem_append_right h2']
-                simp only [clearRegisters_length, Program.copyRegisterRange,
-                  List.getElem_map, List.getElem_range, Nat.zero_add, Instr.writesTo, ne_eq, Option.some.injEq]
-                -- j - (minimizationBase + 1) < n (from hj_clear1) and n < r (from hr_gt_n)
-                simp only [List.length_append, clearRegisters_length, copyRegisterRange_length] at hj_clear1
-                omega
-            · -- j is in the final [T counter n]
-              let hge : (clearRegisters (minimizationBase n pF) ++
-                  copyRegisterRange (savedInputsStart n pF) 0 n).length ≤ j := Nat.not_lt.mp hj_clear1
-              rw [List.getElem_append_right hge]
-              let hidx : j - (clearRegisters (minimizationBase n pF) ++
-                  copyRegisterRange (savedInputsStart n pF) 0 n).length = 0 := by
-                simp only [List.length_append, clearRegisters_length, copyRegisterRange_length] at hj_clear1 ⊢; omega
-              simp only [hidx, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
-              intro heq; exact hr_eq_n heq.symm
-          exact straightLine_zeros_register hsl_prologue s r r hk hwrite hnowrite
+        let hr_le_base : r ≤ minimizationBase n pF := Nat.le_trans hr_hi (minimizationBase_ge_pF n pF)
+        -- Register r is in clearRegisters range (0..base) but not touched by copy (0..n-1) or T (n)
+        -- Use straight-line analysis: Z r at position r, no later writes to r
+        let hk : r < (loopPrologue n pF).length := by
+          simp only [loopPrologue, List.length_append, clearRegisters_length, copyRegisterRange_length,
+            List.length]; omega
+        let h_in_clear : r < (clearRegisters (minimizationBase n pF)).length := by
+          simp only [clearRegisters_length]; exact Nat.lt_succ_of_le hr_le_base
+        let h_in_clear_ext : r < (clearRegisters (minimizationBase n pF) ++
+            copyRegisterRange (savedInputsStart n pF) 0 n).length := by
+          simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]; omega
+        let hwrite : (loopPrologue n pF)[r] = Instr.Z r := by
+          simp only [loopPrologue]
+          rw [List.getElem_append_left h_in_clear_ext, List.getElem_append_left h_in_clear]
+          simp only [Program.clearRegisters, List.getElem_map, List.getElem_range]
+        let hnowrite : ∀ j (hj : j < (loopPrologue n pF).length), r < j →
+            ((loopPrologue n pF)[j]).writesTo ≠ some r := by
+          intro j hj hjr
+          simp only [loopPrologue, List.length_append, clearRegisters_length, copyRegisterRange_length,
+            List.length] at hj
+          -- Simplify the goal using loopPrologue unfolding
+          simp only [loopPrologue]
+          -- Case split on which part of the list j indexes into
+          by_cases hj_clear1 : j < (clearRegisters (minimizationBase n pF) ++
+              copyRegisterRange (savedInputsStart n pF) 0 n).length
+          · -- j is in clearRegisters ++ copyRegisterRange
+            rw [List.getElem_append_left hj_clear1]
+            by_cases hj_clear : j < minimizationBase n pF + 1
+            · -- In clearRegisters: writes to j ≠ r since j > r
+              let h2 : j < (clearRegisters (minimizationBase n pF)).length := by
+                simp only [clearRegisters_length]; exact hj_clear
+              rw [List.getElem_append_left h2]
+              simp only [Program.clearRegisters, List.getElem_map, List.getElem_range,
+                Instr.writesTo, ne_eq, Option.some.injEq]
+              intro heq; exact Nat.ne_of_lt hjr heq.symm
+            · -- In copyRegisterRange
+              let h2 : ¬ j < (clearRegisters (minimizationBase n pF)).length := by
+                simp only [clearRegisters_length]; omega
+              let h2' : (clearRegisters (minimizationBase n pF)).length ≤ j := Nat.not_lt.mp h2
+              rw [List.getElem_append_right h2']
+              simp only [clearRegisters_length, Program.copyRegisterRange,
+                List.getElem_map, List.getElem_range, Nat.zero_add, Instr.writesTo, ne_eq, Option.some.injEq]
+              -- j - (minimizationBase + 1) < n (from hj_clear1) and n < r (from hr_gt_n)
+              simp only [List.length_append, clearRegisters_length, copyRegisterRange_length] at hj_clear1
+              omega
+          · -- j is in the final [T counter n]
+            let hge : (clearRegisters (minimizationBase n pF) ++
+                copyRegisterRange (savedInputsStart n pF) 0 n).length ≤ j := Nat.not_lt.mp hj_clear1
+            rw [List.getElem_append_right hge]
+            let hidx : j - (clearRegisters (minimizationBase n pF) ++
+                copyRegisterRange (savedInputsStart n pF) 0 n).length = 0 := by
+              simp only [List.length_append, clearRegisters_length, copyRegisterRange_length] at hj_clear1 ⊢; omega
+            simp only [hidx, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
+            intro heq; exact hr_eq_n heq.symm
+        let hleft : c_prologue.state.read r = 0 :=
+          straightLine_zeros_register hsl_prologue s r r hk hwrite hnowrite
         rw [hleft, hright]
 
   -- Get pF execution from Config.init
@@ -837,9 +837,8 @@ noncomputable def loop_halts_exit_gen_aux (n : ℕ) (pF : Program) (hpF_sf : pF.
           intro heq
           -- If start = iter.config, then s = iter.config.state
           -- But iter.config.state has counter = startCounter + 1 ≠ startCounter
-          let hs_eq : s = iter.config.state := by
-            let h : (⟨loopStartPC n, s⟩ : Config).state = iter.config.state := by rw [heq]
-            exact h
+          let h : (⟨loopStartPC n, s⟩ : Config).state = iter.config.state := by rw [heq]
+          let hs_eq : s = iter.config.state := h
           rw [← hs_eq] at hcounter_incr
           rw [hs_counter] at hcounter_incr
           omega

@@ -93,9 +93,9 @@ theorem minimizeProgram_result (n : ℕ) (pF : Program)
   -- So Result = cFinal.state.read 0 = cOutput.state.read 0 = k
   have hResult_eq_k : Result (minimizeProgram n pF) (List.ofFn inputs) hHalts = k := by
     -- Result = (Classical.choose hHalts).state.output = cFinal.state.read 0
-    let hcFinal_is_witness : cFinal = Classical.choose hHalts := by
-      let hwit := Classical.choose_spec hHalts
-      exact Steps.halts_unique hFinal_steps hFinal_halted hwit.1 hwit.2
+    let hwit := Classical.choose_spec hHalts
+    let hcFinal_is_witness : cFinal = Classical.choose hHalts :=
+      Steps.halts_unique hFinal_steps hFinal_halted hwit.1 hwit.2
     simp only [Result, State.output]
     rw [← hcFinal_is_witness, hFinal_eq_Output]
     exact hOutput_eq_k

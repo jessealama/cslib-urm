@@ -95,10 +95,10 @@ theorem primitiveRecursionProgram_result (n : ℕ) (pF pG : Program)
     let h3 : Steps (primitiveRecursionProgram n pF pG) baseCase.config loopResult.config :=
       loopResult.steps
     -- prLoopCheckPC → prOutputPC (exit jump)
+    let hconfig : loopResult.config = ⟨prLoopCheckPC n pF pG, loopResult.config.state⟩ := by
+      ext; exact loopResult.pc_eq; rfl
     let h4 : Steps (primitiveRecursionProgram n pF pG) loopResult.config
         ⟨prOutputPC n pF pG, loopResult.config.state⟩ := by
-      let hconfig : loopResult.config = ⟨prLoopCheckPC n pF pG, loopResult.config.state⟩ := by
-        ext; exact loopResult.pc_eq; rfl
       rw [hconfig]
       exact Relation.ReflTransGen.single hstep_exit
     -- prOutputPC → halted (output)
@@ -115,9 +115,9 @@ theorem primitiveRecursionProgram_result (n : ℕ) (pF pG : Program)
     Steps.halts_unique hFinal_steps hFinal_halted hTotal hOutput_halted
 
   -- Step 8: Result = cFinal.state.read 0 = cOutput.state.read 0 = Pr value
-  have hcFinal_is_witness : cFinal = Classical.choose hHalts := by
-    let hwit := Classical.choose_spec hHalts
-    exact Steps.halts_unique hFinal_steps hFinal_halted hwit.1 hwit.2
+  let hwit := Classical.choose_spec hHalts
+  have hcFinal_is_witness : cFinal = Classical.choose hHalts :=
+    Steps.halts_unique hFinal_steps hFinal_halted hwit.1 hwit.2
 
   simp only [Result, State.output]
   rw [← hcFinal_is_witness, hFinal_eq_Output]
