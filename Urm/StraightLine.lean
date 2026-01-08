@@ -41,6 +41,16 @@ def Instr.isNonJumping : Instr → Bool
 def Program.isStraightLine (p : Program) : Bool :=
   p.all Instr.isNonJumping
 
+/-- A non-jumping instruction produces a step that increments PC by 1. -/
+theorem Step.of_nonJumping {p : Program} {c : Config} (hlt : c.pc < p.length)
+    (hinstr : p.getInstr c.pc = some p[c.pc]) (hnonjump : (p[c.pc]'hlt).isNonJumping = true) :
+    ∃ c', Step p c c' ∧ c'.pc = c.pc + 1 := by
+  cases hp : (p[c.pc]'hlt) with
+  | Z n => exact ⟨_, Step.zero (hp ▸ hinstr), rfl⟩
+  | S n => exact ⟨_, Step.succ (hp ▸ hinstr), rfl⟩
+  | T m n => exact ⟨_, Step.trans (hp ▸ hinstr), rfl⟩
+  | J _ _ _ => simp [hp, Instr.isNonJumping] at hnonjump
+
 /-- shiftJumps is identity for non-jumping instructions. -/
 theorem Instr.shiftJumps_of_isNonJumping {instr : Instr} (h : instr.isNonJumping = true) (offset : ℕ) :
     instr.shiftJumps offset = instr := by
@@ -75,13 +85,7 @@ theorem straightLine_halts {p : Program} (hsl : p.isStraightLine = true) (inputs
       have hinstr : p.getInstr c.pc = some p[c.pc] := List.getElem?_eq_getElem hhalted
       simp only [Program.isStraightLine, List.all_eq_true] at hsl
       have hnonjump := hsl p[c.pc] (List.getElem_mem hhalted)
-      have hstep : ∃ c', Step p c c' ∧ c'.pc = c.pc + 1 := by
-        cases hp : p[c.pc] with
-        | Z n => exact ⟨_, Step.zero (hp ▸ hinstr), rfl⟩
-        | S n => exact ⟨_, Step.succ (hp ▸ hinstr), rfl⟩
-        | T m n => exact ⟨_, Step.trans (hp ▸ hinstr), rfl⟩
-        | J _ _ _ => simp [hp, Instr.isNonJumping] at hnonjump
-      obtain ⟨c', hstep', hpc'⟩ := hstep
+      obtain ⟨c', hstep', hpc'⟩ := Step.of_nonJumping hhalted hinstr hnonjump
       obtain ⟨c'', hsteps'', hpc''⟩ := ih (p.length - c'.pc) (by omega) c' (by omega) rfl
       exact ⟨c'', Relation.ReflTransGen.head hstep' hsteps'', hpc''⟩
 
@@ -133,13 +137,7 @@ theorem straightLine_halts_from_state {p : Program} (hsl : p.isStraightLine = tr
       have hinstr : p.getInstr c.pc = some p[c.pc] := List.getElem?_eq_getElem hhalted
       simp only [Program.isStraightLine, List.all_eq_true] at hsl
       have hnonjump := hsl p[c.pc] (List.getElem_mem hhalted)
-      have hstep : ∃ c', Step p c c' ∧ c'.pc = c.pc + 1 := by
-        cases hp : p[c.pc] with
-        | Z n => exact ⟨_, Step.zero (hp ▸ hinstr), rfl⟩
-        | S n => exact ⟨_, Step.succ (hp ▸ hinstr), rfl⟩
-        | T m n => exact ⟨_, Step.trans (hp ▸ hinstr), rfl⟩
-        | J _ _ _ => simp [hp, Instr.isNonJumping] at hnonjump
-      obtain ⟨c', hstep', hpc'⟩ := hstep
+      obtain ⟨c', hstep', hpc'⟩ := Step.of_nonJumping hhalted hinstr hnonjump
       obtain ⟨c'', hsteps'', hpc''⟩ := ih (p.length - c'.pc) (by omega) c' (by omega) rfl
       exact ⟨c'', Relation.ReflTransGen.head hstep' hsteps'', hpc''⟩
 
@@ -164,17 +162,12 @@ theorem straightLine_state_at_pc {p : Program} (hsl : p.isStraightLine = true)
   | succ n ih =>
     obtain ⟨c_n, hsteps_n, hpc_n⟩ := ih (Nat.le_of_succ_le htarget)
     have hn_lt : n < p.length := Nat.lt_of_succ_le htarget
-    have hinstr : p.getInstr c_n.pc = some p[n] := hpc_n ▸ List.getElem?_eq_getElem hn_lt
+    have hpc_lt : c_n.pc < p.length := hpc_n ▸ hn_lt
+    have hinstr : p.getInstr c_n.pc = some p[c_n.pc] := List.getElem?_eq_getElem hpc_lt
     simp only [Program.isStraightLine, List.all_eq_true] at hsl
-    have hnonjump := hsl p[n] (List.getElem_mem hn_lt)
-    have hstep : ∃ c', Step p c_n c' ∧ c'.pc = n + 1 := by
-      cases hp : p[n] with
-      | Z m => exact ⟨_, Step.zero (hp ▸ hinstr), hpc_n ▸ rfl⟩
-      | S m => exact ⟨_, Step.succ (hp ▸ hinstr), hpc_n ▸ rfl⟩
-      | T m1 m2 => exact ⟨_, Step.trans (hp ▸ hinstr), hpc_n ▸ rfl⟩
-      | J _ _ _ => simp [hp, Instr.isNonJumping] at hnonjump
-    obtain ⟨c', hstep', hpc'⟩ := hstep
-    exact ⟨c', Relation.ReflTransGen.tail hsteps_n hstep', hpc'⟩
+    have hnonjump := hsl p[c_n.pc] (List.getElem_mem hpc_lt)
+    obtain ⟨c', hstep', hpc'⟩ := Step.of_nonJumping hpc_lt hinstr hnonjump
+    exact ⟨c', Relation.ReflTransGen.tail hsteps_n hstep', hpc_n ▸ hpc'⟩
 
 /-- A single step in a straight-line program modifies at most one register. -/
 theorem Step.straightLine_preserves {p : Program} {c c' : Config} {r : ℕ}

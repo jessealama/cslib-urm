@@ -204,7 +204,7 @@ theorem execution_zero :
     simp [s1, s0, State.write, State.read, State.fromInputs, Function.update_of_ne]
   have h2 : Step signProgram ⟨1, s1⟩ ⟨4, s1⟩ := step_zero_exit s1 heq
   use s1
-  refine ⟨Steps.trans (Steps.single h1) (Steps.single h2), ?_, halted_at_4 s1⟩
+  refine ⟨by aesop_steps, ?_, halted_at_4 s1⟩
   simp [s1, s0, State.write, State.read, State.fromInputs, Function.update_of_ne]
 
 /-- Full execution for input n > 0: halts at pc=4 with R0=1. -/
@@ -228,8 +228,7 @@ theorem execution_nonzero (n : ℕ) (hn : n > 0) :
   -- Step 3→4: increment R0 to 1
   have h4 : Step signProgram ⟨3, s2⟩ ⟨4, s3⟩ := step_inc_r0 s2
   use s3
-  refine ⟨Steps.trans (Steps.trans (Steps.trans (Steps.single h1) (Steps.single h2))
-                      (Steps.single h3)) (Steps.single h4), ?_, halted_at_4 s3⟩
+  refine ⟨by aesop_steps, ?_, halted_at_4 s3⟩
   simp [s3, s2, s1, s0, State.write, State.read, Function.update_self]
 
 end signProgram
@@ -334,8 +333,7 @@ private theorem const_one_n_computable (n : ℕ) : URMComputable n (fun _ : Fin 
   have hstep1 : Step [Instr.Z 0, Instr.S 0] ⟨0, s0⟩ ⟨1, s1⟩ := Step.zero rfl
   have hstep2 : Step [Instr.Z 0, Instr.S 0] ⟨1, s1⟩ ⟨2, s2⟩ := Step.succ rfl
   have hhalted : (⟨2, s2⟩ : Config).isHalted [Instr.Z 0, Instr.S 0] := by simp
-  have hsteps : Steps [Instr.Z 0, Instr.S 0] (Config.init (List.ofFn inputs)) ⟨2, s2⟩ :=
-    Steps.trans (Steps.single hstep1) (Steps.single hstep2)
+  have hsteps : Steps [Instr.Z 0, Instr.S 0] (Config.init (List.ofFn inputs)) ⟨2, s2⟩ := by aesop_steps
   constructor
   · simp only [Part.some_dom, iff_true]
     exact ⟨⟨2, s2⟩, hsteps, hhalted⟩

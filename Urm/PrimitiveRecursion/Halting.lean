@@ -8,6 +8,7 @@ import Urm.PrimitiveRecursion.Preservation
 import Urm.Composition.Helpers
 import Urm.Embeddings
 import Urm.Shift
+import Urm.Halting.Common
 
 /-! # Halting Proofs for Primitive Recursion
 
@@ -32,9 +33,7 @@ theorem prSetupPhase_embed (n : ℕ) (pF pG : Program) :
   intro i hi
   simp only [primitiveRecursionProgram, getInstr, List.getElem?_append, prSetupPhase_length,
     List.length_append, prBaseCasePhase_length, prLoopCheck_length, prLoopBody_length] at *
-  -- i < setup length, so i is in the first chunk
-  split_ifs with h1 h2 h3 <;> try omega
-  rfl
+  split_ifs <;> first | rfl | omega
 
 /-- Base case prologue is embedded after setup phase. -/
 theorem prBaseCasePrologue_embed (n : ℕ) (pF pG : Program) :
@@ -45,8 +44,7 @@ theorem prBaseCasePrologue_embed (n : ℕ) (pF pG : Program) :
   simp only [primitiveRecursionProgram, prBaseCasePC, prBaseCasePhase, getInstr, List.getElem?_append,
     prSetupPhase_length, prSetupPhaseLength, prBaseCasePrologue_length, prBaseCasePrologueLength,
     List.length_append, prLoopCheck_length, prLoopBody_length, shiftJumps_length] at *
-  split_ifs with h1 h2 h3 h4 h5 h6 <;> try omega
-  congr 1; omega
+  split_ifs <;> first | omega | (congr 1; omega)
 
 /-- Shifted pF is embedded in the base case phase. -/
 theorem prPF_shiftJumps_embed (n : ℕ) (pF pG : Program) :
@@ -57,14 +55,9 @@ theorem prPF_shiftJumps_embed (n : ℕ) (pF pG : Program) :
   simp only [primitiveRecursionProgram, prPFOffset, prBaseCasePhase, getInstr, List.getElem?_append,
     prSetupPhase_length, prSetupPhaseLength, prBaseCasePrologueLength, prBaseCasePrologue_length,
     shiftJumps_length, List.length_append, prLoopCheck_length, prLoopBody_length]
-  split_ifs with h1 h2 h3 h4 h5 h6 <;> try omega
+  split_ifs <;> try omega
   simp only [shiftJumps, List.getElem?_map]
-  -- The index calculation: after subtracting setup and prologue lengths, we get i
-  have hsetup : n + 1 + 2 + (primitiveRecursionBase n pF pG + 1 + n) + i - (n + 1 + 2) =
-      primitiveRecursionBase n pF pG + 1 + n + i := by omega
-  have hprol : primitiveRecursionBase n pF pG + 1 + n + i - (primitiveRecursionBase n pF pG + 1 + n) = i := by
-    omega
-  simp only [hsetup, hprol]
+  congr 2; omega
 
 /-- Loop check instruction embedding. -/
 theorem prLoopCheck_embed (n : ℕ) (pF pG : Program) :
@@ -81,8 +74,7 @@ theorem prLoopPrologue_embed (n : ℕ) (pF pG : Program) :
   simp only [primitiveRecursionProgram, prLoopBodyPC_eq, prLoopBody, getInstr, List.getElem?_append,
     prSetupPhase_length, prBaseCasePhase_length, prLoopCheck_length, prLoopPrologue_length,
     List.length_append, shiftJumps_length, prLoopEpilogue_length] at *
-  split_ifs with h1 h2 h3 h4 h5 h6 <;> try omega
-  congr 1; omega
+  split_ifs <;> first | omega | (congr 1; omega)
 
 /-- Shifted pG is embedded in the loop body. -/
 theorem prPG_shiftJumps_embed (n : ℕ) (pF pG : Program) :
@@ -93,12 +85,9 @@ theorem prPG_shiftJumps_embed (n : ℕ) (pF pG : Program) :
   simp only [primitiveRecursionProgram, prPGOffset, prLoopBodyPC, prLoopCheckPC, prLoopBody, getInstr,
     List.getElem?_append, prSetupPhase_length, prBaseCasePhase_length, prLoopCheck_length,
     prLoopPrologue_length, shiftJumps_length, List.length_append, prLoopEpilogue_length]
-  split_ifs with h1 h2 h3 h4 h5 h6 <;> try omega
+  split_ifs <;> try omega
   simp only [shiftJumps, List.getElem?_map]
-  -- Index calculation: subtract each segment length to get i
-  simp only [prSetupPhaseLength, prBaseCasePhaseLength, prBaseCasePrologueLength,
-    prLoopPrologueLength, prLoopEpilogueLength] at *
-  grind
+  congr 2; omega
 
 /-- Output phase is at outputPC. -/
 theorem prOutputPhase_embed (n : ℕ) (pF pG : Program) :
@@ -123,12 +112,11 @@ noncomputable def prExecuteSetupPhase (n : ℕ) (pF pG : Program) (inputs : Fin 
     PrSetupPhaseResult n pF pG inputs y :=
   let hsl_setup := prSetupPhase_isStraightLine n pF pG
   let initState := State.fromInputs (List.ofFn (Fin.snoc inputs y))
-  let hExists := straightLine_halts_from_state hsl_setup initState
-  let cSetup := Classical.choose hExists
-  let hSpec := Classical.choose_spec hExists
-  let hSetup_steps := hSpec.1
-  let hSetup_halted := hSpec.2.1
-  let hSetup_pc := hSpec.2.2
+  let setupResult := straightLineExec hsl_setup initState
+  let cSetup := setupResult.config
+  let hSetup_steps := setupResult.steps
+  let hSetup_halted := setupResult.halted
+  let hSetup_pc := setupResult.pc_eq
 
   -- Lift setup steps to primitiveRecursionProgram
   let hSetup_steps_lifted : Steps (primitiveRecursionProgram n pF pG) ⟨0, initState⟩
@@ -188,12 +176,11 @@ noncomputable def prExecuteBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : p
     PrBaseCasePhaseResult n pF pG inputs y s hpF_halts := by
   -- Phase 1: Execute prBaseCasePrologue (straight-line)
   have hsl_prologue := prBaseCasePrologue_isStraightLine n pF pG
-  let hPrologue := straightLine_halts_from_state hsl_prologue s
-  let c_prologue := Classical.choose hPrologue
-  have hspec_prologue := Classical.choose_spec hPrologue
-  let hsteps_prologue := hspec_prologue.1
-  let hhalted_prologue := hspec_prologue.2.1
-  let hpc_prologue := hspec_prologue.2.2
+  let prologueResult := straightLineExec hsl_prologue s
+  let c_prologue := prologueResult.config
+  let hsteps_prologue := prologueResult.steps
+  let hhalted_prologue := prologueResult.halted
+  let hpc_prologue := prologueResult.pc_eq
 
   -- Lift prologue steps to primitiveRecursionProgram
   have hembed_prologue : ∀ i, i < (prBaseCasePrologue n pF pG).length →
@@ -460,12 +447,11 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
 
     -- Execute prLoopPrologue (straight-line)
     have hsl_prologue := prLoopPrologue_isStraightLine n pF pG
-    let hPrologue := straightLine_halts_from_state hsl_prologue s
-    let c_prologue := Classical.choose hPrologue
-    have hspec_prologue := Classical.choose_spec hPrologue
-    let hsteps_prologue := hspec_prologue.1
-    let hhalted_prologue := hspec_prologue.2.1
-    let hpc_prologue := hspec_prologue.2.2
+    let prologueResult := straightLineExec hsl_prologue s
+    let c_prologue := prologueResult.config
+    let hsteps_prologue := prologueResult.steps
+    let hhalted_prologue := prologueResult.halted
+    let hpc_prologue := prologueResult.pc_eq
 
     -- Lift prologue steps to primitiveRecursionProgram
     have hembed_prologue := prLoopPrologue_embed n pF pG
@@ -1026,103 +1012,8 @@ theorem pF_halts_of_pr_exits_pF_region (n : ℕ) (pF pG : Program)
     (hk_le : k ≤ pF.length)
     (hsteps : Steps (primitiveRecursionProgram n pF pG) ⟨prPFOffset n pF pG + k, state⟩ c)
     (hpc_ge : c.pc ≥ prPFOffset n pF pG + pF.length) :
-    ∃ c_pF, Steps pF ⟨k, state⟩ c_pF ∧ c_pF.pc = pF.length := by
-  obtain ⟨numSteps, hstepsN⟩ := StepsN.fromSteps hsteps
-  induction numSteps using Nat.strong_induction_on generalizing k state c with
-  | _ numSteps ih =>
-    by_cases hk_eq : k = pF.length
-    · -- Already at exit point
-      subst hk_eq
-      exact ⟨⟨pF.length, state⟩, Relation.ReflTransGen.refl, rfl⟩
-    · -- k < pF.length: need to take a step in pF region
-      have hk_lt : k < pF.length := Nat.lt_of_le_of_ne hk_le hk_eq
-      -- numSteps must be > 0 (otherwise c = start, but c.pc < prPFOffset + pF.length)
-      have hnum_pos : numSteps > 0 := by
-        by_contra hnum_zero
-        push_neg at hnum_zero
-        have hc_eq : c = ⟨prPFOffset n pF pG + k, state⟩ := StepsN.zero_inv ((Nat.le_zero.mp hnum_zero) ▸ hstepsN)
-        have hc_pc : c.pc = prPFOffset n pF pG + k := by rw [hc_eq]
-        omega
-      -- Decompose into first step + rest
-      obtain ⟨c_mid, m, hfirst_step, hrest_steps, hm_eq⟩ := StepsN.succ_inv (Nat.pos_iff_ne_zero.mp hnum_pos) hstepsN
-      -- The instruction at prPFOffset + k is pF's instruction k (shifted)
-      have hembed := prPF_shiftJumps_embed n pF pG k hk_lt
-      -- Get pF instruction
-      have hpF_instr_exists : ∃ instr, pF.getInstr k = some instr := by
-        simp only [Program.getInstr]
-        exact ⟨pF[k], List.getElem?_eq_getElem hk_lt⟩
-      obtain ⟨instr, hpF_instr⟩ := hpF_instr_exists
-      -- The shifted instruction in primitiveRecursionProgram
-      have hpr_instr : (primitiveRecursionProgram n pF pG).getInstr (prPFOffset n pF pG + k) =
-          some (instr.shiftJumps (prPFOffset n pF pG)) := by
-        rw [hembed, Program.getInstr_shiftJumps, hpF_instr]; rfl
-      have hm_lt : m < numSteps := by omega
-      have hk1_le : k + 1 ≤ pF.length := Nat.succ_le_of_lt hk_lt
-      match instr with
-      | Instr.Z r =>
-        have hpF_step : Step pF ⟨k, state⟩ ⟨k + 1, state.write r 0⟩ := Step.zero hpF_instr
-        have hpr_instr' : (primitiveRecursionProgram n pF pG).getInstr (prPFOffset n pF pG + k) = some (Instr.Z r) := by
-          rw [hpr_instr]; rfl
-        have hexpected : Step (primitiveRecursionProgram n pF pG) ⟨prPFOffset n pF pG + k, state⟩
-            ⟨prPFOffset n pF pG + k + 1, state.write r 0⟩ := Step.zero hpr_instr'
-        have hc_mid_eq := Step.deterministic hfirst_step hexpected
-        have hrest_steps' : StepsN (primitiveRecursionProgram n pF pG) m ⟨prPFOffset n pF pG + (k + 1), state.write r 0⟩ c := by
-          rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
-        obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt (k + 1) (state.write r 0) c hk1_le
-            hrest_steps'.toSteps hpc_ge hrest_steps'
-        exact ⟨c_pF, Relation.ReflTransGen.head hpF_step hpF_steps, hpF_pc⟩
-      | Instr.S r =>
-        have hpF_step : Step pF ⟨k, state⟩ ⟨k + 1, state.write r (state.read r + 1)⟩ := Step.succ hpF_instr
-        have hpr_instr' : (primitiveRecursionProgram n pF pG).getInstr (prPFOffset n pF pG + k) = some (Instr.S r) := by
-          rw [hpr_instr]; rfl
-        have hexpected : Step (primitiveRecursionProgram n pF pG) ⟨prPFOffset n pF pG + k, state⟩
-            ⟨prPFOffset n pF pG + k + 1, state.write r (state.read r + 1)⟩ := Step.succ hpr_instr'
-        have hc_mid_eq := Step.deterministic hfirst_step hexpected
-        have hrest_steps' : StepsN (primitiveRecursionProgram n pF pG) m ⟨prPFOffset n pF pG + (k + 1), state.write r (state.read r + 1)⟩ c := by
-          rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
-        obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt (k + 1) (state.write r (state.read r + 1)) c hk1_le
-            hrest_steps'.toSteps hpc_ge hrest_steps'
-        exact ⟨c_pF, Relation.ReflTransGen.head hpF_step hpF_steps, hpF_pc⟩
-      | Instr.T m' r =>
-        have hpF_step : Step pF ⟨k, state⟩ ⟨k + 1, state.write r (state.read m')⟩ := Step.trans hpF_instr
-        have hpr_instr' : (primitiveRecursionProgram n pF pG).getInstr (prPFOffset n pF pG + k) = some (Instr.T m' r) := by
-          rw [hpr_instr]; rfl
-        have hexpected : Step (primitiveRecursionProgram n pF pG) ⟨prPFOffset n pF pG + k, state⟩
-            ⟨prPFOffset n pF pG + k + 1, state.write r (state.read m')⟩ := Step.trans hpr_instr'
-        have hc_mid_eq := Step.deterministic hfirst_step hexpected
-        have hrest_steps' : StepsN (primitiveRecursionProgram n pF pG) m ⟨prPFOffset n pF pG + (k + 1), state.write r (state.read m')⟩ c := by
-          rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
-        obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt (k + 1) (state.write r (state.read m')) c hk1_le
-            hrest_steps'.toSteps hpc_ge hrest_steps'
-        exact ⟨c_pF, Relation.ReflTransGen.head hpF_step hpF_steps, hpF_pc⟩
-      | Instr.J m' r' q =>
-        have hpr_instr' : (primitiveRecursionProgram n pF pG).getInstr (prPFOffset n pF pG + k) = some (Instr.J m' r' (q + prPFOffset n pF pG)) := by
-          rw [hpr_instr]; rfl
-        have hq_le : q ≤ pF.length := by
-          have hbounded := hpF_sf.getInstr_hasBoundedJump hpF_instr
-          simp only [Instr.hasBoundedJump, decide_eq_true_eq] at hbounded
-          exact hbounded
-        by_cases heq : state.read m' = state.read r'
-        · -- Equal: jump to q
-          have hpF_step : Step pF ⟨k, state⟩ ⟨q, state⟩ := Step.jump_eq hpF_instr heq
-          have hexpected : Step (primitiveRecursionProgram n pF pG) ⟨prPFOffset n pF pG + k, state⟩
-              ⟨q + prPFOffset n pF pG, state⟩ := Step.jump_eq hpr_instr' heq
-          have hc_mid_eq := Step.deterministic hfirst_step hexpected
-          have hrest_steps' : StepsN (primitiveRecursionProgram n pF pG) m ⟨prPFOffset n pF pG + q, state⟩ c := by
-            rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2; omega
-          obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt q state c hq_le
-              hrest_steps'.toSteps hpc_ge hrest_steps'
-          exact ⟨c_pF, Relation.ReflTransGen.head hpF_step hpF_steps, hpF_pc⟩
-        · -- Not equal: proceed to k + 1
-          have hpF_step : Step pF ⟨k, state⟩ ⟨k + 1, state⟩ := Step.jump_ne hpF_instr heq
-          have hexpected : Step (primitiveRecursionProgram n pF pG) ⟨prPFOffset n pF pG + k, state⟩
-              ⟨prPFOffset n pF pG + k + 1, state⟩ := Step.jump_ne hpr_instr' heq
-          have hc_mid_eq := Step.deterministic hfirst_step hexpected
-          have hrest_steps' : StepsN (primitiveRecursionProgram n pF pG) m ⟨prPFOffset n pF pG + (k + 1), state⟩ c := by
-            rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
-          obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt (k + 1) state c hk1_le
-              hrest_steps'.toSteps hpc_ge hrest_steps'
-          exact ⟨c_pF, Relation.ReflTransGen.head hpF_step hpF_steps, hpF_pc⟩
+    ∃ c_pF, Steps pF ⟨k, state⟩ c_pF ∧ c_pF.pc = pF.length :=
+  halts_of_exits_embedded_region (prPF_shiftJumps_embed n pF pG) hpF_sf k state c hk_le hsteps hpc_ge
 
 /-- Helper: Extract pG halting from main program execution passing through pG region. -/
 theorem pG_halts_of_pr_exits_pG_region (n : ℕ) (pF pG : Program)
@@ -1130,94 +1021,8 @@ theorem pG_halts_of_pr_exits_pG_region (n : ℕ) (pF pG : Program)
     (hk_le : k ≤ pG.length)
     (hsteps : Steps (primitiveRecursionProgram n pF pG) ⟨prPGOffset n pF pG + k, state⟩ c)
     (hpc_ge : c.pc ≥ prPGOffset n pF pG + pG.length) :
-    ∃ c_pG, Steps pG ⟨k, state⟩ c_pG ∧ c_pG.pc = pG.length := by
-  obtain ⟨numSteps, hstepsN⟩ := StepsN.fromSteps hsteps
-  induction numSteps using Nat.strong_induction_on generalizing k state c with
-  | _ numSteps ih =>
-    by_cases hk_eq : k = pG.length
-    · subst hk_eq
-      exact ⟨⟨pG.length, state⟩, Relation.ReflTransGen.refl, rfl⟩
-    · have hk_lt : k < pG.length := Nat.lt_of_le_of_ne hk_le hk_eq
-      have hnum_pos : numSteps > 0 := by
-        by_contra hnum_zero
-        push_neg at hnum_zero
-        have hc_eq : c = ⟨prPGOffset n pF pG + k, state⟩ := StepsN.zero_inv ((Nat.le_zero.mp hnum_zero) ▸ hstepsN)
-        have hc_pc : c.pc = prPGOffset n pF pG + k := by rw [hc_eq]
-        omega
-      obtain ⟨c_mid, m, hfirst_step, hrest_steps, hm_eq⟩ := StepsN.succ_inv (Nat.pos_iff_ne_zero.mp hnum_pos) hstepsN
-      have hembed := prPG_shiftJumps_embed n pF pG k hk_lt
-      have hpG_instr_exists : ∃ instr, pG.getInstr k = some instr := by
-        simp only [Program.getInstr]
-        exact ⟨pG[k], List.getElem?_eq_getElem hk_lt⟩
-      obtain ⟨instr, hpG_instr⟩ := hpG_instr_exists
-      have hpr_instr : (primitiveRecursionProgram n pF pG).getInstr (prPGOffset n pF pG + k) =
-          some (instr.shiftJumps (prPGOffset n pF pG)) := by
-        rw [hembed, Program.getInstr_shiftJumps, hpG_instr]; rfl
-      have hm_lt : m < numSteps := by omega
-      have hk1_le : k + 1 ≤ pG.length := Nat.succ_le_of_lt hk_lt
-      match instr with
-      | Instr.Z r =>
-        have hpG_step : Step pG ⟨k, state⟩ ⟨k + 1, state.write r 0⟩ := Step.zero hpG_instr
-        have hpr_instr' : (primitiveRecursionProgram n pF pG).getInstr (prPGOffset n pF pG + k) = some (Instr.Z r) := by
-          rw [hpr_instr]; rfl
-        have hexpected : Step (primitiveRecursionProgram n pF pG) ⟨prPGOffset n pF pG + k, state⟩
-            ⟨prPGOffset n pF pG + k + 1, state.write r 0⟩ := Step.zero hpr_instr'
-        have hc_mid_eq := Step.deterministic hfirst_step hexpected
-        have hrest_steps' : StepsN (primitiveRecursionProgram n pF pG) m ⟨prPGOffset n pF pG + (k + 1), state.write r 0⟩ c := by
-          rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
-        obtain ⟨c_pG, hpG_steps, hpG_pc⟩ := ih m hm_lt (k + 1) (state.write r 0) c hk1_le
-            hrest_steps'.toSteps hpc_ge hrest_steps'
-        exact ⟨c_pG, Relation.ReflTransGen.head hpG_step hpG_steps, hpG_pc⟩
-      | Instr.S r =>
-        have hpG_step : Step pG ⟨k, state⟩ ⟨k + 1, state.write r (state.read r + 1)⟩ := Step.succ hpG_instr
-        have hpr_instr' : (primitiveRecursionProgram n pF pG).getInstr (prPGOffset n pF pG + k) = some (Instr.S r) := by
-          rw [hpr_instr]; rfl
-        have hexpected : Step (primitiveRecursionProgram n pF pG) ⟨prPGOffset n pF pG + k, state⟩
-            ⟨prPGOffset n pF pG + k + 1, state.write r (state.read r + 1)⟩ := Step.succ hpr_instr'
-        have hc_mid_eq := Step.deterministic hfirst_step hexpected
-        have hrest_steps' : StepsN (primitiveRecursionProgram n pF pG) m ⟨prPGOffset n pF pG + (k + 1), state.write r (state.read r + 1)⟩ c := by
-          rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
-        obtain ⟨c_pG, hpG_steps, hpG_pc⟩ := ih m hm_lt (k + 1) (state.write r (state.read r + 1)) c hk1_le
-            hrest_steps'.toSteps hpc_ge hrest_steps'
-        exact ⟨c_pG, Relation.ReflTransGen.head hpG_step hpG_steps, hpG_pc⟩
-      | Instr.T m' r =>
-        have hpG_step : Step pG ⟨k, state⟩ ⟨k + 1, state.write r (state.read m')⟩ := Step.trans hpG_instr
-        have hpr_instr' : (primitiveRecursionProgram n pF pG).getInstr (prPGOffset n pF pG + k) = some (Instr.T m' r) := by
-          rw [hpr_instr]; rfl
-        have hexpected : Step (primitiveRecursionProgram n pF pG) ⟨prPGOffset n pF pG + k, state⟩
-            ⟨prPGOffset n pF pG + k + 1, state.write r (state.read m')⟩ := Step.trans hpr_instr'
-        have hc_mid_eq := Step.deterministic hfirst_step hexpected
-        have hrest_steps' : StepsN (primitiveRecursionProgram n pF pG) m ⟨prPGOffset n pF pG + (k + 1), state.write r (state.read m')⟩ c := by
-          rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
-        obtain ⟨c_pG, hpG_steps, hpG_pc⟩ := ih m hm_lt (k + 1) (state.write r (state.read m')) c hk1_le
-            hrest_steps'.toSteps hpc_ge hrest_steps'
-        exact ⟨c_pG, Relation.ReflTransGen.head hpG_step hpG_steps, hpG_pc⟩
-      | Instr.J m' r' q =>
-        have hpr_instr' : (primitiveRecursionProgram n pF pG).getInstr (prPGOffset n pF pG + k) = some (Instr.J m' r' (q + prPGOffset n pF pG)) := by
-          rw [hpr_instr]; rfl
-        have hq_le : q ≤ pG.length := by
-          have hbounded := hpG_sf.getInstr_hasBoundedJump hpG_instr
-          simp only [Instr.hasBoundedJump, decide_eq_true_eq] at hbounded
-          exact hbounded
-        by_cases heq : state.read m' = state.read r'
-        · have hpG_step : Step pG ⟨k, state⟩ ⟨q, state⟩ := Step.jump_eq hpG_instr heq
-          have hexpected : Step (primitiveRecursionProgram n pF pG) ⟨prPGOffset n pF pG + k, state⟩
-              ⟨q + prPGOffset n pF pG, state⟩ := Step.jump_eq hpr_instr' heq
-          have hc_mid_eq := Step.deterministic hfirst_step hexpected
-          have hrest_steps' : StepsN (primitiveRecursionProgram n pF pG) m ⟨prPGOffset n pF pG + q, state⟩ c := by
-            rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2; omega
-          obtain ⟨c_pG, hpG_steps, hpG_pc⟩ := ih m hm_lt q state c hq_le
-              hrest_steps'.toSteps hpc_ge hrest_steps'
-          exact ⟨c_pG, Relation.ReflTransGen.head hpG_step hpG_steps, hpG_pc⟩
-        · have hpG_step : Step pG ⟨k, state⟩ ⟨k + 1, state⟩ := Step.jump_ne hpG_instr heq
-          have hexpected : Step (primitiveRecursionProgram n pF pG) ⟨prPGOffset n pF pG + k, state⟩
-              ⟨prPGOffset n pF pG + k + 1, state⟩ := Step.jump_ne hpr_instr' heq
-          have hc_mid_eq := Step.deterministic hfirst_step hexpected
-          have hrest_steps' : StepsN (primitiveRecursionProgram n pF pG) m ⟨prPGOffset n pF pG + (k + 1), state⟩ c := by
-            rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
-          obtain ⟨c_pG, hpG_steps, hpG_pc⟩ := ih m hm_lt (k + 1) state c hk1_le
-              hrest_steps'.toSteps hpc_ge hrest_steps'
-          exact ⟨c_pG, Relation.ReflTransGen.head hpG_step hpG_steps, hpG_pc⟩
+    ∃ c_pG, Steps pG ⟨k, state⟩ c_pG ∧ c_pG.pc = pG.length :=
+  halts_of_exits_embedded_region (prPG_shiftJumps_embed n pF pG) hpG_sf k state c hk_le hsteps hpc_ge
 
 /-- If the primitive recursion program halts, Pr is defined. -/
 theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
@@ -1255,12 +1060,11 @@ theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
     -- The base case phase runs prBaseCasePrologue (straight-line, always halts)
     -- then runs pF.shiftJumps embedded at prPFOffset
     have hsl_prologue := prBaseCasePrologue_isStraightLine n pF pG
-    let hPrologue := straightLine_halts_from_state hsl_prologue setup.config.state
-    let c_prologue := Classical.choose hPrologue
-    have hspec_prologue := Classical.choose_spec hPrologue
-    let hsteps_prologue := hspec_prologue.1
-    let hhalted_prologue := hspec_prologue.2.1
-    let hpc_prologue := hspec_prologue.2.2
+    let prologueResult := straightLineExec hsl_prologue setup.config.state
+    let c_prologue := prologueResult.config
+    let hsteps_prologue := prologueResult.steps
+    let hhalted_prologue := prologueResult.halted
+    let hpc_prologue := prologueResult.pc_eq
     -- Lift prologue steps to main program
     have hembed_prologue := prBaseCasePrologue_embed n pF pG
     have hsteps_prologue_lifted : Steps (primitiveRecursionProgram n pF pG) ⟨prBaseCasePC n, setup.config.state⟩
@@ -1526,12 +1330,11 @@ theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
       simp only [prLoopBodyPC, prLoopCheckPC, prSetupPhaseLength, prBaseCasePhaseLength]
     -- Execute loop prologue
     have hsl_prologue := prLoopPrologue_isStraightLine n pF pG
-    let hPrologue := straightLine_halts_from_state hsl_prologue loopResult_k.config.state
-    let c_prologue := Classical.choose hPrologue
-    have hspec_prologue := Classical.choose_spec hPrologue
-    let hsteps_prologue := hspec_prologue.1
-    let hhalted_prologue := hspec_prologue.2.1
-    let hpc_prologue := hspec_prologue.2.2
+    let prologueResult := straightLineExec hsl_prologue loopResult_k.config.state
+    let c_prologue := prologueResult.config
+    let hsteps_prologue := prologueResult.steps
+    let hhalted_prologue := prologueResult.halted
+    let hpc_prologue := prologueResult.pc_eq
     have hembed_prologue := prLoopPrologue_embed n pF pG
     have hsteps_prologue_lifted : Steps (primitiveRecursionProgram n pF pG)
         ⟨prLoopBodyPC n pF pG, loopResult_k.config.state⟩

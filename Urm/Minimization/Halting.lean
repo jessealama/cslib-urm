@@ -7,6 +7,7 @@ Authors: Jesse Alama
 import Urm.Minimization.Preservation
 import Urm.Embeddings
 import Urm.Shift
+import Urm.Halting.Common
 
 /-! # Halting Proofs for Minimization
 
@@ -29,56 +30,21 @@ theorem loopPrologue_embed (n : ℕ) (pF : Program) :
     ∀ i, i < (loopPrologue n pF).length →
     (minimizeProgram n pF).getInstr (loopStartPC n + i) = (loopPrologue n pF).getInstr i := by
   intro i hi
-  simp only [minimizeProgram, loopStartPC, setupPhaseLength, getInstr]
-  -- Use omega to deal with the nested conditionals
-  have hlen1 : n + 2 + i < (setupPhase n pF ++ loopPrologue n pF).length := by
-    simp only [List.length_append, setupPhase_length, setupPhaseLength]; omega
-  have hlen2 : ¬ n + 2 + i < (setupPhase n pF).length := by
-    simp only [setupPhase_length, setupPhaseLength]; omega
-  simp only [List.getElem?_append, hlen1, ↓reduceIte]
-  simp only [List.length_append, setupPhase_length, loopPrologue_length, shiftJumps_length, loopEpilogue_length,
-    setupPhaseLength, loopPrologueLength]
-  have h1 : n + 2 + i < n + 2 + (loopPrologue n pF).length := by omega
-  have hcond1 : n + 2 + i < n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 := by
-    simp only [loopPrologue_length, loopPrologueLength] at h1; omega
-  have hcond2 : n + 2 + i < n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length := by
-    simp only [loopPrologue_length, loopPrologueLength] at h1; omega
-  have hcond3 : ¬ n + 2 + i < n + 2 := by omega
-  simp only [hcond1, hcond2, hcond3, ↓reduceIte]
-  have h2 : n + 2 + i - (n + 2) = i := by omega
-  simp only [h2]
+  simp only [minimizeProgram, loopStartPC, setupPhaseLength, getInstr, List.getElem?_append,
+    List.length_append, setupPhase_length, loopPrologue_length, shiftJumps_length,
+    loopEpilogue_length, loopPrologueLength] at *
+  split_ifs <;> first | omega | (congr 1; omega)
 
 /-- pF.shiftJumps is embedded in minimizeProgram at offset pFOffset n pF. -/
 theorem pF_shiftJumps_embed (n : ℕ) (pF : Program) :
     ∀ i, i < pF.length →
     (minimizeProgram n pF).getInstr (pFOffset n pF + i) = (pF.shiftJumps (pFOffset n pF)).getInstr i := by
   intro i hi
-  simp only [minimizeProgram, pFOffset, setupPhaseLength, loopPrologueLength, getInstr]
-  -- Setup length calculations
-  let offset := n + 2 + (minimizationBase n pF + 1 + n + 1)
-  have hoffset : offset = n + 2 + (minimizationBase n pF + 1 + n + 1) := rfl
-  -- Position is offset + i
-  have hpos : offset + i < (setupPhase n pF ++ loopPrologue n pF ++ pF.shiftJumps (n + 2 + (minimizationBase n pF + 1 + n + 1))).length := by
-    simp only [List.length_append, setupPhase_length, loopPrologue_length, shiftJumps_length, setupPhaseLength, loopPrologueLength]; omega
-  have hpos1 : ¬ offset + i < (setupPhase n pF).length := by
-    simp only [setupPhase_length, setupPhaseLength]; omega
-  have hpos2 : ¬ offset + i - (setupPhase n pF).length < (loopPrologue n pF).length := by
-    simp only [setupPhase_length, loopPrologue_length, setupPhaseLength, loopPrologueLength]; omega
-  have hpos3 : i < (pF.shiftJumps (n + 2 + (minimizationBase n pF + 1 + n + 1))).length := by
-    simp only [shiftJumps_length]; exact hi
-  have heq1 : offset + i - (n + 2) - (loopPrologue n pF).length = i := by
-    simp only [loopPrologue_length, loopPrologueLength]; omega
-  simp only [List.getElem?_append]
-  simp only [List.length_append, setupPhase_length, loopPrologue_length, shiftJumps_length, loopEpilogue_length,
-    setupPhaseLength, loopPrologueLength]
-  -- Discharge the nested conditionals
-  have hcond1 : offset + i < offset + pF.length + 3 := by omega
-  have hcond2 : offset + i < offset + pF.length := by omega
-  have hcond3 : ¬ offset + i < offset := by omega
-  have hcond4 : ¬ offset + i < n + 2 := by omega
-  have heq2 : offset + i - offset = i := by omega
-  simp only [hoffset] at hcond1 hcond2 hcond3 hcond4 heq2
-  simp only [hcond1, hcond2, hcond3, ↓reduceIte, heq2]
+  simp only [minimizeProgram, pFOffset, setupPhaseLength, loopPrologueLength, getInstr,
+    List.getElem?_append, List.length_append, setupPhase_length, loopPrologue_length,
+    shiftJumps_length, loopEpilogue_length]
+  split_ifs <;> try omega
+  simp only [shiftJumps, List.getElem?_map, Nat.add_sub_cancel_left]
 
 /-! ## Loop Iteration Lemmas -/
 
@@ -116,13 +82,12 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
   -- Phase 1: Execute loopPrologue (straight-line)
   -- After loopPrologue: R[0..n-1] = saved inputs, R[n] = k
   have hsl_prologue := loopPrologue_isStraightLine n pF
-  -- Get loopPrologue execution (use Classical.choose since we're defining data)
-  let hPrologue := straightLine_halts_from_state hsl_prologue s
-  let c_prologue := Classical.choose hPrologue
-  have hspec_prologue := Classical.choose_spec hPrologue
-  let hsteps_prologue := hspec_prologue.1
-  let hhalted_prologue := hspec_prologue.2.1
-  let hpc_prologue := hspec_prologue.2.2
+  -- Get loopPrologue execution using common infrastructure
+  let prologueResult := straightLineExec hsl_prologue s
+  let c_prologue := prologueResult.config
+  let hsteps_prologue := prologueResult.steps
+  let hhalted_prologue := prologueResult.halted
+  let hpc_prologue := prologueResult.pc_eq
   -- After prologue: R[i] = inputs i for i < n, R[n] = k
   have hR_after_prologue : ∀ i : Fin n, c_prologue.state.read i = inputs i := by
     intro i
@@ -574,9 +539,12 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
   -- Step 1: loopPrologue is straight-line and halts at pFOffset
   have hsl_prologue := loopPrologue_isStraightLine n pF
 
-  -- Execute loopPrologue to get state at pFOffset
-  obtain ⟨cPrologue, hPrologue_steps, hPrologue_halted, hPrologue_pc⟩ :=
-    straightLine_halts_from_state hsl_prologue s
+  -- Execute loopPrologue using common infrastructure
+  let prologueResult := straightLineExec hsl_prologue s
+  let cPrologue := prologueResult.config
+  let hPrologue_steps := prologueResult.steps
+  let hPrologue_halted := prologueResult.halted
+  let hPrologue_pc := prologueResult.pc_eq
 
   -- Lift prologue steps to minimizeProgram
   have hPrologue_steps_lifted : Steps (minimizeProgram n pF) ⟨loopStartPC n, s⟩
@@ -778,107 +746,7 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
   -- Proof by strong induction on step count - if we start in pF region and exit, pF halted
   -- [Complex proof elided - uses step-by-step correspondence between shifted pF and pF]
   intro k state'' c'' hk_le hsteps'' hpc''_ge
-  -- Convert Steps to StepsN for step count induction
-  obtain ⟨numSteps, hstepsN⟩ := StepsN.fromSteps hsteps''
-  -- Strong induction on step count
-  induction numSteps using Nat.strong_induction_on generalizing k state'' c'' with
-  | _ numSteps ih =>
-    -- Case split: k = pF.length (already at exit) or k < pF.length (need to step)
-    by_cases hk_eq : k = pF.length
-    · -- k = pF.length: already at/past exit point
-      subst hk_eq
-      exact ⟨⟨pF.length, state''⟩, Relation.ReflTransGen.refl, rfl⟩
-    · -- k < pF.length: need to take a step in pF region
-      have hk_lt : k < pF.length := Nat.lt_of_le_of_ne hk_le hk_eq
-      -- numSteps must be > 0 (otherwise c'' = start, but c''.pc < pFOffset + pF.length)
-      have hnum_pos : numSteps > 0 := by
-        by_contra hnum_zero
-        push_neg at hnum_zero
-        have hc''_eq : c'' = ⟨pFOffset n pF + k, state''⟩ := StepsN.zero_inv ((Nat.le_zero.mp hnum_zero) ▸ hstepsN)
-        have hc''_pc : c''.pc = pFOffset n pF + k := by rw [hc''_eq]
-        omega
-      -- Decompose into first step + rest
-      obtain ⟨c_mid, m, hfirst_step, hrest_steps, hm_eq⟩ := StepsN.succ_inv (Nat.pos_iff_ne_zero.mp hnum_pos) hstepsN
-      -- The instruction at pFOffset + k is pF's instruction k (shifted)
-      have hembed := pF_shiftJumps_embed n pF k hk_lt
-      -- Get pF instruction (k < pF.length means pF[k]? is some)
-      have hpF_instr_exists : ∃ instr, pF.getInstr k = some instr := by
-        simp only [Program.getInstr]
-        exact ⟨pF[k], List.getElem?_eq_getElem hk_lt⟩
-      obtain ⟨instr, hpF_instr⟩ := hpF_instr_exists
-      -- The shifted instruction in minimizeProgram
-      have hmin_instr : (minimizeProgram n pF).getInstr (pFOffset n pF + k) =
-          some (instr.shiftJumps (pFOffset n pF)) := by
-        rw [hembed, Program.getInstr_shiftJumps, hpF_instr]; rfl
-      -- Match on the instruction type to handle each case
-      have hm_lt : m < numSteps := by omega
-      -- Helper: use Step.deterministic to determine c_mid from expected step
-      have hk1_le : k + 1 ≤ pF.length := Nat.succ_le_of_lt hk_lt
-      match instr with
-      | Instr.Z r =>
-        have hpF_step : Step pF ⟨k, state''⟩ ⟨k + 1, state''.write r 0⟩ := Step.zero hpF_instr
-        have hmin_instr' : (minimizeProgram n pF).getInstr (pFOffset n pF + k) = some (Instr.Z r) := by
-          rw [hmin_instr]; rfl
-        have hexpected : Step (minimizeProgram n pF) ⟨pFOffset n pF + k, state''⟩
-            ⟨pFOffset n pF + k + 1, state''.write r 0⟩ := Step.zero hmin_instr'
-        have hc_mid_eq := Step.deterministic hfirst_step hexpected
-        have hrest_steps' : StepsN (minimizeProgram n pF) m ⟨pFOffset n pF + (k + 1), state''.write r 0⟩ c'' := by
-          rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
-        obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt (k + 1) (state''.write r 0) c'' hk1_le
-            hrest_steps'.toSteps hpc''_ge hrest_steps'
-        exact ⟨c_pF, Relation.ReflTransGen.head hpF_step hpF_steps, hpF_pc⟩
-      | Instr.S r =>
-        have hpF_step : Step pF ⟨k, state''⟩ ⟨k + 1, state''.write r (state''.read r + 1)⟩ := Step.succ hpF_instr
-        have hmin_instr' : (minimizeProgram n pF).getInstr (pFOffset n pF + k) = some (Instr.S r) := by
-          rw [hmin_instr]; rfl
-        have hexpected : Step (minimizeProgram n pF) ⟨pFOffset n pF + k, state''⟩
-            ⟨pFOffset n pF + k + 1, state''.write r (state''.read r + 1)⟩ := Step.succ hmin_instr'
-        have hc_mid_eq := Step.deterministic hfirst_step hexpected
-        have hrest_steps' : StepsN (minimizeProgram n pF) m ⟨pFOffset n pF + (k + 1), state''.write r (state''.read r + 1)⟩ c'' := by
-          rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
-        obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt (k + 1) (state''.write r (state''.read r + 1)) c'' hk1_le
-            hrest_steps'.toSteps hpc''_ge hrest_steps'
-        exact ⟨c_pF, Relation.ReflTransGen.head hpF_step hpF_steps, hpF_pc⟩
-      | Instr.T m' r =>
-        have hpF_step : Step pF ⟨k, state''⟩ ⟨k + 1, state''.write r (state''.read m')⟩ := Step.trans hpF_instr
-        have hmin_instr' : (minimizeProgram n pF).getInstr (pFOffset n pF + k) = some (Instr.T m' r) := by
-          rw [hmin_instr]; rfl
-        have hexpected : Step (minimizeProgram n pF) ⟨pFOffset n pF + k, state''⟩
-            ⟨pFOffset n pF + k + 1, state''.write r (state''.read m')⟩ := Step.trans hmin_instr'
-        have hc_mid_eq := Step.deterministic hfirst_step hexpected
-        have hrest_steps' : StepsN (minimizeProgram n pF) m ⟨pFOffset n pF + (k + 1), state''.write r (state''.read m')⟩ c'' := by
-          rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
-        obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt (k + 1) (state''.write r (state''.read m')) c'' hk1_le
-            hrest_steps'.toSteps hpc''_ge hrest_steps'
-        exact ⟨c_pF, Relation.ReflTransGen.head hpF_step hpF_steps, hpF_pc⟩
-      | Instr.J m' r' q =>
-        have hmin_instr' : (minimizeProgram n pF).getInstr (pFOffset n pF + k) = some (Instr.J m' r' (q + pFOffset n pF)) := by
-          rw [hmin_instr]; rfl
-        have hq_le : q ≤ pF.length := by
-          have hbounded := hpF_sf.getInstr_hasBoundedJump hpF_instr
-          simp only [Instr.hasBoundedJump, decide_eq_true_eq] at hbounded
-          exact hbounded
-        by_cases heq : state''.read m' = state''.read r'
-        · -- Equal: jump to q
-          have hpF_step : Step pF ⟨k, state''⟩ ⟨q, state''⟩ := Step.jump_eq hpF_instr heq
-          have hexpected : Step (minimizeProgram n pF) ⟨pFOffset n pF + k, state''⟩
-              ⟨q + pFOffset n pF, state''⟩ := Step.jump_eq hmin_instr' heq
-          have hc_mid_eq := Step.deterministic hfirst_step hexpected
-          have hrest_steps' : StepsN (minimizeProgram n pF) m ⟨pFOffset n pF + q, state''⟩ c'' := by
-            rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2; omega
-          obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt q state'' c'' hq_le
-              hrest_steps'.toSteps hpc''_ge hrest_steps'
-          exact ⟨c_pF, Relation.ReflTransGen.head hpF_step hpF_steps, hpF_pc⟩
-        · -- Not equal: proceed to k + 1
-          have hpF_step : Step pF ⟨k, state''⟩ ⟨k + 1, state''⟩ := Step.jump_ne hpF_instr heq
-          have hexpected : Step (minimizeProgram n pF) ⟨pFOffset n pF + k, state''⟩
-              ⟨pFOffset n pF + k + 1, state''⟩ := Step.jump_ne hmin_instr' heq
-          have hc_mid_eq := Step.deterministic hfirst_step hexpected
-          have hrest_steps' : StepsN (minimizeProgram n pF) m ⟨pFOffset n pF + (k + 1), state''⟩ c'' := by
-            rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
-          obtain ⟨c_pF, hpF_steps, hpF_pc⟩ := ih m hm_lt (k + 1) state'' c'' hk1_le
-              hrest_steps'.toSteps hpc''_ge hrest_steps'
-          exact ⟨c_pF, Relation.ReflTransGen.head hpF_step hpF_steps, hpF_pc⟩
+  exact halts_of_exits_embedded_region (pF_shiftJumps_embed n pF) hpF_sf k state'' c'' hk_le hsteps'' hpc''_ge
 
 /-- Auxiliary function for loop_halts_exit_gen that takes step count explicitly.
     This allows for clean strong induction on step count. -/
@@ -1112,23 +980,9 @@ theorem setupPhase_embed (n : ℕ) (pF : Program) :
     ∀ i, i < (setupPhase n pF).length →
     (minimizeProgram n pF).getInstr (0 + i) = (setupPhase n pF).getInstr i := by
   intro i hi
-  simp only [Nat.zero_add]
-  unfold minimizeProgram getInstr
-  have hlen_setup : (setupPhase n pF).length = n + 2 := setupPhase_length n pF
-  have hlen_prologue : (loopPrologue n pF).length = minimizationBase n pF + 1 + n + 1 :=
-    loopPrologue_length n pF
-  have hlen_epilogue : (loopEpilogue n pF).length = 3 := loopEpilogue_length n pF
-  have hlen_output : (outputPhase n pF).length = 1 := outputPhase_length n pF
-  simp only [List.getElem?_append, List.length_append, hlen_setup, hlen_prologue,
-    shiftJumps_length, hlen_epilogue]
-  have hi' : i < n + 2 := by omega
-  simp only [hi', ↓reduceIte]
-  have h2 : i < n + 2 + (minimizationBase n pF + 1 + n + 1) := by omega
-  simp only [h2, ↓reduceIte]
-  have h3 : i < n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length := by omega
-  simp only [h3, ↓reduceIte]
-  have h4 : i < n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 := by omega
-  simp only [h4, ↓reduceIte]
+  simp only [Nat.zero_add, minimizeProgram, getInstr, List.getElem?_append, List.length_append,
+    setupPhase_length, loopPrologue_length, shiftJumps_length, loopEpilogue_length] at *
+  split_ifs <;> first | rfl | omega
 
 /-- outputPhase instruction is at outputPC in minimizeProgram. -/
 theorem outputPhase_instr (n : ℕ) (pF : Program) :
@@ -1184,12 +1038,11 @@ noncomputable def executeSetupPhase (n : ℕ) (pF : Program) (inputs : Fin n →
     SetupPhaseResult n pF inputs :=
   let hsl_setup := setupPhase_isStraightLine n pF
   let initState := State.fromInputs (List.ofFn inputs)
-  let hExists := straightLine_halts_from_state hsl_setup initState
-  let cSetup := Classical.choose hExists
-  let hSpec := Classical.choose_spec hExists
-  let hSetup_steps := hSpec.1
-  let hSetup_halted := hSpec.2.1
-  let hSetup_pc := hSpec.2.2
+  let setupResult := straightLineExec hsl_setup initState
+  let cSetup := setupResult.config
+  let hSetup_steps := setupResult.steps
+  let hSetup_halted := setupResult.halted
+  let hSetup_pc := setupResult.pc_eq
 
   -- Lift setup steps to minimizeProgram
   let hSetup_steps_lifted : Steps (minimizeProgram n pF) ⟨0, initState⟩

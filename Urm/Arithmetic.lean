@@ -9,6 +9,7 @@ import Urm.Execution
 import Urm.PrimitiveRecursion.Basic
 import Urm.Composition.Basic
 import Mathlib.Tactic.FinCases
+import Aesop
 
 /-! # Arithmetic Operations for URMs
 
@@ -117,8 +118,7 @@ theorem loop_iteration (s : State) (k y : ℕ)
   -- Compose all steps
   use s2
   constructor
-  · exact Steps.trans (Steps.trans (Steps.trans (Steps.single h1) (Steps.single h2))
-                      (Steps.single h3)) (Steps.single h4)
+  · aesop_steps
   · constructor
     · -- s2.read 0 = s.read 0 + 1
       simp only [s2, s1, State.write, State.read, Function.update_of_ne (by decide : (0 : ℕ) ≠ 2),
@@ -169,8 +169,9 @@ theorem loop_invariant (x y k : ℕ) (hk : k ≤ y) :
 /-- The program halts after completing y iterations.
     Starting from pc=1 with R2=y and R1=y, we exit to pc=5. -/
 theorem exits_when_done (s : State) (h : s.read 2 = s.read 1) :
-    Steps addProgram ⟨1, s⟩ ⟨5, s⟩ :=
-  Steps.single (step_exit s h)
+    Steps addProgram ⟨1, s⟩ ⟨5, s⟩ := by
+  have hstep := step_exit s h
+  aesop_steps
 
 /-- Configuration at pc=5 is halted. -/
 theorem halted_at_5 (s : State) : (⟨5, s⟩ : Config).isHalted addProgram := by
@@ -359,7 +360,7 @@ theorem zero_execution :
   have h2 : Step predProgram ⟨1, s1⟩ ⟨9, s1⟩ := step_zero_exit s1 heq
   -- Compose steps
   use s1
-  refine ⟨Steps.trans (Steps.single h1) (Steps.single h2), hs1_r0, halted_at_9 s1⟩
+  refine ⟨by aesop_steps, hs1_r0, halted_at_9 s1⟩
 
 /-- One loop iteration: from pc=4 with R1 = k + 1 < n, to pc=4 with R1 = k + 2.
     Invariant: R0 = n, R1 = k + 1, R2 = k -/
@@ -385,8 +386,7 @@ theorem loop_iteration (s : State) (n k : ℕ)
   -- Compose all steps
   use s2
   constructor
-  · exact Steps.trans (Steps.trans (Steps.trans (Steps.single h1) (Steps.single h2))
-                      (Steps.single h3)) (Steps.single h4)
+  · aesop_steps
   constructor
   · -- s2.read 0 = n (unchanged)
     simp only [s2, s1, State.read, State.write,
@@ -453,7 +453,7 @@ theorem loop_exit (s : State) (n : ℕ)
   have h2 : Step predProgram ⟨8, s⟩ ⟨9, s'⟩ := step_copy_result s
   -- Compose steps
   use s'
-  refine ⟨Steps.trans (Steps.single h1) (Steps.single h2), ?_, halted_at_9 s'⟩
+  refine ⟨by aesop_steps, ?_, halted_at_9 s'⟩
   -- s'.read 0 = n - 1
   simp only [s', State.read, State.write, Function.update_self]
   simp only [State.read] at hr2
@@ -498,10 +498,7 @@ theorem nonzero_execution (n : ℕ) (hn : 0 < n) :
     split_ifs <;> first | rfl | omega
 
   -- Compose setup steps: pc 0 -> 1 -> 2 -> 3 -> 4
-  have h_setup : Steps predProgram ⟨0, s0⟩ ⟨4, s3⟩ :=
-    Steps.trans (Steps.single h_step0)
-      (Steps.trans (Steps.single h_step1)
-        (Steps.trans (Steps.single h_step2) (Steps.single h_step3)))
+  have h_setup : Steps predProgram ⟨0, s0⟩ ⟨4, s3⟩ := by aesop_steps
 
   -- Phase 2: Loop iterations
   -- We need n - 1 iterations to get R1 = n, R2 = n - 1
