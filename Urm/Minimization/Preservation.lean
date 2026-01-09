@@ -14,7 +14,7 @@ This file proves register preservation during minimization program execution.
 
 ## Main results
 
-- pF doesn't touch counter, zero, or saved input registers
+- Setup phase initializes registers correctly
 - Loop iterations preserve saved inputs
 - Zero register remains zero
 -/
@@ -22,16 +22,6 @@ This file proves register preservation during minimization program execution.
 namespace Urm
 
 open Program
-
-/-! ## pF Register Preservation -/
-
-/-- General lemma: pF execution preserves any register beyond its maxRegister. -/
-theorem pF_preserves_high_reg (pF : Program) (s s' : State)
-    (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') (hstate_eq : c'.state = s')
-    (r : ℕ) (hr : pF.maxRegister < r) :
-    s'.read r = s.read r := by
-  subst hstate_eq
-  exact Steps.preserves_high_register hsteps r hr
 
 /-! ## Setup Phase Results -/
 

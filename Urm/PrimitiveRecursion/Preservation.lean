@@ -14,7 +14,6 @@ This file proves register preservation during primitive recursion program execut
 
 ## Main results
 
-- pF and pG don't touch counter, accumulator, savedY, zero, or saved input registers
 - Setup phase initializes registers correctly
 - Loop iterations preserve saved inputs
 - Zero register remains zero
@@ -48,45 +47,6 @@ theorem prLoopPrologue_isStraightLine (n : ℕ) (pF pG : Program) :
   refine ⟨⟨clearRegisters_isStraightLine (primitiveRecursionBase n pF pG),
           copyRegisterRange_isStraightLine (prSavedInputsStart n pF pG) 0 n⟩, ?_⟩
   simp only [List.all_cons, List.all_nil, Instr.isNonJumping, Bool.and_self]
-
-/-! ## Generic preservation lemmas
-
-Any program bounded by primitiveRecursionBase preserves high registers. -/
-
-/-- Generic: bounded program preserves saved inputs. -/
-theorem program_preserves_prSavedInputs (n : ℕ) (pF pG : Program) (p : Program)
-    (hp : p.maxRegister ≤ primitiveRecursionBase n pF pG) (s : State)
-    (c' : Config) (hsteps : Steps p ⟨0, s⟩ c') (i : Fin n) :
-    c'.state.read (prSavedInputsStart n pF pG + i) = s.read (prSavedInputsStart n pF pG + i) :=
-  Steps.preserves_high_register hsteps _ (program_doesnt_touch_prSavedInputs n pF pG p hp i)
-
-/-- Generic: bounded program preserves savedY register. -/
-theorem program_preserves_prSavedYReg (n : ℕ) (pF pG : Program) (p : Program)
-    (hp : p.maxRegister ≤ primitiveRecursionBase n pF pG) (s : State)
-    (c' : Config) (hsteps : Steps p ⟨0, s⟩ c') :
-    c'.state.read (prSavedYReg n pF pG) = s.read (prSavedYReg n pF pG) :=
-  Steps.preserves_high_register hsteps _ (program_doesnt_touch_prSavedYReg n pF pG p hp)
-
-/-- Generic: bounded program preserves counter register. -/
-theorem program_preserves_prCounterReg (n : ℕ) (pF pG : Program) (p : Program)
-    (hp : p.maxRegister ≤ primitiveRecursionBase n pF pG) (s : State)
-    (c' : Config) (hsteps : Steps p ⟨0, s⟩ c') :
-    c'.state.read (prCounterReg n pF pG) = s.read (prCounterReg n pF pG) :=
-  Steps.preserves_high_register hsteps _ (program_doesnt_touch_prCounterReg n pF pG p hp)
-
-/-- Generic: bounded program preserves accumulator register. -/
-theorem program_preserves_prAccumulatorReg (n : ℕ) (pF pG : Program) (p : Program)
-    (hp : p.maxRegister ≤ primitiveRecursionBase n pF pG) (s : State)
-    (c' : Config) (hsteps : Steps p ⟨0, s⟩ c') :
-    c'.state.read (prAccumulatorReg n pF pG) = s.read (prAccumulatorReg n pF pG) :=
-  Steps.preserves_high_register hsteps _ (program_doesnt_touch_prAccumulatorReg n pF pG p hp)
-
-/-- Generic: bounded program preserves zero register. -/
-theorem program_preserves_prZeroReg (n : ℕ) (pF pG : Program) (p : Program)
-    (hp : p.maxRegister ≤ primitiveRecursionBase n pF pG) (s : State)
-    (c' : Config) (hsteps : Steps p ⟨0, s⟩ c') :
-    c'.state.read (prZeroReg n pF pG) = s.read (prZeroReg n pF pG) :=
-  Steps.preserves_high_register hsteps _ (program_doesnt_touch_prZeroReg n pF pG p hp)
 
 /-! ## Setup Phase Invariants -/
 
