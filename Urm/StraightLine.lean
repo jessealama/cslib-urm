@@ -328,6 +328,10 @@ theorem copyRegisterRange_length (srcStart dstStart count : ℕ) :
 macro "len_append_omega" : tactic =>
   `(tactic| (simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]; omega))
 
+/-- Tactic for proving register write targets are distinct. -/
+macro "writesTo_omega" : tactic =>
+  `(tactic| (simp only [Instr.writesTo, ne_eq, Option.some.injEq]; omega))
+
 theorem clearRegisters_isStraightLine (maxReg : ℕ) :
     (Program.clearRegisters maxReg).isStraightLine = true := by
   simp only [Program.clearRegisters, Program.isStraightLine, List.all_map]
@@ -362,7 +366,7 @@ theorem clearRegisters_preserves_above (maxReg : ℕ) (s : State) (r : ℕ) (hr 
   intro instr hmem
   simp only [Program.clearRegisters, List.mem_map, List.mem_range] at hmem
   obtain ⟨i, hi, rfl⟩ := hmem
-  simp only [Instr.writesTo, ne_eq, Option.some.injEq]; omega
+  writesTo_omega
 
 /-! ## straightLine_transfer_result
 

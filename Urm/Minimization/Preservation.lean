@@ -320,7 +320,7 @@ theorem loopPrologue_preserves_high_register (n : ℕ) (pF : Program)
       | inl hclear =>
         simp only [Program.clearRegisters, List.mem_map, List.mem_range] at hclear
         obtain ⟨i, hi, rfl⟩ := hclear
-        simp only [Instr.writesTo, ne_eq, Option.some.injEq]; omega
+        writesTo_omega
       | inr hcopy =>
         obtain ⟨j, hj, hwrites⟩ := copyRegisterRange_writesTo _ _ _ instr hcopy
         rw [hwrites]; simp only [ne_eq, Option.some.injEq, minimizationBase] at hr ⊢; omega

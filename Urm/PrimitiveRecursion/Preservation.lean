@@ -320,7 +320,7 @@ theorem prBaseCasePrologue_preserves_high_register (n : ℕ) (pF pG : Program)
   | inl hclear =>
     simp only [Program.clearRegisters, List.mem_map, List.mem_range] at hclear
     obtain ⟨j, hj, rfl⟩ := hclear
-    simp only [Instr.writesTo, ne_eq, Option.some.injEq]; omega
+    writesTo_omega
   | inr hcopy =>
     simp only [Program.copyRegisterRange, List.mem_map, List.mem_range] at hcopy
     obtain ⟨j, hj, rfl⟩ := hcopy
@@ -619,7 +619,7 @@ theorem prLoopPrologue_preserves_high_register (n : ℕ) (pF pG : Program)
   rcases hinstr with (hclear | hcopy) | hT1 | hT2 | hfalse
   · simp only [Program.clearRegisters, List.mem_map, List.mem_range] at hclear
     obtain ⟨j, hj, rfl⟩ := hclear
-    simp only [Instr.writesTo, ne_eq, Option.some.injEq]; omega
+    writesTo_omega
   · simp only [Program.copyRegisterRange, List.mem_map, List.mem_range] at hcopy
     obtain ⟨j, hj, rfl⟩ := hcopy
     simp only [Instr.writesTo, ne_eq, Option.some.injEq, Nat.zero_add]
