@@ -88,50 +88,6 @@ theorem program_preserves_prZeroReg (n : ℕ) (pF pG : Program) (p : Program)
     c'.state.read (prZeroReg n pF pG) = s.read (prZeroReg n pF pG) :=
   Steps.preserves_high_register hsteps _ (program_doesnt_touch_prZeroReg n pF pG p hp)
 
-/-! ## pF preservation lemmas -/
-
-theorem pF_preserves_prSavedInputs (n : ℕ) (pF pG : Program) (s : State)
-    (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') (i : Fin n) :
-    c'.state.read (prSavedInputsStart n pF pG + i) = s.read (prSavedInputsStart n pF pG + i) :=
-  program_preserves_prSavedInputs n pF pG pF (primitiveRecursionBase_ge_pF n pF pG) s c' hsteps i
-
-theorem pF_preserves_prSavedYReg (n : ℕ) (pF pG : Program) (s : State)
-    (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') :
-    c'.state.read (prSavedYReg n pF pG) = s.read (prSavedYReg n pF pG) :=
-  program_preserves_prSavedYReg n pF pG pF (primitiveRecursionBase_ge_pF n pF pG) s c' hsteps
-
-theorem pF_preserves_prCounterReg (n : ℕ) (pF pG : Program) (s : State)
-    (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') :
-    c'.state.read (prCounterReg n pF pG) = s.read (prCounterReg n pF pG) :=
-  program_preserves_prCounterReg n pF pG pF (primitiveRecursionBase_ge_pF n pF pG) s c' hsteps
-
-theorem pF_preserves_prZeroReg (n : ℕ) (pF pG : Program) (s : State)
-    (c' : Config) (hsteps : Steps pF ⟨0, s⟩ c') :
-    c'.state.read (prZeroReg n pF pG) = s.read (prZeroReg n pF pG) :=
-  program_preserves_prZeroReg n pF pG pF (primitiveRecursionBase_ge_pF n pF pG) s c' hsteps
-
-/-! ## pG preservation lemmas -/
-
-theorem pG_preserves_prSavedInputs (n : ℕ) (pF pG : Program) (s : State)
-    (c' : Config) (hsteps : Steps pG ⟨0, s⟩ c') (i : Fin n) :
-    c'.state.read (prSavedInputsStart n pF pG + i) = s.read (prSavedInputsStart n pF pG + i) :=
-  program_preserves_prSavedInputs n pF pG pG (primitiveRecursionBase_ge_pG n pF pG) s c' hsteps i
-
-theorem pG_preserves_prSavedYReg (n : ℕ) (pF pG : Program) (s : State)
-    (c' : Config) (hsteps : Steps pG ⟨0, s⟩ c') :
-    c'.state.read (prSavedYReg n pF pG) = s.read (prSavedYReg n pF pG) :=
-  program_preserves_prSavedYReg n pF pG pG (primitiveRecursionBase_ge_pG n pF pG) s c' hsteps
-
-theorem pG_preserves_prCounterReg (n : ℕ) (pF pG : Program) (s : State)
-    (c' : Config) (hsteps : Steps pG ⟨0, s⟩ c') :
-    c'.state.read (prCounterReg n pF pG) = s.read (prCounterReg n pF pG) :=
-  program_preserves_prCounterReg n pF pG pG (primitiveRecursionBase_ge_pG n pF pG) s c' hsteps
-
-theorem pG_preserves_prZeroReg (n : ℕ) (pF pG : Program) (s : State)
-    (c' : Config) (hsteps : Steps pG ⟨0, s⟩ c') :
-    c'.state.read (prZeroReg n pF pG) = s.read (prZeroReg n pF pG) :=
-  program_preserves_prZeroReg n pF pG pG (primitiveRecursionBase_ge_pG n pF pG) s c' hsteps
-
 /-! ## Setup Phase Invariants -/
 
 /-- After setup phase, saved inputs contain original inputs. -/
