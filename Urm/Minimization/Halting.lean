@@ -301,8 +301,7 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
         _ = s.read (zeroReg n pF) := hs_zero.symm
     have hsaved_preserved : ∀ i : Fin n, state_after_S.read (savedInputsStart n pF + i) = s.read (savedInputsStart n pF + i) := by
       intro i
-      let hne : savedInputsStart n pF + ↑i ≠ counterReg n pF := by
-        simp only [savedInputsStart, counterReg, minimizationBase]; omega
+      let hne : savedInputsStart n pF + ↑i ≠ counterReg n pF := by min_register_omega
       calc state_after_S.read (savedInputsStart n pF + ↑i)
           = c_pF'.read (savedInputsStart n pF + ↑i) := by
             simp only [state_after_S, State.write, State.read, Function.update_of_ne hne]
@@ -678,8 +677,7 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
         simp only [State.fromInputs, State.read]
         rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none (by simp; omega), Option.getD_none]
         -- cPrologue.state.read r = 0 for r ≥ n + 1 (since loopPrologue clears high registers)
-        let hr_le_base : r ≤ minimizationBase n pF := by
-          simp only [minimizationBase]; omega
+        let hr_le_base : r ≤ minimizationBase n pF := by min_register_omega
         exact loopPrologue_clears_high_registers n pF s cPrologue prologueExec.localSteps prologueExec.localHalted
           r (Nat.le_of_not_lt hr_lt) hr_le_base
     exact hpF_diverges (Halts.of_agreeing_state hsteps_pF hhalted_pF hagree)
