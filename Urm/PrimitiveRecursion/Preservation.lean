@@ -78,13 +78,9 @@ theorem prSetupPhase_saves_inputs (n : ℕ) (pF pG : Program) (inputs : Fin n �
       let hj_small : j - (n + 1) = 0 ∨ j - (n + 1) = 1 := by omega
       rcases hj_small with h0 | h1
       · simp only [h0, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
-        let h1 := prCounterReg_gt_base n pF pG
-        let h2 := prSavedInputsStart_gt_base n pF pG
-        simp only [prCounterReg, prSavedInputsStart]; omega
+        pr_register_omega
       · simp only [h1, List.getElem_cons_succ, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
-        let h1 := prZeroReg_gt_base n pF pG
-        let h2 := prSavedInputsStart_gt_base n pF pG
-        simp only [prZeroReg, prSavedInputsStart]; omega
+        pr_register_omega
   -- Use straightLine_transfer_result
   obtain ⟨s_before, ⟨c_i, hsteps_i, _, hs_before_eq⟩, htransfer⟩ := straightLine_transfer_result hsl s
     (↑i) (↑i) (prSavedInputsStart n pF pG + i) hk hwrite hnowrite_after
@@ -130,7 +126,7 @@ theorem prSetupPhase_saves_y (n : ℕ) (pF pG : Program) (inputs : Fin n → ℕ
   have hsl := prSetupPhase_isStraightLine n pF pG
   -- prSavedYReg = prSavedInputsStart + n
   have hSavedY_eq : prSavedYReg n pF pG = prSavedInputsStart n pF pG + n := by
-    simp only [prSavedYReg, prSavedInputsStart]; omega
+    pr_register_omega
   rw [hSavedY_eq]
   -- The T instruction at position n writes to prSavedInputsStart + n
   have hk : n < (prSetupPhase n pF pG).length := by
@@ -153,9 +149,9 @@ theorem prSetupPhase_saves_y (n : ℕ) (pF pG : Program) (inputs : Fin n → ℕ
       let hj_small : j - (n + 1) = 0 ∨ j - (n + 1) = 1 := by omega
       rcases hj_small with h0 | h1
       · simp only [h0, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
-        simp only [prSavedInputsStart, prCounterReg]; omega
+        pr_register_omega
       · simp only [h1, List.getElem_cons_succ, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
-        simp only [prSavedInputsStart, prZeroReg]; omega
+        pr_register_omega
   -- Use straightLine_transfer_result
   obtain ⟨s_before, ⟨c_n, hsteps_n, _, hs_before_eq⟩, htransfer⟩ := straightLine_transfer_result hsl s
     n n (prSavedInputsStart n pF pG + n) hk hwrite hnowrite_after

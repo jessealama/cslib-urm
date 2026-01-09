@@ -625,10 +625,7 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
       simp only [state_after_S, State.write_read_same]
       -- Need to show state_after_T.read counter = k
       -- pG doesn't touch counter (above pG.maxRegister), prologue sets counter via T
-      let h1_counter := prCounterReg_gt_base n pF pG
-      let h2_acc := prAccumulatorReg_gt_base n pF pG
-      let hne : prCounterReg n pF pG ≠ prAccumulatorReg n pF pG := by
-        simp only [prCounterReg, prAccumulatorReg]; omega
+      let hne : prCounterReg n pF pG ≠ prAccumulatorReg n pF pG := by pr_register_omega
       let hcounter_after_T : state_after_T.read (prCounterReg n pF pG) = k := by
         simp only [state_after_T, State.write_read_diff _ _ _ _ hne]
         rw [pGExec.highPreserved (prCounterReg n pF pG)
@@ -651,10 +648,7 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
         -- state_after_S.read accumulatorReg = Result pG ...
         -- state_after_S = state_after_T.write counterReg (...)
         -- state_after_T = c_pG'.write accumulatorReg (c_pG'.read 0)
-        let hne_acc_counter : prAccumulatorReg n pF pG ≠ prCounterReg n pF pG := by
-          let h1 := prCounterReg_gt_base n pF pG
-          let h2 := prAccumulatorReg_gt_base n pF pG
-          simp only [prCounterReg, prAccumulatorReg]; omega
+        let hne_acc_counter : prAccumulatorReg n pF pG ≠ prCounterReg n pF pG := by pr_register_omega
         show state_after_S.read (prAccumulatorReg n pF pG) = _
         simp only [state_after_S, State.write_read_diff _ _ _ _ hne_acc_counter]
         simp only [state_after_T, State.write_read_same]
