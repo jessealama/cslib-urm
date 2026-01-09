@@ -46,7 +46,7 @@ def savedInputsStart (n : ℕ) (pF : Program) : ℕ :=
 
 /-- Tactic for solving register arithmetic goals in minimization.
     Unfolds register definitions and calls omega. -/
-local macro "min_register_omega" : tactic =>
+macro "min_register_omega" : tactic =>
   `(tactic| (simp only [savedInputsStart, counterReg, zeroReg, minimizationBase]; omega))
 
 /-! ## Bound lemmas for minimizationBase -/

@@ -68,7 +68,7 @@ def prZeroReg (n : ℕ) (pF pG : Program) : ℕ :=
 
 /-- Tactic for solving register arithmetic goals in primitive recursion.
     Unfolds register definitions and calls omega. -/
-local macro "pr_register_omega" : tactic =>
+macro "pr_register_omega" : tactic =>
   `(tactic| (simp only [prSavedInputsStart, prSavedYReg, prCounterReg,
       prAccumulatorReg, prZeroReg, primitiveRecursionBase]; omega))
 
