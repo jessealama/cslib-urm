@@ -162,8 +162,7 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
         let h_in_clear : r < (clearRegisters (minimizationBase n pF)).length := by
           simp only [clearRegisters_length]; exact Nat.lt_succ_of_le hr_le_base
         let h_in_clear_ext : r < (clearRegisters (minimizationBase n pF) ++
-            copyRegisterRange (savedInputsStart n pF) 0 n).length := by
-          simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]; omega
+            copyRegisterRange (savedInputsStart n pF) 0 n).length := by len_append_omega
         let hwrite : (loopPrologue n pF)[r] = Instr.Z r := by
           simp only [loopPrologue]
           rw [List.getElem_append_left h_in_clear_ext, List.getElem_append_left h_in_clear]

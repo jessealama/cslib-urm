@@ -480,8 +480,7 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
             let h_in_clear : r < (clearRegisters (primitiveRecursionBase n pF pG)).length := by
               simp only [clearRegisters_length]; exact Nat.lt_succ_of_le hr_le_base
             let h_in_ext2 : r < (clearRegisters (primitiveRecursionBase n pF pG) ++
-                copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length := by
-              simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]; omega
+                copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length := by len_append_omega
             let hwrite : (prLoopPrologue n pF pG)[r] = Instr.Z r := by
               simp only [prLoopPrologue]
               rw [List.getElem_append_left h_in_ext2, List.getElem_append_left h_in_clear]
@@ -1310,8 +1309,7 @@ theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
             let h_in_clear : r < (clearRegisters (primitiveRecursionBase n pF pG)).length := by
               simp only [clearRegisters_length]; exact Nat.lt_succ_of_le hr_le_base
             let h_in_ext2 : r < (clearRegisters (primitiveRecursionBase n pF pG) ++
-                copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length := by
-              simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]; omega
+                copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length := by len_append_omega
             let hwrite : (prLoopPrologue n pF pG)[r] = Instr.Z r := by
               simp only [prLoopPrologue]
               rw [List.getElem_append_left h_in_ext2, List.getElem_append_left h_in_clear]

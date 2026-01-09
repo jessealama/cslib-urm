@@ -324,6 +324,10 @@ theorem copyRegisterRange_length (srcStart dstStart count : ℕ) :
     (Program.copyRegisterRange srcStart dstStart count).length = count := by
   simp [Program.copyRegisterRange]
 
+/-- Tactic for solving length arithmetic goals involving clearRegisters and copyRegisterRange. -/
+macro "len_append_omega" : tactic =>
+  `(tactic| (simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]; omega))
+
 theorem clearRegisters_isStraightLine (maxReg : ℕ) :
     (Program.clearRegisters maxReg).isStraightLine = true := by
   simp only [Program.clearRegisters, Program.isStraightLine, List.all_map]

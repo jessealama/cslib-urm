@@ -263,10 +263,10 @@ theorem loopPrologue_sets_counter_input (n : ℕ) (pF : Program)
     simp only [loopPrologue]
     rw [List.getElem_append]
     let h1 : ¬k < (clearRegisters (minimizationBase n pF) ++ copyRegisterRange (savedInputsStart n pF) 0 n).length := by
-      simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]; omega
+      len_append_omega
     simp only [h1, dite_false]
     let h2 : k - (clearRegisters (minimizationBase n pF) ++ copyRegisterRange (savedInputsStart n pF) 0 n).length = 0 := by
-      simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]; omega
+      len_append_omega
     simp only [h2, List.getElem_cons_zero]
   -- k is the last instruction, so hnowrite is vacuously true
   have hnowrite : ∀ j (hj : j < (loopPrologue n pF).length), k < j → ((loopPrologue n pF)[j]'hj).writesTo ≠ some n := by
