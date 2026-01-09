@@ -226,12 +226,15 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
 
   -- Preservation: zeroReg and counter are unchanged by pF (using pFExec.highPreserved)
   have hzero_after_pF : c_pF'.read (zeroReg n pF) = 0 := by
-    rw [pFExec.highPreserved (zeroReg n pF) (pF_doesnt_touch_zeroReg n pF), hzero_after_prologue]
+    rw [pFExec.highPreserved (zeroReg n pF)
+        (program_doesnt_touch_zeroReg n pF pF (minimizationBase_ge_pF n pF)), hzero_after_prologue]
   have hcounter_after_pF : c_pF'.read (counterReg n pF) = k := by
-    rw [pFExec.highPreserved (counterReg n pF) (pF_doesnt_touch_counter n pF), hcounter_after_prologue]
+    rw [pFExec.highPreserved (counterReg n pF)
+        (program_doesnt_touch_counter n pF pF (minimizationBase_ge_pF n pF)), hcounter_after_prologue]
   have hsaved_after_pF : ∀ i : Fin n, c_pF'.read (savedInputsStart n pF + i) = inputs i := by
     intro i
-    rw [pFExec.highPreserved (savedInputsStart n pF + i) (pF_doesnt_touch_savedInputs n pF i),
+    rw [pFExec.highPreserved (savedInputsStart n pF + i)
+        (program_doesnt_touch_savedInputs n pF pF (minimizationBase_ge_pF n pF) i),
         hsaved_after_prologue]
 
   -- The pF result is in R[0]

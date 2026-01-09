@@ -44,6 +44,11 @@ def zeroReg (n : ℕ) (pF : Program) : ℕ :=
 def savedInputsStart (n : ℕ) (pF : Program) : ℕ :=
   minimizationBase n pF + 1
 
+/-- Tactic for solving register arithmetic goals in minimization.
+    Unfolds register definitions and calls omega. -/
+local macro "min_register_omega" : tactic =>
+  `(tactic| (simp only [savedInputsStart, counterReg, zeroReg, minimizationBase]; omega))
+
 /-! ## Bound lemmas for minimizationBase -/
 
 @[simp] theorem minimizationBase_ge_n (n : ℕ) (pF : Program) :
@@ -55,20 +60,16 @@ def savedInputsStart (n : ℕ) (pF : Program) : ℕ :=
 /-! ## Register distinctness lemmas -/
 
 @[simp] theorem counterReg_gt_base (n : ℕ) (pF : Program) :
-    minimizationBase n pF < counterReg n pF := by
-  simp only [counterReg]; omega
+    minimizationBase n pF < counterReg n pF := by min_register_omega
 
 @[simp] theorem zeroReg_gt_counterReg (n : ℕ) (pF : Program) :
-    counterReg n pF < zeroReg n pF := by
-  simp only [counterReg, zeroReg]; omega
+    counterReg n pF < zeroReg n pF := by min_register_omega
 
 @[simp] theorem zeroReg_gt_base (n : ℕ) (pF : Program) :
-    minimizationBase n pF < zeroReg n pF := by
-  simp only [zeroReg]; omega
+    minimizationBase n pF < zeroReg n pF := by min_register_omega
 
 @[simp] theorem savedInputsStart_gt_base (n : ℕ) (pF : Program) :
-    minimizationBase n pF < savedInputsStart n pF := by
-  simp only [savedInputsStart]; omega
+    minimizationBase n pF < savedInputsStart n pF := by min_register_omega
 
 @[simp] theorem counterReg_ne_zeroReg (n : ℕ) (pF : Program) :
     counterReg n pF ≠ zeroReg n pF := Nat.ne_of_lt (zeroReg_gt_counterReg n pF)
@@ -76,16 +77,13 @@ def savedInputsStart (n : ℕ) (pF : Program) : ℕ :=
 /-! ## Saved inputs don't overlap with working space -/
 
 @[simp] theorem savedInputsStart_gt_n (n : ℕ) (pF : Program) :
-    n ≤ savedInputsStart n pF := by
-  simp only [savedInputsStart]; have := minimizationBase_ge_n n pF; omega
+    n ≤ savedInputsStart n pF := by min_register_omega
 
 @[simp] theorem savedInput_reg_distinct (n : ℕ) (pF : Program) (i : Fin n) :
-    savedInputsStart n pF + i ≠ i.val := by
-  simp only [savedInputsStart]; have := minimizationBase_ge_n n pF; omega
+    savedInputsStart n pF + i ≠ i.val := by min_register_omega
 
 @[simp] theorem savedInputs_ne_counterReg (n : ℕ) (pF : Program) (i : Fin n) :
-    savedInputsStart n pF + i ≠ counterReg n pF := by
-  simp only [savedInputsStart, counterReg, minimizationBase]; omega
+    savedInputsStart n pF + i ≠ counterReg n pF := by min_register_omega
 
 /-! ## Generic "doesn't touch" lemmas
 
@@ -105,19 +103,5 @@ theorem program_doesnt_touch_zeroReg (n : ℕ) (pF : Program) (p : Program)
     (hp : p.maxRegister ≤ minimizationBase n pF) :
     p.maxRegister < zeroReg n pF := by
   simp only [zeroReg]; omega
-
-/-! ## pF doesn't touch high registers -/
-
-@[simp] theorem pF_doesnt_touch_savedInputs (n : ℕ) (pF : Program) (i : Fin n) :
-    pF.maxRegister < savedInputsStart n pF + i :=
-  program_doesnt_touch_savedInputs n pF pF (minimizationBase_ge_pF n pF) i
-
-@[simp] theorem pF_doesnt_touch_counter (n : ℕ) (pF : Program) :
-    pF.maxRegister < counterReg n pF :=
-  program_doesnt_touch_counter n pF pF (minimizationBase_ge_pF n pF)
-
-@[simp] theorem pF_doesnt_touch_zeroReg (n : ℕ) (pF : Program) :
-    pF.maxRegister < zeroReg n pF :=
-  program_doesnt_touch_zeroReg n pF pF (minimizationBase_ge_pF n pF)
 
 end Urm

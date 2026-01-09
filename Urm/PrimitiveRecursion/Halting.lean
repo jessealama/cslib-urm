@@ -295,22 +295,26 @@ noncomputable def prExecuteBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : p
       simp only [finalState, State.write_read_diff _ _ _ _ (prSavedInput_ne_prAccumulatorReg n pF pG i)]
       let hgt : primitiveRecursionBase n pF pG < prSavedInputsStart n pF pG + i := by
         let h := prSavedInputsStart_gt_base n pF pG; omega
-      rw [hpF_preserves_high (prSavedInputsStart n pF pG + i) (pF_doesnt_touch_prSavedInputs n pF pG i),
+      rw [hpF_preserves_high (prSavedInputsStart n pF pG + i)
+          (program_doesnt_touch_prSavedInputs n pF pG pF (primitiveRecursionBase_ge_pF n pF pG) i),
           hprologue_preserves (prSavedInputsStart n pF pG + i) hgt],
     savedY_preserved := by
       show finalState.read _ = s.read _
       simp only [finalState, State.write_read_diff _ _ _ _ (prSavedYReg_ne_prAccumulatorReg n pF pG)]
-      rw [hpF_preserves_high (prSavedYReg n pF pG) (pF_doesnt_touch_prSavedYReg n pF pG),
+      rw [hpF_preserves_high (prSavedYReg n pF pG)
+          (program_doesnt_touch_prSavedYReg n pF pG pF (primitiveRecursionBase_ge_pF n pF pG)),
           hprologue_preserves _ (prSavedYReg_gt_base n pF pG)],
     counter_preserved := by
       show finalState.read _ = s.read _
       simp only [finalState, State.write_read_diff _ _ _ _ (prCounterReg_ne_prAccumulatorReg n pF pG)]
-      rw [hpF_preserves_high (prCounterReg n pF pG) (pF_doesnt_touch_prCounterReg n pF pG),
+      rw [hpF_preserves_high (prCounterReg n pF pG)
+          (program_doesnt_touch_prCounterReg n pF pG pF (primitiveRecursionBase_ge_pF n pF pG)),
           hprologue_preserves _ (prCounterReg_gt_base n pF pG)],
     zero_preserved := by
       show finalState.read _ = s.read _
       simp only [finalState, State.write_read_diff _ _ _ _ (prAccumulatorReg_ne_prZeroReg n pF pG).symm]
-      rw [hpF_preserves_high (prZeroReg n pF pG) (pF_doesnt_touch_prZeroReg n pF pG),
+      rw [hpF_preserves_high (prZeroReg n pF pG)
+          (program_doesnt_touch_prZeroReg n pF pG pF (primitiveRecursionBase_ge_pF n pF pG)),
           hprologue_preserves _ (prZeroReg_gt_base n pF pG)]
   }
 
@@ -627,7 +631,8 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
         simp only [prCounterReg, prAccumulatorReg]; omega
       let hcounter_after_T : state_after_T.read (prCounterReg n pF pG) = k := by
         simp only [state_after_T, State.write_read_diff _ _ _ _ hne]
-        rw [pGExec.highPreserved (prCounterReg n pF pG) (pG_doesnt_touch_prCounterReg n pF pG)]
+        rw [pGExec.highPreserved (prCounterReg n pF pG)
+            (program_doesnt_touch_prCounterReg n pF pG pG (primitiveRecursionBase_ge_pG n pF pG))]
         -- After prologue, counter = k (from T instruction)
         let h := prLoopPrologue_preserves_high_register n pF pG s c_prologue
           prologueExec.localSteps prologueExec.localHalted (prCounterReg n pF pG) (prCounterReg_gt_base n pF pG)
@@ -660,19 +665,22 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
         simp only [state_after_T, State.write_read_diff _ _ _ _ (prSavedInput_ne_prAccumulatorReg n pF pG i)]
         let hgt : primitiveRecursionBase n pF pG < prSavedInputsStart n pF pG + i := by
           let h := prSavedInputsStart_gt_base n pF pG; omega
-        rw [pGExec.highPreserved (prSavedInputsStart n pF pG + i) (pG_doesnt_touch_prSavedInputs n pF pG i),
+        rw [pGExec.highPreserved (prSavedInputsStart n pF pG + i)
+            (program_doesnt_touch_prSavedInputs n pF pG pG (primitiveRecursionBase_ge_pG n pF pG) i),
             hprologue_preserves (prSavedInputsStart n pF pG + i) hgt]
       savedY_preserved := by
         show state_after_S.read _ = s.read _
         simp only [state_after_S, State.write_read_diff _ _ _ _ (prSavedYReg_ne_prCounterReg n pF pG)]
         simp only [state_after_T, State.write_read_diff _ _ _ _ (prSavedYReg_ne_prAccumulatorReg n pF pG)]
-        rw [pGExec.highPreserved (prSavedYReg n pF pG) (pG_doesnt_touch_prSavedYReg n pF pG),
+        rw [pGExec.highPreserved (prSavedYReg n pF pG)
+            (program_doesnt_touch_prSavedYReg n pF pG pG (primitiveRecursionBase_ge_pG n pF pG)),
             hprologue_preserves _ (prSavedYReg_gt_base n pF pG)]
       zero_preserved := by
         show state_after_S.read _ = s.read _
         simp only [state_after_S, State.write_read_diff _ _ _ _ (prCounterReg_ne_prZeroReg n pF pG).symm]
         simp only [state_after_T, State.write_read_diff _ _ _ _ (prAccumulatorReg_ne_prZeroReg n pF pG).symm]
-        rw [pGExec.highPreserved (prZeroReg n pF pG) (pG_doesnt_touch_prZeroReg n pF pG),
+        rw [pGExec.highPreserved (prZeroReg n pF pG)
+            (program_doesnt_touch_prZeroReg n pF pG pG (primitiveRecursionBase_ge_pG n pF pG)),
             hprologue_preserves _ (prZeroReg_gt_base n pF pG)]
     }
 
