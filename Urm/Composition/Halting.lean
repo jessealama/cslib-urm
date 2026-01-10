@@ -85,15 +85,21 @@ theorem allGPhases_halts_from_saved_inputs {m n base : ℕ} {pGs : Fin m → Pro
     (hSaved : ∀ j : ℕ, (hj : j < n) → s.read (base + 1 + j) = inputs ⟨j, hj⟩) :
     ∃ c, Steps (allGPhases m n base pGs) ⟨0, s⟩ c ∧ c.isHalted (allGPhases m n base pGs) := by
   induction m with
-  | zero => simp only [allGPhases, List.finRange_zero, List.foldl_nil]
-            exact ⟨⟨0, s⟩, Relation.ReflTransGen.refl, by simp⟩
+  | zero =>
+    have hAllGPhases_zero : allGPhases 0 n base pGs = [] := by
+      simp only [allGPhases, gPhaseList, List.finRange_zero, List.map_nil, List.prod_nil]; rfl
+    simp only [hAllGPhases_zero]
+    exact ⟨⟨0, s⟩, Relation.ReflTransGen.refl, by simp⟩
   | succ m' ih =>
-    simp only [allGPhases]
-    rw [List.finRange_succ_last, List.foldl_append, List.foldl_map, List.foldl_cons, List.foldl_nil]
     let pGs' : Fin m' → Program := fun i => pGs i.castSucc
-    have hPrefix_eq : List.foldl (fun x y => Program.concat x (gPhase base n (pGs y.castSucc) ↑y.castSucc))
-        [] (List.finRange m') = allGPhases m' n base pGs' := rfl
-    rw [hPrefix_eq]
+    have hAllGPhases_succ : allGPhases (m' + 1) n base pGs =
+        (allGPhases m' n base pGs').concat (gPhase base n (pGs (Fin.last m')) m') := by
+      simp only [allGPhases, gPhaseList]
+      rw [List.finRange_succ_last, List.map_append, List.map_singleton, List.prod_append, List.prod_singleton]
+      show (Program.concat _ _) = (Program.concat _ _)
+      simp only [List.map_map, Fin.val_last, Function.comp_def]
+      rfl
+    rw [hAllGPhases_succ]
     obtain ⟨cPrefix, hPrefix_steps, hPrefix_halted⟩ := ih (fun i => hpGs_sf i.castSucc)
       (fun i => hpGs_max i.castSucc) (fun i => hpGs_halts i.castSucc)
     have hPrefix_sf := allGPhases_isStandardForm (n := n) (base := base) (fun i => hpGs_sf i.castSucc)
@@ -144,20 +150,23 @@ theorem allGPhases_suffix_preserves_earlier_results {m n base : ℕ} {pGs : Fin 
     (hhalted : c'.isHalted (allGPhases_suffix m n base pGs start)) :
     c'.state.read (base + n + 1 + k) = s.read (base + n + 1 + k) := by
   match m with
-  | 0 => simp only [allGPhases_suffix, List.finRange_zero, List.drop_nil, List.foldl_nil] at hsteps hhalted
-         rw [Steps.halts_unique hsteps hhalted Relation.ReflTransGen.refl (by simp)]
+  | 0 =>
+    have hSuffix_zero : allGPhases_suffix 0 n base pGs start = [] := by
+      simp only [allGPhases_suffix, gPhaseList, List.finRange_zero, List.drop_nil, List.map_nil, List.prod_nil]; rfl
+    simp only [hSuffix_zero] at hsteps hhalted
+    rw [Steps.halts_unique hsteps hhalted Relation.ReflTransGen.refl (by simp)]
   | Nat.succ m' =>
     by_cases hEmpty : start ≥ m' + 1
     · have hSuffix_empty : allGPhases_suffix (m' + 1) n base pGs start = [] := by
-        simp only [allGPhases_suffix]; rw [List.drop_eq_nil_of_le (by simp; omega)]; rfl
+        simp only [allGPhases_suffix, gPhaseList]
+        rw [List.drop_eq_nil_of_le (by simp; omega)]
+        rfl
       rw [hSuffix_empty] at hsteps hhalted
       rw [Steps.halts_unique hsteps hhalted Relation.ReflTransGen.refl (by simp)]
     · push_neg at hEmpty
       have hSuffix_decomp : allGPhases_suffix (m' + 1) n base pGs start =
-          (gPhase base n (pGs ⟨start, hEmpty⟩) start).concat (allGPhases_suffix (m' + 1) n base pGs (start + 1)) := by
-        simp only [allGPhases_suffix]
-        rw [List.drop_eq_getElem_cons (by simp; exact hEmpty), List.foldl_cons, foldl_concat_eq_acc_concat]
-        simp only [concat_nil_left, List.getElem_finRange]; congr 2
+          (gPhase base n (pGs ⟨start, hEmpty⟩) start).concat (allGPhases_suffix (m' + 1) n base pGs (start + 1)) :=
+        allGPhases_suffix_cons pGs start hEmpty
       rw [hSuffix_decomp] at hsteps hhalted
       let dFirst := decompose_concat hsteps hhalted (gPhase_isStandardForm (hpGs_sf ⟨start, hEmpty⟩))
       obtain ⟨cRest, hRest_steps, hRest_halted⟩ := dFirst.halts_right
@@ -198,11 +207,8 @@ theorem allGPhases_saves_result {m n : ℕ} [NeZero m] {pF : Program} {pGs : Fin
   obtain ⟨sSavePrefix, hSavePrefix_steps, cSuffix, hSuffix_steps, hSuffix_halted⟩ :=
     suffix_of_concat_from_zero hsteps hhalted hSavePrefix_sf
   have hPrefixDecomp : allGPhases_prefix m n base pGs (i.val + 1) =
-      (allGPhases_prefix m n base pGs i.val).concat (gPhase base n (pGs i) i.val) := by
-    simp only [allGPhases_prefix]
-    rw [List.take_succ_eq_append_getElem (by simp : i.val < (List.finRange m).length),
-        List.foldl_append, List.foldl_cons, List.foldl_nil, foldl_concat_eq_acc_concat]
-    simp only [List.getElem_finRange]; congr 1
+      (allGPhases_prefix m n base pGs i.val).concat (gPhase base n (pGs i) i.val) :=
+    allGPhases_prefix_succ pGs i.val i.isLt
   have hSavePrefixI_sf := hSave_sf.concat (allGPhases_prefix_isStandardForm (n := n) (base := base) hGs_sf i.val)
   have hSavePrefix_eq : saveInputs.concat (allGPhases_prefix m n base pGs (i.val + 1)) =
       (saveInputs.concat (allGPhases_prefix m n base pGs i.val)).concat (gPhase base n (pGs i) i.val) := by
@@ -229,7 +235,9 @@ theorem allGPhases_saves_result {m n : ℕ} [NeZero m] {pF : Program} {pGs : Fin
   have hSaved_i : ∀ k : ℕ, (hk : k < n) → sSavePrefixI.read (base + 1 + k) = inputs ⟨k, hk⟩ := by
     intro k hk
     by_cases hi_zero : i.val = 0
-    · simp only [hi_zero, allGPhases_prefix, List.take_zero, List.foldl_nil, concat_nil_right] at hSavePrefixI_steps
+    · have hPrefix_zero : allGPhases_prefix m n base pGs 0 = [] := by
+        simp only [allGPhases_prefix, gPhaseList, List.take_zero, List.map_nil, List.prod_nil]; rfl
+      simp only [hi_zero, hPrefix_zero, concat_nil_right] at hSavePrefixI_steps
       rw [show sSavePrefixI = cSave.state from
             congrArg Config.state (Steps.halts_unique hSavePrefixI_steps (by simp) hSave_steps' hSave_halted'),
           hSave_state_sSave, hAfterSave k hk]

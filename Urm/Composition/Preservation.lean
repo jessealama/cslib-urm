@@ -137,18 +137,16 @@ theorem allGPhases_prefix_preserves_saved_inputs (m n base : ℕ) (pGs : Fin m �
   intro r hr_lo hr_hi
   induction k generalizing s s' c' with
   | zero =>
-    simp only [allGPhases_prefix, List.take_zero, List.foldl_nil] at hsteps hhalted
+    have hPrefix_zero : allGPhases_prefix m n base pGs 0 = [] := by
+      simp only [allGPhases_prefix, gPhaseList, List.take_zero, List.map_nil, List.prod_nil]; rfl
+    simp only [hPrefix_zero] at hsteps hhalted
     simp only [← hstate_eq, Steps.halts_unique hsteps hhalted (.refl _) (by simp)]
   | succ k' ih =>
     have hk'_lt : k' < m := Nat.lt_of_succ_le hk
     let k'_fin : Fin m := ⟨k', hk'_lt⟩
-    have htake_eq : (List.finRange m).take (k' + 1) = (List.finRange m).take k' ++ [k'_fin] := by
-      rw [List.take_add_one, getElem?_pos (List.finRange m) k' (by simp [hk'_lt]), Option.toList_some]
-      simp only [List.finRange, List.getElem_ofFn, k'_fin]
     have hPrefix_succ_eq : allGPhases_prefix m n base pGs (k' + 1) =
-        (allGPhases_prefix m n base pGs k').concat (gPhase base n (pGs k'_fin) k') := by
-      simp only [allGPhases_prefix]
-      rw [htake_eq, List.foldl_append, List.foldl_cons, List.foldl_nil]
+        (allGPhases_prefix m n base pGs k').concat (gPhase base n (pGs k'_fin) k') :=
+      allGPhases_prefix_succ pGs k' hk'_lt
     rw [hPrefix_succ_eq] at hsteps hhalted
     obtain ⟨sMid, hMid_steps, ⟨cGPhase, hGPhase_steps, hGPhase_halted⟩⟩ :=
       suffix_of_concat_from_zero hsteps hhalted (allGPhases_prefix_isStandardForm hpGs_sf k')
