@@ -157,10 +157,10 @@ def signProgram : Program := [
 namespace signProgram
 
 -- Helper lemmas about getInstr
-@[simp] theorem getInstr_0 : signProgram.getInstr 0 = some (Instr.Z 1) := rfl
-@[simp] theorem getInstr_1 : signProgram.getInstr 1 = some (Instr.J 0 1 4) := rfl
-@[simp] theorem getInstr_2 : signProgram.getInstr 2 = some (Instr.Z 0) := rfl
-@[simp] theorem getInstr_3 : signProgram.getInstr 3 = some (Instr.S 0) := rfl
+@[simp] theorem getInstr_0 : signProgram.getInstr 0 = Option.some (Instr.Z 1) := rfl
+@[simp] theorem getInstr_1 : signProgram.getInstr 1 = Option.some (Instr.J 0 1 4) := rfl
+@[simp] theorem getInstr_2 : signProgram.getInstr 2 = Option.some (Instr.Z 0) := rfl
+@[simp] theorem getInstr_3 : signProgram.getInstr 3 = Option.some (Instr.S 0) := rfl
 @[simp] theorem length_eq : signProgram.length = 4 := rfl
 
 /-- Clear R1 for zero check (pc 0 → 1). -/
