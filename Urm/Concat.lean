@@ -95,6 +95,10 @@ instance : Monoid Program where
   one_mul := concat_nil_left
   mul_one := concat_nil_right
 
+/-- Relates `.concat` to `*` for algebraic automation.
+Use with `simp only [concat_eq_mul, mul_assoc]` to leverage Monoid associativity. -/
+theorem concat_eq_mul (p q : Program) : p.concat q = p * q := rfl
+
 /-- Get instruction from concatenated program in the first part. -/
 theorem getInstr_concat_left {p1 p2 : Program} (i : ℕ) (hi : i < p1.length) :
     (p1.concat p2).getInstr i = p1.getInstr i := by
