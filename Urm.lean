@@ -1,5 +1,6 @@
 -- This module serves as the root of the `Urm` library.
 -- Import modules here that should be built as part of the library.
+import Urm.PartSequence
 import Urm.Basic
 import Urm.Execution
 import Urm.Shift

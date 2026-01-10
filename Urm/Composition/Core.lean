@@ -8,6 +8,7 @@ import Urm.Computable
 import Urm.Shift
 import Urm.Concat
 import Urm.StandardForm
+import Urm.PartSequence
 import Mathlib.Data.Finset.Basic
 import Mathlib.Data.Fin.Tuple.Basic
 
@@ -41,33 +42,6 @@ theorem transferResultsToInputs_isStraightLine (resultStart arityF : ℕ) :
 theorem transferResultsToInputs_isStandardForm (resultStart arityF : ℕ) :
     (Program.transferResultsToInputs resultStart arityF).IsStandardForm :=
   straightLine_isStandardForm (transferResultsToInputs_isStraightLine resultStart arityF)
-
-def Part.sequence {α : Type*} : {n : ℕ} → (Fin n → Part α) → Part (Fin n → α)
-  | 0, _ => Part.some Fin.elim0
-  | _ + 1, f => (f 0).bind fun a0 => (Part.sequence (fun i => f i.succ)).map fun rest => Fin.cons a0 rest
-
-theorem Part.sequence_succ {α : Type*} {n : ℕ} (f : Fin (n + 1) → Part α) :
-    Part.sequence f = (f 0).bind fun a0 => (Part.sequence (fun i => f i.succ)).map fun rest => Fin.cons a0 rest := rfl
-
-theorem Part.sequence_dom {α : Type*} {n : ℕ} {f : Fin n → Part α} :
-    (Part.sequence f).Dom ↔ ∀ i, (f i).Dom := by
-  induction n with
-  | zero => simp only [Part.sequence, Part.some_dom]; exact ⟨fun _ i => Fin.elim0 i, fun _ => trivial⟩
-  | succ n ih =>
-    simp only [Part.sequence, Part.bind_dom, Part.map_Dom]; constructor
-    · intro ⟨hdom0, hrest⟩ i; match i with
-      | ⟨0, _⟩ => exact hdom0
-      | ⟨j + 1, hlt⟩ => exact ih.mp hrest ⟨j, Nat.lt_of_succ_lt_succ hlt⟩
-    · intro hall; exact ⟨hall 0, ih.mpr (fun i => hall i.succ)⟩
-
-theorem Part.sequence_get {α : Type*} {n : ℕ} {f : Fin n → Part α}
-    (hdom : (Part.sequence f).Dom) (i : Fin n) :
-    (Part.sequence f).get hdom i = (f i).get (Part.sequence_dom.mp hdom i) := by
-  induction n with
-  | zero => exact Fin.elim0 i
-  | succ n ih => match i with
-    | ⟨0, _⟩ => simp only [Part.sequence_succ, Part.bind, Part.map] at hdom ⊢; rfl
-    | ⟨j + 1, hlt⟩ => simp only [Part.sequence_succ, Part.bind, Part.map] at hdom ⊢; exact ih _ ⟨j, Nat.lt_of_succ_lt_succ hlt⟩
 
 theorem Program.isStraightLine_concat {p1 p2 : Program}
     (h1 : p1.isStraightLine = true) (h2 : p2.isStraightLine = true) :
