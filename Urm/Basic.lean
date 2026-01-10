@@ -215,6 +215,11 @@ theorem init_state (inputs : List ℕ) : (init inputs).state = State.fromInputs 
 theorem ext {c₁ c₂ : Config} (hpc : c₁.pc = c₂.pc) (hstate : c₁.state = c₂.state) : c₁ = c₂ := by
   cases c₁; cases c₂; simp only at hpc hstate; simp [hpc, hstate]
 
+instance : Inhabited Config := ⟨init []⟩
+
+instance : Repr Config where
+  reprPrec c _ := s!"Config(pc={c.pc})"
+
 end Config
 
 end Urm

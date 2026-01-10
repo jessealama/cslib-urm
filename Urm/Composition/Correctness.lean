@@ -61,13 +61,8 @@ theorem comp_general_halts_imp_gi_dom
   obtain ⟨sSavePrefix, _, hsSavePrefix_eq, cSuffix, hSuffix_steps, hSuffix_halted⟩ :=
     Halts.suffix_of_concat_sf hSaveGPhases_halts hSavePrefix_sf
   have hSuffix_i_eq : allGPhases_suffix m n base pGs i.val =
-      (gPhase base n (pGs i) i.val).concat (allGPhases_suffix m n base pGs (i.val + 1)) := by
-    simp only [allGPhases_suffix]
-    rw [show (List.finRange m).drop i.val = i :: (List.finRange m).drop (i.val + 1) from by
-          rw [List.drop_eq_getElem_cons]; · congr 1; simp only [List.finRange, List.getElem_ofFn]
-          · simp only [List.length_finRange]; exact i.isLt,
-        List.foldl_cons, concat_nil_left]
-    exact foldl_concat_eq_acc_concat _ _ _
+      (gPhase base n (pGs i) i.val).concat (allGPhases_suffix m n base pGs (i.val + 1)) :=
+    allGPhases_suffix_cons pGs i.val i.isLt
   rw [hSuffix_i_eq] at hSuffix_steps hSuffix_halted
   obtain ⟨_, hGPhase_i_steps, hGPhase_i_halted⟩ :=
     prefix_of_concat_from_zero hSuffix_steps hSuffix_halted hGPhase_i_sf

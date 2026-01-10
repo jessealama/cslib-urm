@@ -6,6 +6,7 @@ Authors: Jesse Alama
 
 import Urm.Execution
 import Urm.StraightLine
+import Mathlib.Algebra.Group.Defs
 
 /-! # Program Concatenation
 
@@ -81,6 +82,22 @@ theorem concat_assoc (p1 p2 p3 : Program) :
   | S n => simp [Instr.shiftJumps]
   | T m n => simp [Instr.shiftJumps]
   | J m n q => simp [Instr.shiftJumps]; omega
+
+/-- Program concatenation forms a semigroup.
+Note: This uses `concat` (which shifts jumps), not raw list append. -/
+instance : Semigroup Program where
+  mul := concat
+  mul_assoc := concat_assoc
+
+/-- Program concatenation forms a monoid with empty program as identity. -/
+instance : Monoid Program where
+  one := []
+  one_mul := concat_nil_left
+  mul_one := concat_nil_right
+
+/-- Relates `.concat` to `*` for algebraic automation.
+Use with `simp only [concat_eq_mul, mul_assoc]` to leverage Monoid associativity. -/
+theorem concat_eq_mul (p q : Program) : p.concat q = p * q := rfl
 
 /-- Get instruction from concatenated program in the first part. -/
 theorem getInstr_concat_left {p1 p2 : Program} (i : ℕ) (hi : i < p1.length) :
