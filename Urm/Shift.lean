@@ -484,28 +484,28 @@ theorem Step.agreeOn_shifted {p : Program} {offset : ℕ} {c₁ c₁' c₂ : Con
     exact ⟨⟨c₂.pc + 1, c₂.state.write n 0⟩, Step.zero hinstr, by simp [hpc], State.agreeOn_write_same hagree⟩
   | succ hinstr =>
     rename_i n; rw [hpc] at hinstr
-    have ⟨hlo, hhi⟩ := Program.shiftRegisters_uses_range hinstr n (Or.inl (List.mem_singleton.mpr rfl))
+    have ⟨hlo, hhi⟩ := Program.shiftRegisters_uses_range hinstr n (Or.inl (Finset.mem_singleton_self n))
     have hread := hagree n hlo hhi
     exact ⟨⟨c₂.pc + 1, c₂.state.write n (c₂.state.read n + 1)⟩, Step.succ hinstr, by simp [hpc],
            by rw [hread]; exact State.agreeOn_write_same hagree⟩
   | trans hinstr =>
     rename_i m n; rw [hpc] at hinstr
-    have ⟨hlo, hhi⟩ := Program.shiftRegisters_uses_range hinstr m (Or.inl (List.Mem.head []))
+    have ⟨hlo, hhi⟩ := Program.shiftRegisters_uses_range hinstr m (Or.inl (Finset.mem_singleton_self m))
     have hread := hagree m hlo hhi
     exact ⟨⟨c₂.pc + 1, c₂.state.write n (c₂.state.read m)⟩, Step.trans hinstr, by simp [hpc],
            by rw [hread]; exact State.agreeOn_write_same hagree⟩
   | jump_eq hinstr hcmp =>
     rename_i m n q; rw [hpc] at hinstr
-    have ⟨hlo_m, hhi_m⟩ := Program.shiftRegisters_uses_range hinstr m (Or.inl (List.Mem.head [n]))
+    have ⟨hlo_m, hhi_m⟩ := Program.shiftRegisters_uses_range hinstr m (Or.inl (Finset.mem_insert_self m {n}))
     have ⟨hlo_n, hhi_n⟩ := Program.shiftRegisters_uses_range hinstr n
-                            (Or.inl (List.mem_cons_of_mem m (List.mem_singleton.mpr rfl)))
+                            (Or.inl (Finset.mem_insert_of_mem (Finset.mem_singleton_self n)))
     have hreadm := hagree m hlo_m hhi_m; have hreadn := hagree n hlo_n hhi_n
     exact ⟨⟨q, c₂.state⟩, Step.jump_eq hinstr (by rw [← hreadm, ← hreadn]; exact hcmp), rfl, hagree⟩
   | jump_ne hinstr hne =>
     rename_i m n q; rw [hpc] at hinstr
-    have ⟨hlo_m, hhi_m⟩ := Program.shiftRegisters_uses_range hinstr m (Or.inl (List.Mem.head [n]))
+    have ⟨hlo_m, hhi_m⟩ := Program.shiftRegisters_uses_range hinstr m (Or.inl (Finset.mem_insert_self m {n}))
     have ⟨hlo_n, hhi_n⟩ := Program.shiftRegisters_uses_range hinstr n
-                            (Or.inl (List.mem_cons_of_mem m (List.mem_singleton.mpr rfl)))
+                            (Or.inl (Finset.mem_insert_of_mem (Finset.mem_singleton_self n)))
     have hreadm := hagree m hlo_m hhi_m; have hreadn := hagree n hlo_n hhi_n
     exact ⟨⟨c₂.pc + 1, c₂.state⟩, Step.jump_ne hinstr (by rw [← hreadm, ← hreadn]; exact hne), by simp [hpc], hagree⟩
 

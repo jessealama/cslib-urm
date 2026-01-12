@@ -5,6 +5,7 @@ Authors: Jesse Alama
 -/
 
 import Cslib.Init
+import Mathlib.Data.Finset.Basic
 import Mathlib.Logic.Function.Basic
 
 /-! # Unlimited Register Machines (URMs)
@@ -52,11 +53,11 @@ namespace Instr
 
 /-- The registers read by an instruction. -/
 @[scoped grind =]
-def readsFrom : Instr → List ℕ
-  | Z _ => []
-  | S n => [n]
-  | T m _ => [m]
-  | J m n _ => [m, n]
+def readsFrom : Instr → Finset ℕ
+  | Z _ => ∅
+  | S n => {n}
+  | T m _ => {m}
+  | J m n _ => {m, n}
 
 /-- The register written to by an instruction, if any. -/
 @[scoped grind =]
