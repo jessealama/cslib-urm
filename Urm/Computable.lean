@@ -15,14 +15,6 @@ This file defines the notion of URM-computability for partial functions on natur
 - `Urm.URMComputable`: A partial function is URM-computable if there exists a URM program that
   computes it.
 
-## Future work
-
-- Proofs that basic functions (zero, successor, projection) are URM-computable
-- Closure of URM-computable functions under composition
-- Closure under primitive recursion
-- Closure under minimization (μ-recursion)
-- Equivalence with partial recursive functions
-
 ## References
 
 * [N.J. Cutland, *Computability: An Introduction to Recursive Function Theory*][Cutland1980]

@@ -14,7 +14,7 @@ This module provides the infrastructure to prove that URM-computable functions
 are partial recursive (`Nat.Partrec`), establishing the reverse direction of
 the equivalence with Mathlib's computability hierarchy.
 
-## Main Results (planned)
+## Main Results
 
 - `encodeConfig`, `decodeConfig`: Config ↔ ℕ encoding
 - `encodedStep_primrec`: Single step is primitive recursive
