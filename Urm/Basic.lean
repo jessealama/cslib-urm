@@ -156,9 +156,6 @@ def output (σ : State) : ℕ := σ 0
 -- Basic lemmas about state operations
 
 @[simp, scoped grind =]
-theorem read_zero (n : ℕ) : zero.read n = 0 := rfl
-
-@[simp, scoped grind =]
 theorem write_read_same (σ : State) (n v : ℕ) : (σ.write n v).read n = v := by
   simp only [write, read, Function.update_self]
 
@@ -166,18 +163,6 @@ theorem write_read_same (σ : State) (n v : ℕ) : (σ.write n v).read n = v := 
 theorem write_read_diff (σ : State) (m n v : ℕ) (h : m ≠ n) :
     (σ.write n v).read m = σ.read m := by
   simp only [write, read, Function.update_of_ne h]
-
-@[simp, scoped grind =]
-theorem fromInputs_in_range (inputs : List ℕ) (n : ℕ) (h : n < inputs.length) :
-    (fromInputs inputs).read n = inputs[n] := by
-  simp only [fromInputs, read, List.getD]
-  simp [List.getElem?_eq_getElem h]
-
-@[simp, scoped grind =]
-theorem fromInputs_out_of_range (inputs : List ℕ) (n : ℕ) (h : inputs.length ≤ n) :
-    (fromInputs inputs).read n = 0 := by
-  simp only [fromInputs, read, List.getD]
-  simp [List.getElem?_eq_none h]
 
 end State
 
@@ -204,12 +189,6 @@ instance (c : Config) (p : Program) : Decidable (c.isHalted p) :=
 
 @[simp]
 theorem isHalted_def (c : Config) (p : Program) : c.isHalted p ↔ p.length ≤ c.pc := Iff.rfl
-
-@[simp, scoped grind =]
-theorem init_pc (inputs : List ℕ) : (init inputs).pc = 0 := rfl
-
-@[simp, scoped grind =]
-theorem init_state (inputs : List ℕ) : (init inputs).state = State.fromInputs inputs := rfl
 
 /-- Extensionality for Config: two configs are equal iff their components are equal. -/
 @[ext]

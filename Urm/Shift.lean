@@ -68,11 +68,6 @@ theorem shift_read (σ : State) (offset r : ℕ) (hr : offset ≤ r) :
     (σ.shift offset).read r = σ.read (r - offset) := by
   simp only [shift, read, hr, ↓reduceIte]
 
-@[simp]
-theorem unshift_read (σ : State) (offset r : ℕ) :
-    (σ.unshift offset).read r = σ.read (r + offset) := by
-  simp only [unshift, read]
-
 /-! ### Write interaction with shifting -/
 
 /-- The key commutation lemma: shifting then writing at n + offset equals
@@ -174,13 +169,6 @@ theorem getInstr_shiftRegisters (offset : ℕ) (p : Program) (i : ℕ) :
     (p.shiftRegisters offset).getInstr i = (p.getInstr i).map (Instr.shiftRegisters offset) := by
   simp only [shiftRegisters, getInstr, List.getElem?_map]
 
-@[simp]
-theorem shiftRegisters_nil (offset : ℕ) : Program.shiftRegisters offset [] = [] := rfl
-
-theorem shiftRegisters_cons (offset : ℕ) (instr : Instr) (p : Program) :
-    Program.shiftRegisters offset (instr :: p) =
-    instr.shiftRegisters offset :: p.shiftRegisters offset := rfl
-
 /-- Helper: foldl max with offset on function values shifts the result. -/
 private theorem foldl_max_add_aux (offset : ℕ) (init : ℕ) (p : Program) :
     p.foldl (fun acc instr => max acc (instr.maxRegister + offset)) (init + offset) =
@@ -204,14 +192,6 @@ theorem maxRegister_shiftRegisters (offset : ℕ) (p : Program) (hp : p ≠ []) 
     simp only [List.foldl_cons]
     have : max 0 (hd.maxRegister + offset) = max 0 hd.maxRegister + offset := by omega
     rw [this, foldl_max_add_aux]
-
-/-- Weaker version: maxRegister of shifted is at most original + offset. Always holds. -/
-theorem maxRegister_shiftRegisters_le (offset : ℕ) (p : Program) :
-    (p.shiftRegisters offset).maxRegister ≤ p.maxRegister + offset := by
-  cases hp : p with
-  | nil => simp [shiftRegisters, maxRegister]
-  | cons hd tl =>
-    rw [maxRegister_shiftRegisters offset (hd :: tl) (List.cons_ne_nil hd tl)]
 
 end Program
 

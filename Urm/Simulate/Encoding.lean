@@ -50,14 +50,8 @@ def decodeRegs : ℕ → ℕ → List ℕ
   | k + 1, n => n.unpair.1 :: decodeRegs k n.unpair.2
 
 @[simp]
-theorem encodeRegs_nil : encodeRegs [] = 0 := rfl
-
-@[simp]
 theorem encodeRegs_cons (r : ℕ) (rs : List ℕ) :
     encodeRegs (r :: rs) = pair r (encodeRegs rs) := rfl
-
-@[simp]
-theorem decodeRegs_zero (n : ℕ) : decodeRegs 0 n = [] := rfl
 
 @[simp]
 theorem decodeRegs_succ (k n : ℕ) :
@@ -120,10 +114,6 @@ def decodeInstr (n : ℕ) : Instr :=
   | 3 => Instr.J args.unpair.1 args.unpair.2.unpair.1 args.unpair.2.unpair.2
   | _ => Instr.Z 0  -- default for invalid
 
-@[simp]
-theorem decodeInstr_encodeInstr (instr : Instr) : decodeInstr (encodeInstr instr) = instr := by
-  cases instr <;> simp [encodeInstr, decodeInstr]
-
 /-! ## Program Encoding -/
 
 /-- Encode a program (list of instructions) as a natural number.
@@ -185,9 +175,5 @@ theorem readEncodedReg_encodeConfig (bound : ℕ) (c : Config) (r : ℕ) (hr : r
   simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn]
   have hr' : r < bound + 1 := Nat.lt_succ_of_le hr
   simp only [hr', ↓reduceDIte, Option.getD_some]
-
-theorem getEncodedPC_encodeConfig (bound : ℕ) (c : Config) :
-    getEncodedPC (encodeConfig bound c) = c.pc := by
-  simp [getEncodedPC, encodeConfig]
 
 end Urm

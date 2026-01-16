@@ -97,8 +97,4 @@ theorem sequence_get {n : ℕ} {f : Fin n → Part α}
       simp only [sequence_succ, Part.bind, Part.map] at hdom ⊢
       exact ih _ ⟨j, Nat.lt_of_succ_lt_succ hlt⟩
 
-/-- `Part.sequence` for the empty family is always `Part.some`. -/
-@[simp]
-theorem sequence_zero (f : Fin 0 → Part α) : sequence f = Part.some Fin.elim0 := rfl
-
 end Part

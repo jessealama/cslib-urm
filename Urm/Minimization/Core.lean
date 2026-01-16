@@ -98,12 +98,6 @@ theorem μ_dom_iff {n : ℕ} {f : (Fin (n + 1) → ℕ) → Part ℕ} {inputs : 
       rw [checkZero_dom_iff]
       exact hdom y' hy'
 
-/-- If μ f inputs is defined, there exists a witness y where f returns 0. -/
-theorem μ_dom_exists_witness {n : ℕ} {f : (Fin (n + 1) → ℕ) → Part ℕ} {inputs : Fin n → ℕ}
-    (h : (μ f inputs).Dom) : ∃ y, f (extendInputs inputs y) = Part.some 0 := by
-  rw [μ_dom_iff] at h
-  exact ⟨h.choose, h.choose_spec.1⟩
-
 /-! ## Specification -/
 
 /-- The value returned by μ satisfies f(inputs, y) = 0. -/

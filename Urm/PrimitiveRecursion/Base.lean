@@ -171,11 +171,6 @@ theorem program_doesnt_touch_prCounterReg (n : ℕ) (pF pG : Program) (p : Progr
     p.maxRegister < prCounterReg n pF pG := by
   simp only [prCounterReg]; omega
 
-theorem program_doesnt_touch_prAccumulatorReg (n : ℕ) (pF pG : Program) (p : Program)
-    (hp : p.maxRegister ≤ primitiveRecursionBase n pF pG) :
-    p.maxRegister < prAccumulatorReg n pF pG := by
-  simp only [prAccumulatorReg]; omega
-
 theorem program_doesnt_touch_prZeroReg (n : ℕ) (pF pG : Program) (p : Program)
     (hp : p.maxRegister ≤ primitiveRecursionBase n pF pG) :
     p.maxRegister < prZeroReg n pF pG := by

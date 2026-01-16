@@ -58,17 +58,6 @@ theorem Instr.shiftJumps_of_isNonJumping {instr : Instr} (h : instr.isNonJumping
   | Z _ | S _ | T _ _ => rfl
   | J _ _ _ => simp [isNonJumping] at h
 
-/-- shiftJumps is identity for straight-line programs. -/
-theorem Program.shiftJumps_of_isStraightLine {p : Program} (h : p.isStraightLine = true) (offset : ℕ) :
-    p.shiftJumps offset = p := by
-  simp only [Program.shiftJumps]
-  induction p with
-  | nil => rfl
-  | cons hd tl ih =>
-    simp only [List.map_cons]
-    simp only [Program.isStraightLine, List.all_cons, Bool.and_eq_true] at h
-    rw [Instr.shiftJumps_of_isNonJumping h.1 offset, ih h.2]
-
 /-- A straight-line program halts on any input (pc always increases until it exceeds length). -/
 theorem straightLine_halts {p : Program} (hsl : p.isStraightLine = true) (inputs : List ℕ) :
     Halts p inputs := by
@@ -212,8 +201,6 @@ def clearRegistersFrom (start count : ℕ) : Program :=
 theorem clearRegistersFrom_length (start count : ℕ) :
     (clearRegistersFrom start count).length = count := by
   simp [clearRegistersFrom]
-
-theorem clearRegistersFrom_zero (start : ℕ) : clearRegistersFrom start 0 = [] := rfl
 
 theorem clearRegistersFrom_isStraightLine (start count : ℕ) :
     (clearRegistersFrom start count).isStraightLine = true := by

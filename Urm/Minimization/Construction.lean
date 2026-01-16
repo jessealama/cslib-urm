@@ -113,22 +113,6 @@ def minimizeProgram (n : ℕ) (pF : Program) : Program :=
     setupPhase_length, loopPrologue_length, shiftJumps_length,
     loopEpilogue_length, outputPhase_length, setupPhaseLength, loopPrologueLength]
 
-/-! ## PC position lemmas -/
-
-theorem loopStartPC_eq (n : ℕ) (pF : Program) :
-    loopStartPC n = (setupPhase n pF).length := by
-  simp only [loopStartPC, setupPhase_length]
-
-theorem pFOffset_eq (n : ℕ) (pF : Program) :
-    pFOffset n pF = (setupPhase n pF).length + (loopPrologue n pF).length := by
-  simp only [pFOffset, setupPhase_length, loopPrologue_length]
-
-theorem outputPC_eq (n : ℕ) (pF : Program) :
-    outputPC n pF = (setupPhase n pF).length + (loopPrologue n pF).length +
-                    pF.length + (loopEpilogue n pF).length := by
-  simp only [outputPC, pFOffset, setupPhase_length, loopPrologue_length, loopEpilogue_length,
-    setupPhaseLength, loopPrologueLength]
-
 /-! ## Program structure helpers -/
 
 /-- The loop body (prologue + pF + epilogue). -/
@@ -139,10 +123,6 @@ def loopBody (n : ℕ) (pF : Program) : Program :=
     (loopBody n pF).length = loopPrologueLength n pF + pF.length + 3 := by
   simp only [loopBody, List.length_append, loopPrologue_length,
     shiftJumps_length, loopEpilogue_length]
-
-theorem minimizeProgram_eq_setup_loop_output (n : ℕ) (pF : Program) :
-    minimizeProgram n pF = setupPhase n pF ++ loopBody n pF ++ outputPhase n pF := by
-  simp only [minimizeProgram, loopBody, List.append_assoc]
 
 /-! ## Epilogue instruction lemmas
 
