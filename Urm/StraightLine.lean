@@ -401,36 +401,4 @@ theorem straightLine_transfer_result {p : Program} (hsl : p.isStraightLine = tru
     rw [ih hc'_pc_gt]; apply Step.straightLine_preserves hsl hstep; intro instr hinstr
     rw [← (List.getElem?_eq_some_iff.mp hinstr).2]; exact hnowrite a'.pc ha'_pc_lt hpc_gt
 
-/-! ## Automation for straightLine_transfer_result Pattern
-
-These tactics automate the common pattern of using `straightLine_transfer_result` in preservation proofs.
-The main components are:
-
-1. `sl_simp_getElem`: Simplify getElem expressions in concatenated programs
-2. `sl_discharge_nowrite`: Try to discharge writesTo goals
--/
-
-/-- Simplify list operations for straight-line program reasoning. -/
-macro "sl_simp_lengths" : tactic =>
-  `(tactic| simp only [List.length_append, clearRegisters_length, copyRegisterRange_length,
-      Program.clearRegisters, Program.copyRegisterRange, List.length, List.length_map,
-      List.length_range])
-
-/-- Simplify getElem expressions in concatenated straight-line programs. -/
-macro "sl_simp_getElem" : tactic =>
-  `(tactic| simp only [List.getElem_append, clearRegisters_length, copyRegisterRange_length,
-      Program.clearRegisters, Program.copyRegisterRange, List.getElem_map, List.getElem_range,
-      List.length, List.length_map, List.length_range, Nat.zero_add])
-
-/-- Try to discharge a writesTo ≠ some r goal using omega with common register definitions. -/
-macro "sl_writesTo_omega" : tactic =>
-  `(tactic| (simp only [Instr.writesTo, ne_eq, Option.some.injEq]; omega))
-
-/-- Handle one case in a nowrite_after proof: try basic discharge. -/
-macro "sl_discharge_nowrite" : tactic =>
-  `(tactic| first
-    | sl_writesTo_omega
-    | (simp only [Instr.writesTo, ne_eq, Option.some.injEq, List.getElem_cons_zero,
-        List.getElem_cons_succ]; omega))
-
 end Urm

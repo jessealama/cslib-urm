@@ -52,7 +52,21 @@ theorem setupPhase_saves_inputs (n : ℕ) (pF : Program) (inputs : Fin n → ℕ
     intro j hj hij
     simp only [setupPhase, List.length_append, copyRegisterRange_length, List.length] at hj
     simp only [setupPhase, List.getElem_append, copyRegisterRange_length]
-    split_ifs with hj_copy <;> [min_discharge_nowrite; min_suffix2_nowrite (j - n)]
+    by_cases hj_copy : j < n
+    · -- In copyRegisterRange: writes to savedInputsStart + j, which ≠ savedInputsStart + i since j > i
+      simp only [hj_copy, dite_true, Program.copyRegisterRange, List.getElem_map, List.getElem_range,
+        Nat.zero_add, Instr.writesTo, ne_eq, Option.some.injEq]
+      omega
+    · -- In [Z counter, Z zero]: neither writes to savedInputsStart + i
+      simp only [hj_copy, dite_false]
+      let hj_suffix : j - n < 2 := by omega
+      cases Nat.eq_zero_or_pos (j - n) with
+      | inl h0 => simp only [h0, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq,
+          savedInputsStart, counterReg, minimizationBase]; omega
+      | inr hpos =>
+        let h1 : j - n = 1 := by omega
+        simp only [h1, List.getElem_cons_succ, List.getElem_cons_zero, Instr.writesTo, ne_eq,
+          Option.some.injEq, savedInputsStart, zeroReg, minimizationBase]; omega
   -- Use straightLine_transfer_result
   obtain ⟨s_before, ⟨c_i, hsteps_i, _, hs_before⟩, htransfer⟩ :=
     straightLine_transfer_result hsl s ↑i ↑i (savedInputsStart n pF + i) hk hwrite hnowrite_after

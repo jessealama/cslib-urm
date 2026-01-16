@@ -104,33 +104,4 @@ theorem program_doesnt_touch_zeroReg (n : ℕ) (pF : Program) (p : Program)
     p.maxRegister < zeroReg n pF := by
   simp only [zeroReg]; omega
 
-/-! ## Automation tactics for minimization proofs -/
-
-/-- Try to discharge a writesTo ≠ some r goal using omega with minimization register definitions. -/
-macro "min_writesTo_omega" : tactic =>
-  `(tactic| (simp only [Instr.writesTo, ne_eq, Option.some.injEq,
-      savedInputsStart, counterReg, zeroReg, minimizationBase]; omega))
-
-/-- Tactic for discharging nowrite goals in minimization proofs.
-    Handles both copyRegisterRange and fixed instruction cases. -/
-macro "min_discharge_nowrite" : tactic =>
-  `(tactic| first
-    | (simp only [Instr.writesTo, ne_eq, Option.some.injEq, Program.copyRegisterRange,
-        List.getElem_map, List.getElem_range, Nat.zero_add]; omega)
-    | min_writesTo_omega
-    | (simp only [List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq];
-       min_register_omega)
-    | (simp only [List.getElem_cons_succ, List.getElem_cons_zero, Instr.writesTo, ne_eq,
-        Option.some.injEq]; min_register_omega))
-
-/-- Handle the case of a 2-element suffix list [I₀, I₁] for minimization proofs. -/
-macro "min_suffix2_nowrite" idx:term : tactic =>
-  `(tactic| (
-    rcases Nat.eq_zero_or_pos $idx with h | hpos
-    · simp only [h, List.getElem_cons_zero, List.getElem_cons_succ, Instr.writesTo, ne_eq,
-        Option.some.injEq, savedInputsStart, counterReg, zeroReg, minimizationBase] <;> omega
-    · have h : $idx = 1 := by omega
-      simp only [h, List.getElem_cons_succ, List.getElem_cons_zero, Instr.writesTo, ne_eq,
-        Option.some.injEq, savedInputsStart, counterReg, zeroReg, minimizationBase] <;> omega))
-
 end Urm
