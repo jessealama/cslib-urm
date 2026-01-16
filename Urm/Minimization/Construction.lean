@@ -113,17 +113,6 @@ def minimizeProgram (n : ℕ) (pF : Program) : Program :=
     setupPhase_length, loopPrologue_length, shiftJumps_length,
     loopEpilogue_length, outputPhase_length, setupPhaseLength, loopPrologueLength]
 
-/-! ## Program structure helpers -/
-
-/-- The loop body (prologue + pF + epilogue). -/
-def loopBody (n : ℕ) (pF : Program) : Program :=
-  loopPrologue n pF ++ pF.shiftJumps (pFOffset n pF) ++ loopEpilogue n pF
-
-@[simp] theorem loopBody_length (n : ℕ) (pF : Program) :
-    (loopBody n pF).length = loopPrologueLength n pF + pF.length + 3 := by
-  simp only [loopBody, List.length_append, loopPrologue_length,
-    shiftJumps_length, loopEpilogue_length]
-
 /-! ## Epilogue instruction lemmas
 
 These lemmas provide direct access to epilogue instructions at specific PCs.
