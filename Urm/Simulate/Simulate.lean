@@ -8,8 +8,6 @@ import Urm.Simulate.StepPrimrec
 import Urm.Partrec
 import Mathlib.Computability.Partrec
 
-
-
 /-! # URM Computability implies Partial Recursiveness
 
 This file proves the main theorem: every URM-computable function is partial recursive.
@@ -77,10 +75,10 @@ theorem encodedIsHalted_iff_isHalted (p : Program) (c : Config) :
   simp only [decide_eq_true_eq]
 
 /-- extractOutput correctly extracts register 0. -/
-theorem extractOutput_encodeConfig (bound : ℕ) (c : Config) (h : 0 ≤ bound) :
+theorem extractOutput_encodeConfig (bound : ℕ) (c : Config) :
     extractOutput (encodeConfig bound c) = c.state 0 := by
   simp only [extractOutput]
-  exact nthEncoded_encodeConfig_regs bound c 0 h
+  exact nthEncoded_encodeConfig_regs bound c 0 (Nat.zero_le _)
 
 /-- isHaltedAtStep correctly reflects halting status. -/
 theorem isHaltedAtStep_correct (p : Program) (n : ℕ) (c c' : Config)
@@ -128,12 +126,11 @@ theorem stepsN_of_not_halted_before (p : Program) (input : ℕ) (n : ℕ)
     obtain ⟨c_n, hstepsN⟩ := ih hBefore'
     have hn_false := hBefore n (Nat.lt_succ_self n)
     have h_not_halted : ¬c_n.isHalted p := by
-      let hcorrect := isHaltedAtStep_correct p n (Config.init [input]) c_n hstepsN
-      unfold encodeInput1 at hn_false
       intro hHalted
-      let htrue := hcorrect.mpr hHalted
-      simp only [htrue] at hn_false
-      exact nomatch hn_false
+      have hcorrect := isHaltedAtStep_correct p n (Config.init [input]) c_n hstepsN
+      unfold encodeInput1 at hn_false
+      simp only [hcorrect.mpr hHalted] at hn_false
+      exact Bool.false_ne_true hn_false.symm
     obtain ⟨c', hstep⟩ := Step.of_not_halted p c_n h_not_halted
     have h1 : StepsN p 1 c_n c' := StepsN.succ hstep (StepsN.zero _)
     exact ⟨c', StepsN.add hstepsN h1⟩
@@ -215,9 +212,7 @@ theorem evalEncoded_correct (p : Program) (input : ℕ) :
     have h_iter := iterateEncodedStep_correct p n (Config.init [input]) c' hstepsN
     rw [← hresult_eq]
     unfold encodeInput1
-    rw [h_iter]
-    have h_extract := extractOutput_encodeConfig p.maxRegister c' (Nat.zero_le _)
-    rw [h_extract]
+    rw [h_iter, extractOutput_encodeConfig]
     exact (halted_output_eq_Result p [input] c' (StepsN.toSteps hstepsN) hhalted hHalts).symm
   -- Backward: result ∈ eval → result ∈ evalEncoded
   · intro hmem_eval
@@ -241,12 +236,8 @@ theorem evalEncoded_correct (p : Program) (input : ℕ) :
         exact (isHaltedAtStep_false_before p n (Config.init [input]) c hStepsN hHalted m hm).symm
     · have h_iter := iterateEncodedStep_correct p n (Config.init [input]) c hStepsN
       unfold encodeInput1
-      rw [h_iter]
-      have h_extract := extractOutput_encodeConfig p.maxRegister c (Nat.zero_le _)
-      rw [h_extract]
-      rw [← hresult_eq]
-      have hHalts' : Halts p [input] := ⟨c, hSteps, hHalted⟩
-      exact halted_output_eq_Result p [input] c hSteps hHalted hHalts'
+      rw [h_iter, extractOutput_encodeConfig, ← hresult_eq]
+      exact halted_output_eq_Result p [input] c hSteps hHalted ⟨c, hSteps, hHalted⟩
 
 /-! ## Main Theorem -/
 
@@ -275,23 +266,21 @@ theorem URMComputable1.toPartrec' {f : ℕ →. ℕ} (hf : URMComputable1 f) :
   -- Step 1: Show eval p [n] = f n
   have heval : ∀ n, eval p [n] = f n := by
     intro n
-    let hp_n := hp (fun _ => n)
+    have hp_n := hp (fun _ => n)
     simp only [List.ofFn_const, List.replicate] at hp_n
     obtain ⟨hiff, hres⟩ := hp_n
     ext m
     simp only [eval, Part.mem_mk_iff]
     constructor
     · rintro ⟨hHalts, rfl⟩
-      let hDom := hiff.mp hHalts
-      let heq := hres hHalts hDom
-      rw [heq]
+      have hDom := hiff.mp hHalts
+      rw [hres hHalts hDom]
       exact Part.get_mem hDom
     · intro hm
-      let hDom : (f n).Dom := Part.dom_iff_mem.mpr ⟨m, hm⟩
-      let hHalts := hiff.mpr hDom
+      have hDom : (f n).Dom := Part.dom_iff_mem.mpr ⟨m, hm⟩
+      have hHalts := hiff.mpr hDom
       refine ⟨hHalts, ?_⟩
-      let heq := hres hHalts hDom
-      rw [heq]
+      rw [hres hHalts hDom]
       exact Part.mem_unique (Part.get_mem hDom) hm
   -- Step 2: Show evalEncoded equals eval via evalEncoded_correct
   have henc_correct : ∀ n, evalEncoded progCode bound (encodeInput1 bound n) = f n := by
@@ -324,103 +313,45 @@ theorem URMComputable1.toPartrec' {f : ℕ →. ℕ} (hf : URMComputable1 f) :
             (Nat.Primrec.pair Nat.Primrec.id (Nat.Primrec.const C))).of_eq ?_
     intro input
     simp only [id_eq, heq]
-  -- Step 4: The halting predicate for varying input is primrec
-  have hHaltPred : Nat.Primrec (fun p =>
-      let input := p.unpair.1
-      let step := p.unpair.2
-      let inputConfig := encodeInput1 bound input
-      if isHaltedAtStep progCode bound inputConfig step then 0 else 1) := by
-    let hIter : Primrec₂ (iterateEncodedStep progCode bound) :=
-      iterateEncodedStep_primrec_fixed progCode bound
-    let hHalted : Nat.Primrec (encodedIsHaltedNat progCode) :=
-      encodedIsHaltedNat_primrec_fixed progCode
-    let hEnc1' : Primrec (encodeInput1 bound) := Primrec.nat_iff.mpr hEnc1
-    let hInputConfig : Primrec (fun p : ℕ => encodeInput1 bound p.unpair.1) :=
-      hEnc1'.comp (Primrec.fst.comp Primrec.unpair)
-    let hStep : Primrec (fun p : ℕ => p.unpair.2) := Primrec.snd.comp Primrec.unpair
-    let hIterFull : Primrec (fun p : ℕ =>
-        iterateEncodedStep progCode bound p.unpair.2 (encodeInput1 bound p.unpair.1)) :=
-      hIter.comp hStep hInputConfig
-    let hCheck : Primrec (fun p : ℕ =>
-        encodedIsHaltedNat progCode (iterateEncodedStep progCode bound p.unpair.2
-          (encodeInput1 bound p.unpair.1))) :=
-      (Primrec.nat_iff.mpr hHalted).comp hIterFull
-    let hFlip : Primrec (fun p : ℕ =>
-        1 - encodedIsHaltedNat progCode (iterateEncodedStep progCode bound p.unpair.2
-          (encodeInput1 bound p.unpair.1))) :=
-      Primrec.nat_sub.comp (Primrec.const 1) hCheck
-    refine Primrec.nat_iff.mp (hFlip.of_eq fun p => ?_)
-    simp only [isHaltedAtStep, encodedIsHaltedNat]
-    split_ifs with h
-    · simp only [Nat.sub_self]
-    · simp only [Nat.sub_zero]
-  -- Step 5: Apply Partrec.rfind
-  -- Use the typed version Partrec.rfind which works with Partrec₂
-  -- First, we need Computable₂ (fun input step => isHaltedAtStep ...) : ℕ → ℕ → Bool
+  -- Step 4: Build Computable₂ for the halting predicate
   have hHaltPred₂ : Computable₂ (fun input step =>
       isHaltedAtStep progCode bound (encodeInput1 bound input) step) := by
-    -- Build Primrec₂ first, then convert to Computable₂
-    let h1 : Primrec₂ (iterateEncodedStep progCode bound) :=
-      iterateEncodedStep_primrec_fixed progCode bound
-    let h2 : Primrec (encodeInput1 bound) := Primrec.nat_iff.mpr hEnc1
-    -- Build: fun (input, step) => iterateEncodedStep step (encodeInput1 input)
-    let hConfig : Primrec₂ (fun input step =>
+    have h1 := iterateEncodedStep_primrec_fixed progCode bound
+    have h2 : Primrec (encodeInput1 bound) := Primrec.nat_iff.mpr hEnc1
+    have hConfig : Primrec₂ (fun input step =>
         iterateEncodedStep progCode bound step (encodeInput1 bound input)) :=
       h1.comp Primrec.snd (h2.comp Primrec.fst)
-    -- Convert to Primrec on pairs using unpaired
-    let hConfigP : Primrec (fun p : ℕ × ℕ =>
+    have hConfigP : Primrec (fun p : ℕ × ℕ =>
         iterateEncodedStep progCode bound p.2 (encodeInput1 bound p.1)) :=
       Primrec.nat_iff.mpr (Primrec₂.unpaired'.mpr hConfig)
-    -- encodedIsHalted: check if progCode.unpair.1 ≤ configCode.unpair.1
-    let progLen := progCode.unpair.1
-    -- Build the pc extraction
-    let hPc : Primrec (fun p : ℕ × ℕ =>
+    have hPc : Primrec (fun p : ℕ × ℕ =>
         (iterateEncodedStep progCode bound p.2 (encodeInput1 bound p.1)).unpair.1) :=
       (Primrec.fst.comp Primrec.unpair).comp hConfigP
-    let hLeq : Primrec (fun p : ℕ × ℕ =>
-        decide (progLen ≤ (iterateEncodedStep progCode bound p.2 (encodeInput1 bound p.1)).unpair.1)) :=
-      (Primrec.nat_le.comp (Primrec.const progLen) hPc).decide
-    -- Show this equals isHaltedAtStep (progLen = progCode.unpair.1 by definition)
-    exact hLeq.to₂.to_comp.of_eq fun ⟨input, step⟩ => rfl
-  -- Convert to Partrec₂ with Part.some
-  have hHaltPred₂' : Partrec₂ (fun input step =>
-      Part.some (isHaltedAtStep progCode bound (encodeInput1 bound input) step)) :=
-    hHaltPred₂.partrec
-  -- Apply Partrec.rfind
+    have hLeq : Primrec (fun p : ℕ × ℕ =>
+        decide (progCode.unpair.1 ≤ (iterateEncodedStep progCode bound p.2 (encodeInput1 bound p.1)).unpair.1)) :=
+      (Primrec.nat_le.comp (Primrec.const progCode.unpair.1) hPc).decide
+    exact hLeq.to₂.to_comp.of_eq fun ⟨_, _⟩ => rfl
+  -- Step 5: Apply Partrec.rfind
   have hRfindSimp : Partrec (fun input => Nat.rfind fun step =>
       Part.some (isHaltedAtStep progCode bound (encodeInput1 bound input) step)) :=
-    Partrec.rfind hHaltPred₂'
-  -- Step 6: Compose with output extraction using Partrec.map
+    Partrec.rfind hHaltPred₂.partrec
+  -- Step 6: Compose with output extraction
   have hExtract₂ : Computable₂ (fun input step =>
       extractOutput (iterateEncodedStep progCode bound step (encodeInput1 bound input))) := by
-    let h1 : Primrec₂ (iterateEncodedStep progCode bound) :=
-      iterateEncodedStep_primrec_fixed progCode bound
-    let h2 : Primrec (encodeInput1 bound) := Primrec.nat_iff.mpr hEnc1
-    let h3 : Primrec extractOutput := Primrec.nat_iff.mpr extractOutput_primrec
-    let hConfig : Primrec₂ (fun input step =>
+    have h1 := iterateEncodedStep_primrec_fixed progCode bound
+    have h2 : Primrec (encodeInput1 bound) := Primrec.nat_iff.mpr hEnc1
+    have h3 : Primrec extractOutput := Primrec.nat_iff.mpr extractOutput_primrec
+    have hConfig : Primrec₂ (fun input step =>
         iterateEncodedStep progCode bound step (encodeInput1 bound input)) :=
       h1.comp Primrec.snd (h2.comp Primrec.fst)
     exact (h3.comp₂ hConfig).to_comp
-  -- Use Partrec.map
+  -- Step 7: Combine rfind and extraction
   have hFinal : Partrec (fun input =>
       (Nat.rfind fun step => Part.some (isHaltedAtStep progCode bound (encodeInput1 bound input) step)).map
         fun step => extractOutput (iterateEncodedStep progCode bound step (encodeInput1 bound input))) :=
     Partrec.map hRfindSimp hExtract₂
-  -- Convert from Partrec to Nat.Partrec
-  have hFinalNat : Nat.Partrec (fun input =>
-      (Nat.rfind fun step => Part.some (isHaltedAtStep progCode bound (encodeInput1 bound input) step)).map
-        fun step => extractOutput (iterateEncodedStep progCode bound step (encodeInput1 bound input))) :=
-    Partrec.nat_iff.mp hFinal
-  -- Show this equals evalEncoded
-  have hFinalEq : (fun input =>
-      (Nat.rfind fun step => Part.some (isHaltedAtStep progCode bound (encodeInput1 bound input) step)).map
-        fun step => extractOutput (iterateEncodedStep progCode bound step (encodeInput1 bound input))) =
-      (fun input => evalEncoded progCode bound (encodeInput1 bound input)) := by
-    ext input
-    simp only [evalEncoded]
-  -- Conclude
+  -- Step 8: Show this equals f
   rw [← funext henc_correct]
-  rw [← hFinalEq]
-  exact hFinalNat
+  exact Partrec.nat_iff.mp (hFinal.of_eq fun input => by simp only [evalEncoded])
 
 end Urm

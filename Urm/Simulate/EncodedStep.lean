@@ -218,42 +218,8 @@ private theorem updateNthEncoded_encodeRegs (l : List ℕ) (i v : ℕ) (hi : i <
       congr 1
       exact ih tl hi
 
-/-- The register list from encodeConfig. -/
-private def configRegList (bound : ℕ) (c : Config) : List ℕ :=
-  List.ofFn (fun i : Fin (bound + 1) => c.state i)
-
-/-- Length of configRegList. -/
-@[simp]
-private theorem configRegList_length (bound : ℕ) (c : Config) :
-    (configRegList bound c).length = bound + 1 := by
-  simp [configRegList]
-
-/-- Element access in configRegList. -/
-private theorem configRegList_getElem (bound : ℕ) (c : Config) (i : ℕ) (hi : i < bound + 1) :
-    (configRegList bound c)[i]'(by simp [configRegList]; exact hi) = c.state i := by
-  simp only [configRegList, List.getElem_ofFn]
-
-/-- Setting element in configRegList corresponds to state write. -/
-private theorem configRegList_set (bound : ℕ) (c : Config) (r v : ℕ) :
-    (configRegList bound c).set r v = configRegList bound ⟨c.pc, c.state.write r v⟩ := by
-  apply List.ext_getElem
-  · simp
-  · intro i hi1 hi2
-    simp only [configRegList_length] at hi1 hi2
-    simp only [configRegList, List.getElem_ofFn, List.getElem_set]
-    split_ifs with heq
-    · subst heq
-      simp [State.write, Function.update]
-    · simp only [State.write, Function.update]
-      split_ifs with heq2
-      · exact absurd heq2.symm heq
-      · rfl
-
 /-! ## Correctness Lemmas -/
 
--- Per-instruction correctness lemmas to avoid timeout
-
-/-- Helper: List.ofFn set equals ofFn of write for registers. -/
 private theorem ofFn_set_eq_ofFn_write (bound : ℕ) (c : Config) (r v : ℕ) :
     (List.ofFn (fun i : Fin (bound + 1) => c.state i)).set r v =
     List.ofFn (fun i : Fin (bound + 1) => (c.state.write r v) i) := by
@@ -269,7 +235,6 @@ private theorem ofFn_set_eq_ofFn_write (bound : ℕ) (c : Config) (r v : ℕ) :
       · exact absurd heq2.symm heq
       · rfl
 
-/-- Correctness for Z instruction. -/
 private theorem encodedStep_correct_zero (p : Program) (c : Config) (n : ℕ)
     (hpc : c.pc < p.length) (hinstr : p[c.pc] = Instr.Z n) :
     let bound := p.maxRegister
@@ -280,9 +245,9 @@ private theorem encodedStep_correct_zero (p : Program) (c : Config) (n : ℕ)
   rw [nthEncoded_encodeRegs_map_encodeInstr p c.pc hpc]
   simp only [hinstr, encodeInstr, Nat.unpair_pair]
   have hn : n ≤ p.maxRegister := by
-    let hinstr' : p.getInstr c.pc = some (Instr.Z n) := by
+    have hinstr' : p.getInstr c.pc = some (Instr.Z n) := by
       simp only [Program.getInstr, List.getElem?_eq_getElem hpc, hinstr]
-    let h := Program.getInstr_maxRegister hinstr'
+    have h := Program.getInstr_maxRegister hinstr'
     simp only [Instr.maxRegister] at h
     exact h
   simp only [hn, ↓reduceIte]
@@ -290,12 +255,10 @@ private theorem encodedStep_correct_zero (p : Program) (c : Config) (n : ℕ)
   congr 1
   exact congrArg _ (ofFn_set_eq_ofFn_write p.maxRegister c n 0)
 
-/-- Helper: List.ofFn getElem equals state at that index. -/
 private theorem ofFn_getElem (bound : ℕ) (c : Config) (i : ℕ) (hi : i < bound + 1) :
     (List.ofFn (fun j : Fin (bound + 1) => c.state j))[i]'(by simp; exact hi) = c.state i := by
   simp only [List.getElem_ofFn]
 
-/-- Correctness for S instruction. -/
 private theorem encodedStep_correct_succ (p : Program) (c : Config) (n : ℕ)
     (hpc : c.pc < p.length) (hinstr : p[c.pc] = Instr.S n) :
     let bound := p.maxRegister
@@ -306,25 +269,23 @@ private theorem encodedStep_correct_succ (p : Program) (c : Config) (n : ℕ)
   simp only [encodedStep, encodeProgram, encodeConfig, Nat.unpair_pair, hpc, ↓reduceIte]
   rw [nthEncoded_encodeRegs_map_encodeInstr p c.pc hpc]
   simp only [hinstr, encodeInstr, Nat.unpair_pair]
-  -- For S instruction, tag = 1, so we need to simplify the if-then-else chain
-  simp only [show (1 : ℕ) = 0 ↔ False from ⟨fun h => Nat.one_ne_zero h, False.elim⟩, ↓reduceIte]
+  simp only [show (1 : ℕ) = 0 ↔ False from ⟨Nat.one_ne_zero, False.elim⟩, ↓reduceIte]
   have hn : n ≤ p.maxRegister := by
-    let hinstr' : p.getInstr c.pc = some (Instr.S n) := by
+    have hinstr' : p.getInstr c.pc = some (Instr.S n) := by
       simp only [Program.getInstr, List.getElem?_eq_getElem hpc, hinstr]
-    let h := Program.getInstr_maxRegister hinstr'
+    have h := Program.getInstr_maxRegister hinstr'
     simp only [Instr.maxRegister] at h
     exact h
   simp only [hn, ↓reduceIte]
   rw [nthEncoded_encodeRegs _ n (by simp; omega)]
   rw [updateNthEncoded_encodeRegs _ _ _ (by simp; omega)]
   congr 1
-  have heq1 : (List.ofFn (fun j : Fin (p.maxRegister + 1) => c.state j))[n]'(by simp; omega) = c.state n :=
-    ofFn_getElem p.maxRegister c n (by omega)
+  have heq1 : (List.ofFn (fun j : Fin (p.maxRegister + 1) => c.state j))[n]'(by simp; omega) =
+      c.state n := ofFn_getElem p.maxRegister c n (by omega)
   rw [heq1]
   simp only [State.read]
   exact congrArg _ (ofFn_set_eq_ofFn_write p.maxRegister c n (c.state n + 1))
 
-/-- Correctness for T instruction. -/
 private theorem encodedStep_correct_trans (p : Program) (c : Config) (m n : ℕ)
     (hpc : c.pc < p.length) (hinstr : p[c.pc] = Instr.T m n) :
     let bound := p.maxRegister
@@ -335,13 +296,12 @@ private theorem encodedStep_correct_trans (p : Program) (c : Config) (m n : ℕ)
   simp only [encodedStep, encodeProgram, encodeConfig, Nat.unpair_pair, hpc, ↓reduceIte]
   rw [nthEncoded_encodeRegs_map_encodeInstr p c.pc hpc]
   simp only [hinstr, encodeInstr, Nat.unpair_pair]
-  -- For T instruction, tag = 2, so we need to simplify the if-then-else chain
-  simp only [show (2 : ℕ) = 0 ↔ False from ⟨fun h => by omega, False.elim⟩,
-             show (2 : ℕ) = 1 ↔ False from ⟨fun h => by omega, False.elim⟩, ↓reduceIte]
+  simp only [show (2 : ℕ) = 0 ↔ False from ⟨by omega, False.elim⟩,
+             show (2 : ℕ) = 1 ↔ False from ⟨by omega, False.elim⟩, ↓reduceIte]
   have hmn : max m n ≤ p.maxRegister := by
-    let hinstr' : p.getInstr c.pc = some (Instr.T m n) := by
+    have hinstr' : p.getInstr c.pc = some (Instr.T m n) := by
       simp only [Program.getInstr, List.getElem?_eq_getElem hpc, hinstr]
-    let h := Program.getInstr_maxRegister hinstr'
+    have h := Program.getInstr_maxRegister hinstr'
     simp only [Instr.maxRegister] at h
     exact h
   have hm : m ≤ p.maxRegister := le_of_max_le_left hmn
@@ -350,13 +310,12 @@ private theorem encodedStep_correct_trans (p : Program) (c : Config) (m n : ℕ)
   rw [nthEncoded_encodeRegs _ m (by simp; omega)]
   rw [updateNthEncoded_encodeRegs _ _ _ (by simp; omega)]
   congr 1
-  have heq1 : (List.ofFn (fun j : Fin (p.maxRegister + 1) => c.state j))[m]'(by simp; omega) = c.state m :=
-    ofFn_getElem p.maxRegister c m (by omega)
+  have heq1 : (List.ofFn (fun j : Fin (p.maxRegister + 1) => c.state j))[m]'(by simp; omega) =
+      c.state m := ofFn_getElem p.maxRegister c m (by omega)
   rw [heq1]
   simp only [State.read]
   exact congrArg _ (ofFn_set_eq_ofFn_write p.maxRegister c n (c.state m))
 
-/-- Correctness for J instruction (equal case). -/
 private theorem encodedStep_correct_jump_eq (p : Program) (c : Config) (m n q : ℕ)
     (hpc : c.pc < p.length) (hinstr : p[c.pc] = Instr.J m n q)
     (heq : c.state.read m = c.state.read n) :
@@ -367,14 +326,13 @@ private theorem encodedStep_correct_jump_eq (p : Program) (c : Config) (m n q : 
   simp only [encodedStep, encodeProgram, encodeConfig, Nat.unpair_pair, hpc, ↓reduceIte]
   rw [nthEncoded_encodeRegs_map_encodeInstr p c.pc hpc]
   simp only [hinstr, encodeInstr, Nat.unpair_pair]
-  -- For J instruction, tag = 3, so we need to simplify the if-then-else chain
-  simp only [show (3 : ℕ) = 0 ↔ False from ⟨fun h => by omega, False.elim⟩,
-             show (3 : ℕ) = 1 ↔ False from ⟨fun h => by omega, False.elim⟩,
-             show (3 : ℕ) = 2 ↔ False from ⟨fun h => by omega, False.elim⟩, ↓reduceIte]
+  simp only [show (3 : ℕ) = 0 ↔ False from ⟨by omega, False.elim⟩,
+             show (3 : ℕ) = 1 ↔ False from ⟨by omega, False.elim⟩,
+             show (3 : ℕ) = 2 ↔ False from ⟨by omega, False.elim⟩, ↓reduceIte]
   have hmn : max m n ≤ p.maxRegister := by
-    let hinstr' : p.getInstr c.pc = some (Instr.J m n q) := by
+    have hinstr' : p.getInstr c.pc = some (Instr.J m n q) := by
       simp only [Program.getInstr, List.getElem?_eq_getElem hpc, hinstr]
-    let h := Program.getInstr_maxRegister hinstr'
+    have h := Program.getInstr_maxRegister hinstr'
     simp only [Instr.maxRegister] at h
     exact h
   have hm : m ≤ p.maxRegister := le_of_max_le_left hmn
@@ -382,15 +340,14 @@ private theorem encodedStep_correct_jump_eq (p : Program) (c : Config) (m n q : 
   simp only [hm, hn, ↓reduceIte]
   rw [nthEncoded_encodeRegs _ m (by simp; omega)]
   rw [nthEncoded_encodeRegs _ n (by simp; omega)]
-  have heqm : (List.ofFn (fun j : Fin (p.maxRegister + 1) => c.state j))[m]'(by simp; omega) = c.state m :=
-    ofFn_getElem p.maxRegister c m (by omega)
-  have heqn : (List.ofFn (fun j : Fin (p.maxRegister + 1) => c.state j))[n]'(by simp; omega) = c.state n :=
-    ofFn_getElem p.maxRegister c n (by omega)
+  have heqm : (List.ofFn (fun j : Fin (p.maxRegister + 1) => c.state j))[m]'(by simp; omega) =
+      c.state m := ofFn_getElem p.maxRegister c m (by omega)
+  have heqn : (List.ofFn (fun j : Fin (p.maxRegister + 1) => c.state j))[n]'(by simp; omega) =
+      c.state n := ofFn_getElem p.maxRegister c n (by omega)
   rw [heqm, heqn]
   simp only [State.read] at heq
   simp only [heq, ↓reduceIte]
 
-/-- Correctness for J instruction (not equal case). -/
 private theorem encodedStep_correct_jump_ne (p : Program) (c : Config) (m n q : ℕ)
     (hpc : c.pc < p.length) (hinstr : p[c.pc] = Instr.J m n q)
     (hne : c.state.read m ≠ c.state.read n) :
@@ -401,14 +358,13 @@ private theorem encodedStep_correct_jump_ne (p : Program) (c : Config) (m n q : 
   simp only [encodedStep, encodeProgram, encodeConfig, Nat.unpair_pair, hpc, ↓reduceIte]
   rw [nthEncoded_encodeRegs_map_encodeInstr p c.pc hpc]
   simp only [hinstr, encodeInstr, Nat.unpair_pair]
-  -- For J instruction, tag = 3, so we need to simplify the if-then-else chain
-  simp only [show (3 : ℕ) = 0 ↔ False from ⟨fun h => by omega, False.elim⟩,
-             show (3 : ℕ) = 1 ↔ False from ⟨fun h => by omega, False.elim⟩,
-             show (3 : ℕ) = 2 ↔ False from ⟨fun h => by omega, False.elim⟩, ↓reduceIte]
+  simp only [show (3 : ℕ) = 0 ↔ False from ⟨by omega, False.elim⟩,
+             show (3 : ℕ) = 1 ↔ False from ⟨by omega, False.elim⟩,
+             show (3 : ℕ) = 2 ↔ False from ⟨by omega, False.elim⟩, ↓reduceIte]
   have hmn : max m n ≤ p.maxRegister := by
-    let hinstr' : p.getInstr c.pc = some (Instr.J m n q) := by
+    have hinstr' : p.getInstr c.pc = some (Instr.J m n q) := by
       simp only [Program.getInstr, List.getElem?_eq_getElem hpc, hinstr]
-    let h := Program.getInstr_maxRegister hinstr'
+    have h := Program.getInstr_maxRegister hinstr'
     simp only [Instr.maxRegister] at h
     exact h
   have hm : m ≤ p.maxRegister := le_of_max_le_left hmn
@@ -416,10 +372,10 @@ private theorem encodedStep_correct_jump_ne (p : Program) (c : Config) (m n q : 
   simp only [hm, hn, ↓reduceIte]
   rw [nthEncoded_encodeRegs _ m (by simp; omega)]
   rw [nthEncoded_encodeRegs _ n (by simp; omega)]
-  have heqm : (List.ofFn (fun j : Fin (p.maxRegister + 1) => c.state j))[m]'(by simp; omega) = c.state m :=
-    ofFn_getElem p.maxRegister c m (by omega)
-  have heqn : (List.ofFn (fun j : Fin (p.maxRegister + 1) => c.state j))[n]'(by simp; omega) = c.state n :=
-    ofFn_getElem p.maxRegister c n (by omega)
+  have heqm : (List.ofFn (fun j : Fin (p.maxRegister + 1) => c.state j))[m]'(by simp; omega) =
+      c.state m := ofFn_getElem p.maxRegister c m (by omega)
+  have heqn : (List.ofFn (fun j : Fin (p.maxRegister + 1) => c.state j))[n]'(by simp; omega) =
+      c.state n := ofFn_getElem p.maxRegister c n (by omega)
   rw [heqm, heqn]
   simp only [State.read] at hne
   simp only [hne, ↓reduceIte]

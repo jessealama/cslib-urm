@@ -67,11 +67,8 @@ theorem decodeRegs_succ (k n : ℕ) :
 theorem decodeRegs_encodeRegs (rs : List ℕ) :
     decodeRegs rs.length (encodeRegs rs) = rs := by
   induction rs with
-  | nil => simp
-  | cons r rs ih =>
-    simp only [List.length_cons, decodeRegs_succ, encodeRegs_cons]
-    simp only [Nat.unpair_pair]
-    exact congrArg (r :: ·) ih
+  | nil => rfl
+  | cons r rs ih => simp [ih]
 
 /-- Length of decoded list equals k. -/
 @[simp]
@@ -96,11 +93,7 @@ def decodeConfig (bound : ℕ) (n : ℕ) : Config :=
 /-- Helper lemma: decodeRegs after encodeRegs of ofFn list. -/
 private theorem decodeRegs_encodeRegs_ofFn (bound : ℕ) (f : Fin (bound + 1) → ℕ) :
     decodeRegs (bound + 1) (encodeRegs (List.ofFn f)) = List.ofFn f := by
-  have h : (List.ofFn f).length = bound + 1 := List.length_ofFn
-  -- Use the general decodeRegs_encodeRegs with the length equality
-  have := decodeRegs_encodeRegs (List.ofFn f)
-  simp only [h] at this
-  exact this
+  simpa using decodeRegs_encodeRegs (List.ofFn f)
 
 /-! ## Instruction Encoding -/
 
@@ -147,10 +140,7 @@ def decodeProgram (n : ℕ) : Program :=
 /-- Helper lemma: decodeRegs after encodeRegs of mapped list. -/
 private theorem decodeRegs_encodeRegs_map (p : Program) :
     decodeRegs p.length (encodeRegs (p.map encodeInstr)) = p.map encodeInstr := by
-  have h : (p.map encodeInstr).length = p.length := by simp
-  have := decodeRegs_encodeRegs (p.map encodeInstr)
-  simp only [h] at this
-  exact this
+  simpa using decodeRegs_encodeRegs (p.map encodeInstr)
 
 /-- Get instruction at position from encoded program. -/
 def getEncodedInstr (progCode : ℕ) (pc : ℕ) : Option Instr :=
@@ -167,10 +157,7 @@ def updateRegs (k : ℕ) (regCode : ℕ) (r v : ℕ) : ℕ :=
 /-- Helper lemma: decodeRegs after encodeRegs of set list. -/
 private theorem decodeRegs_encodeRegs_set (k : ℕ) (regCode r v : ℕ) :
     decodeRegs k (encodeRegs ((decodeRegs k regCode).set r v)) = (decodeRegs k regCode).set r v := by
-  have h : ((decodeRegs k regCode).set r v).length = k := by simp
-  have := decodeRegs_encodeRegs ((decodeRegs k regCode).set r v)
-  simp only [h] at this
-  exact this
+  simpa using decodeRegs_encodeRegs ((decodeRegs k regCode).set r v)
 
 /-! ## Encoded Configuration Operations -/
 
