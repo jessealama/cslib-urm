@@ -43,13 +43,6 @@ theorem transferResultsToInputs_isStandardForm (resultStart arityF : ℕ) :
     (Program.transferResultsToInputs resultStart arityF).IsStandardForm :=
   straightLine_isStandardForm (transferResultsToInputs_isStraightLine resultStart arityF)
 
-theorem Program.isStraightLine_concat {p1 p2 : Program}
-    (h1 : p1.isStraightLine = true) (h2 : p2.isStraightLine = true) :
-    (p1.concat p2).isStraightLine = true := by
-  simp only [Program.concat, Program.isStraightLine, List.all_append, Program.shiftJumps, List.all_map] at h1 h2 ⊢
-  rw [Bool.and_eq_true]
-  exact ⟨h1, by convert h2 using 2; funext instr; cases instr <;> simp [Instr.shiftJumps, Instr.isNonJumping]⟩
-
 theorem Program.IsStandardForm.concat {p1 p2 : Program}
     (h1 : p1.IsStandardForm) (h2 : p2.IsStandardForm) : (p1.concat p2).IsStandardForm := by
   unfold Program.IsStandardForm Program.isStandardForm at *; rw [List.all_eq_true] at h1 h2 ⊢

@@ -215,17 +215,6 @@ def Halts (inputs : List ℕ) : Prop :=
 /-- A program diverges on given inputs if it does not halt. -/
 def Diverges (inputs : List ℕ) : Prop := ¬Halts p inputs
 
-namespace Halts
-
-variable {p : Program}
-
-/-- The empty program halts immediately on any input. -/
-theorem empty_halts (inputs : List ℕ) : Halts [] inputs := by
-  refine ⟨Config.init inputs, Steps.refl _, ?_⟩
-  simp [Config.init]
-
-end Halts
-
 /-- The result of a halting computation is the value in register 0 when halted.
 
 This is a partial function: it is only defined when the program halts. -/

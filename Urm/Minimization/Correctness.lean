@@ -26,13 +26,6 @@ open Program
 
 /-! ## Result Correctness -/
 
-/-- When minimizeProgram halts, R[0] contains the counter value (the minimal y). -/
-theorem minimizeProgram_result_eq_counter (n : ℕ) (pF : Program)
-    (inputs : Fin n → ℕ)
-    (hHalts : Halts (minimizeProgram n pF) (List.ofFn inputs)) :
-    ∃ k, Result (minimizeProgram n pF) (List.ofFn inputs) hHalts = k :=
-  ⟨_, rfl⟩
-
 /-- The result of minimizeProgram equals (μ f).get when both are defined. -/
 theorem minimizeProgram_result (n : ℕ) (pF : Program)
     (hpF_sf : pF.IsStandardForm)

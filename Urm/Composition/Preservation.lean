@@ -203,21 +203,4 @@ theorem copyRegisterRange_exec (srcStart dstStart count : ℕ) (s : State)
     fun i hi => hc_state_eq_s' ▸ hcopies i hi,
     fun r hr => hc_state_eq_s' ▸ hpreserves r hr⟩
 
-/-- Bundled execution of transferResultsToInputs with all properties. -/
-theorem transferResultsToInputs_exec (resultStart arityF : ℕ) (s : State)
-    (hNoOverlap : arityF ≤ resultStart) :
-    ∃ c, Steps (Program.transferResultsToInputs resultStart arityF) ⟨0, s⟩ c ∧
-         c.isHalted (Program.transferResultsToInputs resultStart arityF) ∧
-         c.pc = (Program.transferResultsToInputs resultStart arityF).length ∧
-         (∀ i, i < arityF → c.state.read i = s.read (resultStart + i)) ∧
-         (∀ r, r ≥ arityF → c.state.read r = s.read r) := by
-  have hsl := transferResultsToInputs_isStraightLine resultStart arityF
-  obtain ⟨c, hsteps, hhalted, hpc⟩ := straightLine_halts_from_state hsl s
-  have hstate_eq := straightLineFinalState_eq_of_halted hsl s c hsteps hhalted
-  obtain ⟨s', hs'_eq, hcopies, hpreserves⟩ := transferResultsToInputs_state resultStart arityF s hNoOverlap
-  have hc_state_eq_s' : c.state = s' := hstate_eq.trans hs'_eq
-  exact ⟨c, hsteps, hhalted, hpc,
-    fun i hi => hc_state_eq_s' ▸ hcopies i hi,
-    fun r hr => hc_state_eq_s' ▸ hpreserves r hr⟩
-
 end Urm

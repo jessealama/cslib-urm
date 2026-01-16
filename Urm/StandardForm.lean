@@ -24,16 +24,10 @@ property ensures they remain valid.
 - `Program.isStandardForm`: decidable check for standard form (Bool)
 - `Program.IsStandardForm`: Prop version of standard form
 - `URMComputableSF`: computability by a standard-form program
-- `Program.Equiv`: behavioral equivalence (same partial function)
-
-## Notation
-
-- `p ~ q`: program equivalence (both compute the same partial function)
 
 ## Main results
 
 - `straightLine_isStandardForm`: straight-line programs are standard form
-- `Program.equiv_toStandardForm`: every program is equivalent to its standard form
 
 ## References
 
@@ -213,13 +207,6 @@ theorem Program.toStandardForm_isStandardForm (p : Program) :
   obtain ⟨orig, _, rfl⟩ := List.mem_map.mp hinstr
   exact Instr.hasBoundedJump_capJump p.length orig
 
-/-- capJump is identity when the instruction already has bounded jump. -/
-theorem Instr.capJump_of_hasBoundedJump {instr : Instr} {len : ℕ}
-    (h : instr.hasBoundedJump len = true) : instr.capJump len = instr := by
-  cases instr with
-  | Z _ | S _ | T _ _ => rfl
-  | J m n q => simp only [hasBoundedJump, decide_eq_true_eq] at h; simp only [capJump, Nat.min_eq_left h]
-
 /-! ### Instruction Access in toStandardForm -/
 
 /-- Accessing an instruction in toStandardForm gives the capJump'd instruction. -/
@@ -300,15 +287,6 @@ capped jumps to p.length). Both halt with the same state. -/
 def ConfigRelated (p : Program) (c₁ c₂ : Config) : Prop :=
   (c₁.pc = c₂.pc ∧ c₁.state = c₂.state) ∨
   (c₁.isHalted p ∧ c₂.isHalted p.toStandardForm ∧ c₁.state = c₂.state)
-
-/-- Initial configs are related. -/
-theorem ConfigRelated.init (p : Program) (inputs : List ℕ) :
-    ConfigRelated p (Config.init inputs) (Config.init inputs) := Or.inl ⟨rfl, rfl⟩
-
-/-- If both configs are halted with the same state, they are related. -/
-theorem ConfigRelated.halted {p : Program} {c₁ c₂ : Config}
-    (h1 : c₁.isHalted p) (h2 : c₂.isHalted p.toStandardForm) (heq : c₁.state = c₂.state) :
-    ConfigRelated p c₁ c₂ := Or.inr ⟨h1, h2, heq⟩
 
 /-- Forward simulation: if original can step, standard form can step to a related config. -/
 theorem Step.simulate_toStandardForm {p : Program} {c₁ c₁' : Config}
@@ -449,42 +427,6 @@ theorem Result.toStandardForm {p : Program} {inputs : List ℕ}
     (hp : Halts p inputs) (hq : Halts p.toStandardForm inputs) :
     Result p inputs hp = Result p.toStandardForm inputs hq := by
   simp only [Result, State.output, Result.toStandardForm_state hp hq]
-
-/-! ## Program Equivalence
-
-Two programs are equivalent if they compute the same partial function:
-they halt on exactly the same inputs and produce the same results. -/
-
-/-- Two programs are equivalent if they compute the same partial function. -/
-def Program.Equiv (p q : Program) : Prop :=
-  ∀ inputs, (Halts p inputs ↔ Halts q inputs) ∧
-    ∀ hp hq, Result p inputs hp = Result q inputs hq
-
-/-- Notation for program equivalence. -/
-scoped infix:50 " ~ " => Program.Equiv
-
-/-- Program equivalence is reflexive. -/
-@[refl]
-theorem Program.Equiv.refl (p : Program) : p ~ p :=
-  fun _ => ⟨Iff.rfl, fun _ _ => rfl⟩
-
-/-- Program equivalence is symmetric. -/
-@[symm]
-theorem Program.Equiv.symm {p q : Program} (h : p ~ q) : q ~ p :=
-  fun inputs => ⟨(h inputs).1.symm, fun hq hp => ((h inputs).2 hp hq).symm⟩
-
-/-- Program equivalence is transitive. -/
-@[trans]
-theorem Program.Equiv.trans {p q r : Program} (hpq : p ~ q) (hqr : q ~ r) : p ~ r :=
-  fun inputs =>
-    ⟨(hpq inputs).1.trans (hqr inputs).1,
-     fun hp hr =>
-       let hq := (hpq inputs).1.mp hp
-       ((hpq inputs).2 hp hq).trans ((hqr inputs).2 hq hr)⟩
-
-/-- A program is equivalent to its standard form. -/
-theorem Program.equiv_toStandardForm (p : Program) : p ~ p.toStandardForm :=
-  fun _ => ⟨Halts.toStandardForm_iff, fun hp hq => Result.toStandardForm hp hq⟩
 
 /-- Standard form computability implies general computability (trivial direction). -/
 theorem URMComputableSF.toComputable {n : ℕ} {f : (Fin n → ℕ) → Part ℕ}
