@@ -193,4 +193,38 @@ theorem program_doesnt_touch_prZeroReg (n : ℕ) (pF pG : Program) (p : Program)
 @[simp] theorem prZeroReg_gt_n_plus_1 (n : ℕ) (pF pG : Program) :
     n + 1 < prZeroReg n pF pG := by pr_register_omega
 
+/-! ## Automation tactics for primitive recursion proofs -/
+
+/-- Try to discharge a writesTo ≠ some r goal using omega with PR register definitions. -/
+macro "pr_writesTo_omega" : tactic =>
+  `(tactic| (simp only [Instr.writesTo, ne_eq, Option.some.injEq,
+      prSavedInputsStart, prSavedYReg, prCounterReg, prAccumulatorReg, prZeroReg,
+      primitiveRecursionBase]; omega))
+
+/-- Tactic for discharging nowrite goals in PR proofs.
+    Handles both copyRegisterRange and fixed instruction cases. -/
+macro "pr_discharge_nowrite" : tactic =>
+  `(tactic| first
+    | (simp only [Instr.writesTo, ne_eq, Option.some.injEq, Program.copyRegisterRange,
+        List.getElem_map, List.getElem_range, Nat.zero_add]; omega)
+    | pr_writesTo_omega
+    | (simp only [List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq];
+       pr_register_omega)
+    | (simp only [List.getElem_cons_succ, List.getElem_cons_zero, Instr.writesTo, ne_eq,
+        Option.some.injEq]; pr_register_omega))
+
+/-- Handle the case of a 2-element suffix list [I₀, I₁] where we need to prove
+    neither writes to a given register. The index variable must be the difference
+    with the main list prefix. -/
+macro "pr_suffix2_nowrite" idx:term : tactic =>
+  `(tactic| (
+    rcases Nat.eq_zero_or_pos $idx with h | hpos
+    · simp only [h, List.getElem_cons_zero, List.getElem_cons_succ, Instr.writesTo, ne_eq,
+        Option.some.injEq, prSavedInputsStart, prSavedYReg, prCounterReg, prAccumulatorReg,
+        prZeroReg, primitiveRecursionBase] <;> omega
+    · have h : $idx = 1 := by omega
+      simp only [h, List.getElem_cons_succ, List.getElem_cons_zero, Instr.writesTo, ne_eq,
+        Option.some.injEq, prSavedInputsStart, prSavedYReg, prCounterReg, prAccumulatorReg,
+        prZeroReg, primitiveRecursionBase] <;> omega))
+
 end Urm

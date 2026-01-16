@@ -69,18 +69,7 @@ theorem prSetupPhase_saves_inputs (n : ℕ) (pF pG : Program) (inputs : Fin n �
     intro j hj hij
     simp only [prSetupPhase, List.length_append, copyRegisterRange_length, List.length] at hj
     simp only [prSetupPhase, List.getElem_append, copyRegisterRange_length]
-    by_cases hj_copy : j < n + 1
-    · -- In copyRegisterRange: writes to prSavedInputsStart + j, which ≠ prSavedInputsStart + i
-      simp only [hj_copy, dite_true, Program.copyRegisterRange, List.getElem_map, List.getElem_range,
-        Instr.writesTo, ne_eq, Option.some.injEq]; omega
-    · -- In [Z counter, Z zero]
-      simp only [hj_copy, dite_false]
-      let hj_small : j - (n + 1) = 0 ∨ j - (n + 1) = 1 := by omega
-      rcases hj_small with h0 | h1
-      · simp only [h0, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
-        pr_register_omega
-      · simp only [h1, List.getElem_cons_succ, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
-        pr_register_omega
+    split_ifs with hj_copy <;> [pr_discharge_nowrite; pr_suffix2_nowrite (j - (n + 1))]
   -- Use straightLine_transfer_result
   obtain ⟨s_before, ⟨c_i, hsteps_i, _, hs_before_eq⟩, htransfer⟩ := straightLine_transfer_result hsl s
     (↑i) (↑i) (prSavedInputsStart n pF pG + i) hk hwrite hnowrite_after
@@ -140,18 +129,7 @@ theorem prSetupPhase_saves_y (n : ℕ) (pF pG : Program) (inputs : Fin n → ℕ
     intro j hj hjn
     simp only [prSetupPhase, List.length_append, copyRegisterRange_length, List.length] at hj
     simp only [prSetupPhase, List.getElem_append, copyRegisterRange_length]
-    by_cases hj_copy : j < n + 1
-    · -- In copyRegisterRange: writes to prSavedInputsStart + j, which ≠ prSavedInputsStart + n
-      simp only [hj_copy, dite_true, Program.copyRegisterRange, List.getElem_map, List.getElem_range,
-        Instr.writesTo, ne_eq, Option.some.injEq]; omega
-    · -- In [Z counter, Z zero]
-      simp only [hj_copy, dite_false]
-      let hj_small : j - (n + 1) = 0 ∨ j - (n + 1) = 1 := by omega
-      rcases hj_small with h0 | h1
-      · simp only [h0, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
-        pr_register_omega
-      · simp only [h1, List.getElem_cons_succ, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
-        pr_register_omega
+    split_ifs with hj_copy <;> [pr_discharge_nowrite; pr_suffix2_nowrite (j - (n + 1))]
   -- Use straightLine_transfer_result
   obtain ⟨s_before, ⟨c_n, hsteps_n, _, hs_before_eq⟩, htransfer⟩ := straightLine_transfer_result hsl s
     n n (prSavedInputsStart n pF pG + n) hk hwrite hnowrite_after
@@ -416,9 +394,7 @@ theorem prLoopPrologue_restores_inputs (n : ℕ) (pF pG : Program)
     simp only [prLoopPrologue]
     by_cases hj_in_main : j < (clearRegisters (primitiveRecursionBase n pF pG) ++
         copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length
-    · -- In clearRegisters ++ copyRegisterRange section
-      -- prLoopPrologue = (clearRegisters ++ copyRegisterRange) ++ [T, T]
-      rw [List.getElem_append_left hj_in_main]
+    · rw [List.getElem_append_left hj_in_main]
       by_cases hj_clear : j < (clearRegisters (primitiveRecursionBase n pF pG)).length
       · simp only [clearRegisters_length] at hj_clear; omega
       · rw [List.getElem_append_right (Nat.not_lt.mp hj_clear)]
@@ -426,8 +402,7 @@ theorem prLoopPrologue_restores_inputs (n : ℕ) (pF pG : Program)
           Instr.writesTo, ne_eq, Option.some.injEq, Nat.zero_add, clearRegisters_length]
         simp only [List.length_append, clearRegisters_length, copyRegisterRange_length] at hj_in_main
         omega
-    · -- In the final [T counterReg n, T accumulatorReg (n+1)]
-      let hge : (clearRegisters (primitiveRecursionBase n pF pG) ++
+    · let hge : (clearRegisters (primitiveRecursionBase n pF pG) ++
           copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length ≤ j := Nat.not_lt.mp hj_in_main
       rw [List.getElem_append_right hge]
       let hj_idx : j - (clearRegisters (primitiveRecursionBase n pF pG) ++
