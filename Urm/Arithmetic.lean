@@ -105,39 +105,26 @@ theorem loop_iteration (s : State) (k y : ℕ)
           s'.read 0 = s.read 0 + 1 ∧
           s'.read 1 = y ∧
           s'.read 2 = k + 1 := by
-  -- k < y implies k ≠ y
   have hne : s.read 2 ≠ s.read 1 := by omega
-  -- Step 1→2: continue (since R2 ≠ R1)
   have h1 : Step addProgram ⟨1, s⟩ ⟨2, s⟩ := step_continue s hne
-  -- Step 2→3: increment R0
   let s1 := s.write 0 (s.read 0 + 1)
   have h2 : Step addProgram ⟨2, s⟩ ⟨3, s1⟩ := step_inc_r0 s
-  -- Step 3→4: increment R2
   let s2 := s1.write 2 (s1.read 2 + 1)
   have h3 : Step addProgram ⟨3, s1⟩ ⟨4, s2⟩ := step_inc_r2 s1
-  -- Step 4→1: jump back
   have h4 : Step addProgram ⟨4, s2⟩ ⟨1, s2⟩ := step_jump_back s2
-  -- Compose all steps
   use s2
   constructor
   · aesop_steps
   · constructor
-    · -- s2.read 0 = s.read 0 + 1
-      simp only [s2, s1, State.write, State.read, Function.update_of_ne (by decide : (0 : ℕ) ≠ 2),
+    · simp only [s2, s1, State.write, State.read, Function.update_of_ne (by decide : (0 : ℕ) ≠ 2),
                  Function.update_self]
     constructor
-    · -- s2.read 1 = y
-      simp only [s2, s1, State.write, State.read,
+    · simp only [s2, s1, State.write, State.read,
                  Function.update_of_ne (by decide : (1 : ℕ) ≠ 2),
                  Function.update_of_ne (by decide : (1 : ℕ) ≠ 0)]
       exact hy
-    · -- s2.read 2 = k + 1
-      -- s2.read 2 = s1.read 2 + 1 by definition of s2
-      -- s1.read 2 = s.read 2 since s1 only wrote to register 0
-      -- s.read 2 = k by hk
-      simp only [s2, State.read, State.write, Function.update_self]
+    · simp only [s2, State.read, State.write, Function.update_self]
       simp only [s1, State.read, State.write, Function.update_of_ne (by decide : (2 : ℕ) ≠ 0)]
-      -- Now goal is s 2 + 1 = k + 1, and hk : s.read 2 = k means s 2 = k
       simp only [State.read] at hk
       omega
 
@@ -151,17 +138,14 @@ theorem loop_invariant (x y k : ℕ) (hk : k ≤ y) :
          s.read 2 = k := by
   induction k with
   | zero =>
-    -- Base case: 0 iterations, state unchanged
     use (State.fromInputs [x, y]).write 2 0
     refine ⟨Steps.refl _, ?_, ?_, ?_⟩
     · simp [State.write, State.read, State.fromInputs, Function.update_of_ne]
     · simp [State.write, State.read, State.fromInputs, Function.update_of_ne]
     · simp [State.write, State.read, Function.update_self]
   | succ k' ih =>
-    -- Inductive case: use k' iterations, then one more
     have hk' : k' ≤ y := Nat.le_of_succ_le hk
     obtain ⟨s', hsteps', hr0', hr1', hr2'⟩ := ih hk'
-    -- If k' < y, we can do one more iteration
     have hlt : k' < y := Nat.lt_of_succ_le hk
     obtain ⟨s'', hiter, hr0'', hr1'', hr2''⟩ := loop_iteration s' k' y hr2' hr1' hlt
     use s''
@@ -184,15 +168,11 @@ theorem full_execution (x y : ℕ) :
     ∃ s, Steps addProgram (Config.init [x, y]) ⟨5, s⟩ ∧
          s.read 0 = x + y ∧
          (⟨5, s⟩ : Config).isHalted addProgram := by
-  -- Step 0: Initialize (pc=0 → pc=1, R2 := 0)
   let s0 := State.fromInputs [x, y]
   have h_init : Step addProgram ⟨0, s0⟩ ⟨1, s0.write 2 0⟩ := step_init s0
-  -- Get state after y iterations
   obtain ⟨s_final, hsteps_loop, hr0, hr1, hr2⟩ := loop_invariant x y y (Nat.le_refl y)
-  -- Exit condition: R2 = R1 = y
   have heq : s_final.read 2 = s_final.read 1 := by omega
   have h_exit := exits_when_done s_final heq
-  -- Compose: init step + loop steps + exit step
   use s_final
   refine ⟨?_, ?_, halted_at_5 s_final⟩
   · exact Steps.trans (Steps.single h_init) (Steps.trans hsteps_loop h_exit)
@@ -207,29 +187,21 @@ of y iterations, resulting in x + y in R0. -/
 theorem add_computable : URMComputable 2 (fun xy => Part.some (xy 0 + xy 1)) := by
   use addProgram
   intro inputs
-  -- Convert Fin 2 → ℕ to concrete values
   let x := inputs 0
   let y := inputs 1
-  have h_ofFn : List.ofFn inputs = [x, y] := by
-    simp only [List.ofFn]; rfl
+  have h_ofFn : List.ofFn inputs = [x, y] := by simp only [List.ofFn]; rfl
   constructor
-  · -- Halting equivalence: always halts ↔ Part.some is defined (always true)
-    simp only [Part.some_dom, iff_true]
+  · simp only [Part.some_dom, iff_true]
     rw [h_ofFn]
     obtain ⟨s, hsteps, _, hhalted⟩ := addProgram.full_execution x y
     exact ⟨⟨5, s⟩, hsteps, hhalted⟩
-  · -- Result equality: Result = x + y
-    intro hHalts hDom
-    -- Get the halted config and its properties
+  · intro hHalts hDom
     obtain ⟨s, hsteps, hr0, hhalted⟩ := addProgram.full_execution x y
-    -- Convert steps to use List.ofFn
     have hsteps' : Steps addProgram (Config.init (List.ofFn inputs)) ⟨5, s⟩ := by
       simp only [h_ofFn]; exact hsteps
-    -- The chosen halted config must equal our computed one (by uniqueness)
     obtain ⟨hsteps_chosen, hhalted_chosen⟩ := Classical.choose_spec hHalts
     have heq := Steps.halts_unique hsteps_chosen hhalted_chosen hsteps' hhalted
     simp only [Result, heq, State.output, Part.get_some]
-    -- hr0 : s.read 0 = x + y, and x = inputs 0, y = inputs 1
     exact hr0
 
 /-! ## The Predecessor Program
@@ -345,14 +317,11 @@ theorem zero_execution :
     ∃ s, Steps predProgram (Config.init [0]) ⟨9, s⟩ ∧
          s.read 0 = 0 ∧
          (⟨9, s⟩ : Config).isHalted predProgram := by
-  -- Initial state: R0 = 0, R1 = 0 (fromInputs gives 0 for out-of-range)
   let s0 := State.fromInputs [0]
   have hs0_r0 : s0 0 = 0 := rfl
   have hs0_r1 : s0 1 = 0 := rfl
-  -- pc=0: Z 1 -> pc=1, R1=0
   let s1 := s0.write 1 0
   have h1 : Step predProgram ⟨0, s0⟩ ⟨1, s1⟩ := step_clear_r1 s0
-  -- pc=1: J 0 1 9 -> R0=0, R1=0, equal! Jump to pc=9
   have hs1_r0 : s1.read 0 = 0 := by
     simp only [s1, State.read, State.write, Function.update_of_ne (by decide : (0 : ℕ) ≠ 1)]
     exact hs0_r0
@@ -360,7 +329,6 @@ theorem zero_execution :
     simp only [s1, State.read, State.write, Function.update_self]
   have heq : s1.read 0 = s1.read 1 := by rw [hs1_r0, hs1_r1]
   have h2 : Step predProgram ⟨1, s1⟩ ⟨9, s1⟩ := step_zero_exit s1 heq
-  -- Compose steps
   use s1
   refine ⟨by aesop_steps, hs1_r0, halted_at_9 s1⟩
 
@@ -373,36 +341,27 @@ theorem loop_iteration (s : State) (n k : ℕ)
           s'.read 0 = n ∧
           s'.read 1 = k + 2 ∧
           s'.read 2 = k + 1 := by
-  -- k + 1 < n implies R0 ≠ R1
   have hne : s.read 0 ≠ s.read 1 := by omega
-  -- pc=4 → pc=5: continue loop (R0 ≠ R1)
   have h1 : Step predProgram ⟨4, s⟩ ⟨5, s⟩ := step_continue_loop s hne
-  -- pc=5 → pc=6: increment R2
   let s1 := s.write 2 (s.read 2 + 1)
   have h2 : Step predProgram ⟨5, s⟩ ⟨6, s1⟩ := step_inc_r2 s
-  -- pc=6 → pc=7: increment R1
   let s2 := s1.write 1 (s1.read 1 + 1)
   have h3 : Step predProgram ⟨6, s1⟩ ⟨7, s2⟩ := step_inc_r1 s1
-  -- pc=7 → pc=4: jump back
   have h4 : Step predProgram ⟨7, s2⟩ ⟨4, s2⟩ := step_jump_back s2
-  -- Compose all steps
   use s2
   constructor
   · aesop_steps
   constructor
-  · -- s2.read 0 = n (unchanged)
-    simp only [s2, s1, State.read, State.write,
+  · simp only [s2, s1, State.read, State.write,
                Function.update_of_ne (by decide : (0 : ℕ) ≠ 1),
                Function.update_of_ne (by decide : (0 : ℕ) ≠ 2)]
     exact hn
   constructor
-  · -- s2.read 1 = k + 2
-    simp only [s2, State.read, State.write, Function.update_self]
+  · simp only [s2, State.read, State.write, Function.update_self]
     simp only [s1, State.read, State.write, Function.update_of_ne (by decide : (1 : ℕ) ≠ 2)]
     simp only [State.read] at hr1
     omega
-  · -- s2.read 2 = k + 1
-    simp only [s2, State.read, State.write, Function.update_of_ne (by decide : (2 : ℕ) ≠ 1)]
+  · simp only [s2, State.read, State.write, Function.update_of_ne (by decide : (2 : ℕ) ≠ 1)]
     simp only [s1, State.read, State.write, Function.update_self]
     simp only [State.read] at hr2
     omega
@@ -416,26 +375,20 @@ theorem loop_invariant (n k : ℕ) (hk : k < n) :
          s.read 2 = k := by
   induction k with
   | zero =>
-    -- Base: 0 iterations, just use initial state
     let s_init := (State.fromInputs [n]).write 1 0 |>.write 2 0 |>.write 1 1
     use s_init
     refine ⟨Steps.refl _, ?_, ?_, ?_⟩
-    · -- s_init.read 0 = n
-      simp only [s_init, State.read, State.write, State.fromInputs,
+    · simp only [s_init, State.read, State.write, State.fromInputs,
                  Function.update_of_ne (by decide : (0 : ℕ) ≠ 1),
                  Function.update_of_ne (by decide : (0 : ℕ) ≠ 2),
                  List.getD_cons_zero]
-    · -- s_init.read 1 = 1
-      simp only [s_init, State.read, State.write, Function.update_self]
-    · -- s_init.read 2 = 0
-      simp only [s_init, State.read, State.write,
+    · simp only [s_init, State.read, State.write, Function.update_self]
+    · simp only [s_init, State.read, State.write,
                  Function.update_of_ne (by decide : (2 : ℕ) ≠ 1),
                  Function.update_self]
   | succ k' ih =>
-    -- Inductive case: use k' iterations, then one more
     have hk' : k' < n := Nat.lt_of_succ_lt hk
     obtain ⟨s', hsteps', hr0', hr1', hr2'⟩ := ih (hk')
-    -- k' + 1 < n (since k' + 1 = succ k' ≤ k < n by hk)
     have hlt : k' + 1 < n := hk
     obtain ⟨s'', hiter, hr0'', hr1'', hr2''⟩ := loop_iteration s' n k' hr0' hr1' hr2' hlt
     use s''
@@ -447,16 +400,12 @@ theorem loop_exit (s : State) (n : ℕ)
     ∃ s', Steps predProgram ⟨4, s⟩ ⟨9, s'⟩ ∧
           s'.read 0 = n - 1 ∧
           (⟨9, s'⟩ : Config).isHalted predProgram := by
-  -- pc=4: J 0 1 8 -> R0 = R1 = n, jump to pc=8
   have heq : s.read 0 = s.read 1 := by rw [hr0, hr1]
   have h1 : Step predProgram ⟨4, s⟩ ⟨8, s⟩ := step_found_pred s heq
-  -- pc=8: T 2 0 -> R0 := R2 = n - 1, pc=9 (halted)
   let s' := s.write 0 (s.read 2)
   have h2 : Step predProgram ⟨8, s⟩ ⟨9, s'⟩ := step_copy_result s
-  -- Compose steps
   use s'
   refine ⟨by aesop_steps, ?_, halted_at_9 s'⟩
-  -- s'.read 0 = n - 1
   simp only [s', State.read, State.write, Function.update_self]
   simp only [State.read] at hr2
   exact hr2
@@ -466,16 +415,11 @@ theorem nonzero_execution (n : ℕ) (hn : 0 < n) :
     ∃ s, Steps predProgram (Config.init [n]) ⟨9, s⟩ ∧
          s.read 0 = n - 1 ∧
          (⟨9, s⟩ : Config).isHalted predProgram := by
-  -- Phase 1: Setup (pc 0-3)
   let s0 := State.fromInputs [n]
   have hs0_r0 : s0 0 = n := rfl
   have hs0_r1 : s0 1 = 0 := rfl
-
-  -- pc=0: Z 1 -> R1 := 0, pc=1
   let s1 := s0.write 1 0
   have h_step0 : Step predProgram ⟨0, s0⟩ ⟨1, s1⟩ := step_clear_r1 s0
-
-  -- pc=1: J 0 1 9 -> R0 = n ≠ 0 = R1, continue to pc=2
   have hs1_r0 : s1.read 0 = n := by
     simp only [s1, State.read, State.write, Function.update_of_ne (by decide : (0 : ℕ) ≠ 1)]
     exact hs0_r0
@@ -483,41 +427,23 @@ theorem nonzero_execution (n : ℕ) (hn : 0 < n) :
     simp only [s1, State.read, State.write, Function.update_self]
   have hne1 : s1.read 0 ≠ s1.read 1 := by rw [hs1_r0, hs1_r1]; omega
   have h_step1 : Step predProgram ⟨1, s1⟩ ⟨2, s1⟩ := step_nonzero_continue s1 hne1
-
-  -- pc=2: Z 2 -> R2 := 0, pc=3
   let s2 := s1.write 2 0
   have h_step2 : Step predProgram ⟨2, s1⟩ ⟨3, s2⟩ := step_clear_r2 s1
-
-  -- pc=3: S 1 -> R1 := 1, pc=4
   let s3 := s2.write 1 (s2.read 1 + 1)
   have h_step3 : Step predProgram ⟨3, s2⟩ ⟨4, s3⟩ := step_init_r1 s2
-
-  -- Verify s3 = the state expected by loop_invariant
   have hs3_eq : s3 = ((((State.fromInputs [n]).write 1 0).write 2 0).write 1 1) := by
     simp only [s3, s2, s1, State.write, State.read]
     ext i
     simp only [Function.update]
     split_ifs <;> first | rfl | omega
-
-  -- Compose setup steps: pc 0 -> 1 -> 2 -> 3 -> 4
   have h_setup : Steps predProgram ⟨0, s0⟩ ⟨4, s3⟩ := by aesop_steps
-
-  -- Phase 2: Loop iterations
-  -- We need n - 1 iterations to get R1 = n, R2 = n - 1
   have hk : n - 1 < n := Nat.sub_lt hn Nat.one_pos
   obtain ⟨s_loop, h_loop_steps, hr0_loop, hr1_loop, hr2_loop⟩ := loop_invariant n (n - 1) hk
-
-  -- Convert loop steps to use s3
   have h_loop_steps' : Steps predProgram ⟨4, s3⟩ ⟨4, s_loop⟩ := by
     rw [hs3_eq]; exact h_loop_steps
-
-  -- Phase 3: Exit
-  -- At this point: R0 = n, R1 = (n-1) + 1 = n, R2 = n - 1
   have hr1_eq_n : s_loop.read 1 = n := by omega
   obtain ⟨s_final, h_exit_steps, hr0_final, h_halted_final⟩ :=
     loop_exit s_loop n hr0_loop hr1_eq_n hr2_loop
-
-  -- Compose all phases: setup + loop + exit
   use s_final
   refine ⟨?_, hr0_final, h_halted_final⟩
   exact Steps.trans h_setup (Steps.trans h_loop_steps' h_exit_steps)
@@ -532,25 +458,20 @@ theorem pred_computable : URMComputable 1 (fun x => Part.some (x 0 - 1)) := by
   let n := inputs 0
   have h_ofFn : List.ofFn inputs = [n] := by simp only [List.ofFn]; rfl
   constructor
-  · -- Halting equivalence: always halts
-    simp only [Part.some_dom, iff_true]
+  · simp only [Part.some_dom, iff_true]
     cases Nat.eq_zero_or_pos n with
     | inl hz =>
-      -- n = 0: use zero_execution
       rw [h_ofFn, hz]
       obtain ⟨s, hsteps, _, hhalted⟩ := predProgram.zero_execution
       exact ⟨⟨9, s⟩, hsteps, hhalted⟩
     | inr hpos =>
-      -- n > 0: use nonzero_execution
       rw [h_ofFn]
       obtain ⟨s, hsteps, _, hhalted⟩ := predProgram.nonzero_execution n hpos
       exact ⟨⟨9, s⟩, hsteps, hhalted⟩
-  · -- Result equality
-    intro hHalts hDom
+  · intro hHalts hDom
     obtain ⟨hsteps_chosen, hhalted_chosen⟩ := Classical.choose_spec hHalts
     cases Nat.eq_zero_or_pos n with
     | inl hz =>
-      -- n = 0: result is 0 = 0 - 1 = 0
       obtain ⟨s, hsteps, hr0, hhalted⟩ := predProgram.zero_execution
       have hsteps' : Steps predProgram (Config.init (List.ofFn inputs)) ⟨9, s⟩ := by
         simp only [h_ofFn, hz]; exact hsteps
@@ -558,7 +479,6 @@ theorem pred_computable : URMComputable 1 (fun x => Part.some (x 0 - 1)) := by
       simp only [Result, heq, State.output, Part.get_some, State.read] at hr0 ⊢
       omega
     | inr hpos =>
-      -- n > 0: result is n - 1
       obtain ⟨s, hsteps, hr0, hhalted⟩ := predProgram.nonzero_execution n hpos
       have hsteps' : Steps predProgram (Config.init (List.ofFn inputs)) ⟨9, s⟩ := by
         simp only [h_ofFn]; exact hsteps
@@ -592,20 +512,10 @@ private theorem sub_pr_eq (m n : ℕ) :
     simp only [Pr_snoc_succ]
     rw [ih]
     simp only [Part.bind_some]
-    -- extendInputsForG (fun _ => m) k (m - k) 2 = m - k (the accumulator)
-    -- Note: 2 in Fin 3 is Fin.last 2
     have h2_eq : (2 : Fin 3) = Fin.last 2 := rfl
     have h : extendInputsForG (fun _ : Fin 1 => m) k (m - k) 2 = m - k := by
       simp only [extendInputsForG, h2_eq, Fin.snoc_last]
-    -- Goal: Part.some (extendInputsForG ... 2 - 1) = Part.some (m - (k + 1))
-    -- Using h: Part.some ((m - k) - 1) = Part.some (m - (k + 1))
-    rw [h]
-    -- Now: Part.some ((m - k) - 1) = Part.some (m - (k + 1))
-    -- Use Nat.sub_succ: m - (k + 1) = (m - k) - 1
-    rw [Nat.sub_succ]
-    -- Now need: Part.some ((m - k) - 1) = Part.some ((m - k).pred)
-    -- But (n - 1) = n.pred for natural numbers
-    rfl
+    rw [h, Nat.sub_succ]; rfl
 
 open URMComputable in
 /-- Truncated subtraction (monus) is URM-computable.
@@ -616,30 +526,24 @@ open URMComputable in
     - Base: f(m) = m (identity)
     - Step: g(m, k, acc) = pred(acc) -/
 theorem sub_computable : URMComputable 2 (fun mn => Part.some (mn 0 - mn 1)) := by
-  -- The step function g(m, k, acc) = pred(acc) is composition of pred with projection
   have h_sub_step := URMComputable.comp_general (m := 1) (n := 3)
-    pred_computable
-    (fun _ => proj_computable 3 2)
+    pred_computable (fun _ => proj_computable 3 2)
   have hStepSF : URMComputableSF 3 (fun inputs => Part.some (inputs 2 - 1)) := by
     convert h_sub_step using 1
     funext inputs
     exact (sub_pr_step_eq inputs).symm
   have hStep : URMComputable 3 (fun inputs => Part.some (inputs 2 - 1)) :=
     hStepSF.toComputable
-  -- Apply primitive recursion closure
   have hPR := URMComputable.primRec (n := 1) id_computable hStep
-  -- Convert to show PrFunction computes sub
   convert hPR using 1
   funext inputs
   simp only [PrFunction]
-  -- Express inputs as Fin.snoc
   have hinputs : inputs = Fin.snoc (fun _ : Fin 1 => inputs 0) (inputs 1) := by
     ext i
     fin_cases i
     · simp [Fin.snoc]
     · simp [Fin.snoc]
   rw [hinputs]
-  -- Need the symmetric form
   symm
   exact sub_pr_eq (inputs 0) (inputs 1)
 
@@ -679,11 +583,9 @@ private def mulStepGs : Fin 2 → (Fin 3 → ℕ) → Part ℕ :=
 private theorem mul_pr_step_eq (inputs : Fin 3 → ℕ) :
     compFunction 2 3 (fun xy => Part.some (xy 0 + xy 1)) mulStepGs inputs =
     Part.some (inputs 0 + inputs 2) := by
-  -- Expand and simplify using the explicit mulStepGs values
   have h0 : mulStepGs 0 inputs = Part.some (inputs 0) := rfl
   have h1 : mulStepGs (Fin.succ 0) inputs = Part.some (inputs 2) := rfl
-  simp only [compFunction, Part.sequence, h0, h1, Part.bind_some, Part.map_some]
-  rfl
+  simp only [compFunction, Part.sequence, h0, h1, Part.bind_some, Part.map_some]; rfl
 
 /-- Helper: Pr with zero base and add-x-to-acc step computes multiplication. -/
 private theorem mul_pr_eq (x y : ℕ) :
@@ -695,20 +597,12 @@ private theorem mul_pr_eq (x y : ℕ) :
     simp only [Pr_snoc_succ]
     rw [ih]
     simp only [Part.bind_some]
-    -- extendInputsForG (fun _ => x) k (x * k) 0 = x
-    -- extendInputsForG (fun _ => x) k (x * k) 2 = x * k
     have h0 : extendInputsForG (fun _ : Fin 1 => x) k (x * k) 0 = x := by
-      simp only [extendInputsForG, Fin.snoc]
-      -- 0 in Fin 3 is Fin.castSucc (Fin.castSucc 0)
-      rfl
+      simp only [extendInputsForG, Fin.snoc]; rfl
     have h2_eq : (2 : Fin 3) = Fin.last 2 := rfl
     have h2 : extendInputsForG (fun _ : Fin 1 => x) k (x * k) 2 = x * k := by
       simp only [extendInputsForG, h2_eq, Fin.snoc_last]
-    -- Goal: Part.some (extendInputsForG ... 0 + extendInputsForG ... 2) = Part.some (x * (k + 1))
-    rw [h0, h2]
-    -- Now: Part.some (x + x * k) = Part.some (x * (k + 1))
-    -- Use Nat.mul_succ: x * (k + 1) = x * k + x = x + x * k (by commutativity)
-    rw [Nat.mul_succ, Nat.add_comm]
+    rw [h0, h2, Nat.mul_succ, Nat.add_comm]
 
 open URMComputable in
 /-- Multiplication is URM-computable.
@@ -719,7 +613,6 @@ open URMComputable in
     - Base: f(x) = 0 (constant zero)
     - Step: g(x, k, acc) = x + acc (add x to accumulator) -/
 theorem mul_computable : URMComputable 2 (fun xy => Part.some (xy 0 * xy 1)) := by
-  -- The step function g(x, k, acc) = x + acc is composition of add with projections
   have hgs : ∀ i, URMComputable 3 (mulStepGs i) := by
     intro i; fin_cases i <;> simp only [mulStepGs] <;> exact proj_computable 3 _
   have h_mul_step := URMComputable.comp_general (m := 2) (n := 3) add_computable hgs
@@ -729,15 +622,11 @@ theorem mul_computable : URMComputable 2 (fun xy => Part.some (xy 0 * xy 1)) := 
     exact (mul_pr_step_eq inputs).symm
   have hStep : URMComputable 3 (fun inputs => Part.some (inputs 0 + inputs 2)) :=
     hStepSF.toComputable
-  -- The base function f(x) = 0
   have hBase : URMComputable 1 (fun _ => Part.some 0) := const_zero_computable
-  -- Apply primitive recursion closure
   have hPR := URMComputable.primRec (n := 1) hBase hStep
-  -- Convert to show PrFunction computes multiplication
   convert hPR using 1
   funext inputs
   simp only [PrFunction]
-  -- Express inputs as Fin.snoc
   have hinputs : inputs = Fin.snoc (fun _ : Fin 1 => inputs 0) (inputs 1) := by
     ext i
     fin_cases i

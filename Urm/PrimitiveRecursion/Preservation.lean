@@ -57,34 +57,28 @@ theorem prSetupPhase_saves_inputs (n : ℕ) (pF pG : Program) (inputs : Fin n �
     (hhalted : c'.isHalted (prSetupPhase n pF pG)) (i : Fin n) :
     c'.state.read (prSavedInputsStart n pF pG + i) = inputs i := by
   have hsl := prSetupPhase_isStraightLine n pF pG
-  -- The T instruction at position i writes to prSavedInputsStart + i
   have hk : ↑i < (prSetupPhase n pF pG).length := by
     simp only [prSetupPhase, List.length_append, copyRegisterRange_length, List.length]; omega
   have hwrite : (prSetupPhase n pF pG)[↑i] = Instr.T i (prSavedInputsStart n pF pG + i) := by
     simp only [prSetupPhase, Program.copyRegisterRange, Nat.zero_add]
     grind
-  -- No instruction after position i writes to prSavedInputsStart + i
   have hnowrite_after : ∀ j (hj : j < (prSetupPhase n pF pG).length), ↑i < j →
       ((prSetupPhase n pF pG)[j]).writesTo ≠ some (prSavedInputsStart n pF pG + i) := by
     intro j hj hij
     simp only [prSetupPhase, List.length_append, copyRegisterRange_length, List.length] at hj
     simp only [prSetupPhase, List.getElem_append, copyRegisterRange_length]
     by_cases hj_copy : j < n + 1
-    · -- In copyRegisterRange: writes to prSavedInputsStart + j, which ≠ prSavedInputsStart + i
-      simp only [hj_copy, dite_true, Program.copyRegisterRange, List.getElem_map, List.getElem_range,
+    · simp only [hj_copy, dite_true, Program.copyRegisterRange, List.getElem_map, List.getElem_range,
         Instr.writesTo, ne_eq, Option.some.injEq]; omega
-    · -- In [Z counter, Z zero]
-      simp only [hj_copy, dite_false]
+    · simp only [hj_copy, dite_false]
       let hj_small : j - (n + 1) = 0 ∨ j - (n + 1) = 1 := by omega
       rcases hj_small with h0 | h1
       · simp only [h0, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
         pr_register_omega
       · simp only [h1, List.getElem_cons_succ, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
         pr_register_omega
-  -- Use straightLine_transfer_result
   obtain ⟨s_before, ⟨c_i, hsteps_i, _, hs_before_eq⟩, htransfer⟩ := straightLine_transfer_result hsl s
     (↑i) (↑i) (prSavedInputsStart n pF pG + i) hk hwrite hnowrite_after
-  -- No instruction before position i writes to i (source register)
   have hnowrite_before : ∀ instr, instr ∈ (prSetupPhase n pF pG) → instr.writesTo ≠ some (↑i) := by
     intro instr hmem
     simp only [prSetupPhase, List.mem_append, List.mem_cons, List.mem_nil_iff] at hmem
@@ -103,7 +97,6 @@ theorem prSetupPhase_saves_inputs (n : ℕ) (pF pG : Program) (inputs : Fin n �
   have hs_before_val : s_before.read (↑i) = s.read (↑i) := by
     rw [← hs_before_eq]
     exact Steps.straightLine_preserves hsl hsteps_i hnowrite_before
-  -- s.read i = inputs i
   let hinput_val : s.read ↑i = inputs i := by
     simp only [hs, State.fromInputs, State.read, List.getD_eq_getElem?_getD,
       List.getElem?_ofFn, Fin.snoc]
@@ -111,7 +104,6 @@ theorem prSetupPhase_saves_inputs (n : ℕ) (pF pG : Program) (inputs : Fin n �
     let hi_lt' : (i : ℕ) < n + 1 := Nat.lt_succ_of_lt hi_lt
     simp only [hi_lt', ↓reduceDIte, hi_lt, Option.getD_some]
     simp only [cast_eq, Fin.castLT_mk, Fin.eta]
-  -- Combine via halts_unique
   have ⟨hsteps', hhalted', _⟩ := straightLineFinalState_spec hsl s
   have heq : c'.state = straightLineFinalState hsl s := by
     rw [Steps.halts_unique hsteps hhalted hsteps' hhalted']; rfl
@@ -124,38 +116,31 @@ theorem prSetupPhase_saves_y (n : ℕ) (pF pG : Program) (inputs : Fin n → ℕ
     (hhalted : c'.isHalted (prSetupPhase n pF pG)) :
     c'.state.read (prSavedYReg n pF pG) = y := by
   have hsl := prSetupPhase_isStraightLine n pF pG
-  -- prSavedYReg = prSavedInputsStart + n
   have hSavedY_eq : prSavedYReg n pF pG = prSavedInputsStart n pF pG + n := by
     pr_register_omega
   rw [hSavedY_eq]
-  -- The T instruction at position n writes to prSavedInputsStart + n
   have hk : n < (prSetupPhase n pF pG).length := by
     simp only [prSetupPhase, List.length_append, copyRegisterRange_length, List.length]; omega
   have hwrite : (prSetupPhase n pF pG)[n] = Instr.T n (prSavedInputsStart n pF pG + n) := by
     simp only [prSetupPhase, Program.copyRegisterRange, Nat.zero_add]
     grind
-  -- No instruction after position n writes to prSavedInputsStart + n
   have hnowrite_after : ∀ j (hj : j < (prSetupPhase n pF pG).length), n < j →
       ((prSetupPhase n pF pG)[j]).writesTo ≠ some (prSavedInputsStart n pF pG + n) := by
     intro j hj hjn
     simp only [prSetupPhase, List.length_append, copyRegisterRange_length, List.length] at hj
     simp only [prSetupPhase, List.getElem_append, copyRegisterRange_length]
     by_cases hj_copy : j < n + 1
-    · -- In copyRegisterRange: writes to prSavedInputsStart + j, which ≠ prSavedInputsStart + n
-      simp only [hj_copy, dite_true, Program.copyRegisterRange, List.getElem_map, List.getElem_range,
+    · simp only [hj_copy, dite_true, Program.copyRegisterRange, List.getElem_map, List.getElem_range,
         Instr.writesTo, ne_eq, Option.some.injEq]; omega
-    · -- In [Z counter, Z zero]
-      simp only [hj_copy, dite_false]
+    · simp only [hj_copy, dite_false]
       let hj_small : j - (n + 1) = 0 ∨ j - (n + 1) = 1 := by omega
       rcases hj_small with h0 | h1
       · simp only [h0, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
         pr_register_omega
       · simp only [h1, List.getElem_cons_succ, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
         pr_register_omega
-  -- Use straightLine_transfer_result
   obtain ⟨s_before, ⟨c_n, hsteps_n, _, hs_before_eq⟩, htransfer⟩ := straightLine_transfer_result hsl s
     n n (prSavedInputsStart n pF pG + n) hk hwrite hnowrite_after
-  -- No instruction before position n writes to n (source register)
   have hnowrite_before : ∀ instr, instr ∈ (prSetupPhase n pF pG) → instr.writesTo ≠ some n := by
     intro instr hmem
     simp only [prSetupPhase, List.mem_append, List.mem_cons, List.mem_nil_iff] at hmem
@@ -174,13 +159,11 @@ theorem prSetupPhase_saves_y (n : ℕ) (pF pG : Program) (inputs : Fin n → ℕ
   have hs_before_val : s_before.read n = s.read n := by
     rw [← hs_before_eq]
     exact Steps.straightLine_preserves hsl hsteps_n hnowrite_before
-  -- s.read n = y
   let hy_val : s.read n = y := by
     simp only [hs, State.fromInputs, State.read, List.getD_eq_getElem?_getD,
       List.getElem?_ofFn, Fin.snoc]
     let hn_lt : n < n + 1 := Nat.lt_succ_self n
     simp only [hn_lt, ↓reduceDIte, show ¬(n < n) by omega, Option.getD_some, cast_eq]
-  -- Combine via halts_unique
   have ⟨hsteps', hhalted', _⟩ := straightLineFinalState_spec hsl s
   have heq : c'.state = straightLineFinalState hsl s := by
     rw [Steps.halts_unique hsteps hhalted hsteps' hhalted']; rfl
@@ -241,7 +224,6 @@ theorem prBaseCasePrologue_restores_inputs (n : ℕ) (pF pG : Program)
     (hhalted : c'.isHalted (prBaseCasePrologue n pF pG)) (i : Fin n) :
     c'.state.read i = s.read (prSavedInputsStart n pF pG + i) := by
   have hsl := prBaseCasePrologue_isStraightLine n pF pG
-  -- The T instruction at position (base+1) + i writes to register i
   have hi : ↑i < n := i.2
   have hk : (primitiveRecursionBase n pF pG + 1) + ↑i < (prBaseCasePrologue n pF pG).length := by
     simp only [prBaseCasePrologue, List.length_append, clearRegisters_length, copyRegisterRange_length]
@@ -255,27 +237,20 @@ theorem prBaseCasePrologue_restores_inputs (n : ℕ) (pF pG : Program)
     let hidx : (primitiveRecursionBase n pF pG + 1) + ↑i - (clearRegisters (primitiveRecursionBase n pF pG)).length = ↑i := by
       simp only [clearRegisters_length]; omega
     simp only [hidx, Program.copyRegisterRange, List.getElem_map, List.getElem_range, Nat.zero_add]
-  -- No instruction after position k writes to register i
   have hnowrite_after : ∀ j (hj : j < (prBaseCasePrologue n pF pG).length),
       (primitiveRecursionBase n pF pG + 1) + ↑i < j →
       ((prBaseCasePrologue n pF pG)[j]).writesTo ≠ some ↑i := by
     intro j hj hjk
     simp only [prBaseCasePrologue, List.length_append, clearRegisters_length, copyRegisterRange_length] at hj
     simp only [prBaseCasePrologue]
-    -- prBaseCasePrologue = clearRegisters ++ copyRegisterRange (2 parts)
     by_cases hj_clear : j < (clearRegisters (primitiveRecursionBase n pF pG)).length
-    · -- In clearRegisters: but hjk says j > k ≥ base+1, contradiction
-      simp only [clearRegisters_length] at hj_clear; omega
-    · -- In copyRegisterRange: writes to 0 + j' = j' where j' > i
-      rw [List.getElem_append_right (Nat.not_lt.mp hj_clear)]
+    · simp only [clearRegisters_length] at hj_clear; omega
+    · rw [List.getElem_append_right (Nat.not_lt.mp hj_clear)]
       simp only [Program.copyRegisterRange, List.getElem_map, List.getElem_range,
         Instr.writesTo, ne_eq, Option.some.injEq, Nat.zero_add, clearRegisters_length]
       omega
-  -- Use straightLine_transfer_result
   obtain ⟨s_before, ⟨c_k, hsteps_k, _, hs_before⟩, htransfer⟩ :=
     straightLine_transfer_result hsl s ((primitiveRecursionBase n pF pG + 1) + ↑i) (prSavedInputsStart n pF pG + i) ↑i hk hwrite hnowrite_after
-  -- s_before.read (prSavedInputsStart + i) = s.read (prSavedInputsStart + i)
-  -- Nothing before position k writes to prSavedInputsStart + i
   let hs_before_val : s_before.read (prSavedInputsStart n pF pG + ↑i) =
       s.read (prSavedInputsStart n pF pG + ↑i) := by
     rw [← hs_before]
@@ -285,19 +260,16 @@ theorem prBaseCasePrologue_restores_inputs (n : ℕ) (pF pG : Program)
       simp only [prBaseCasePrologue, List.mem_append] at hinstr
       cases hinstr with
       | inl hclear =>
-        -- clearRegisters writes to 0..base, savedInputsStart = base+1+n
         simp only [Program.clearRegisters, List.mem_map, List.mem_range] at hclear
         obtain ⟨j, hj, rfl⟩ := hclear
         simp only [Instr.writesTo, ne_eq, Option.some.injEq]
         let h := prSavedInputsStart_gt_base n pF pG; omega
       | inr hcopy =>
-        -- copyRegisterRange writes to 0..n-1, savedInputsStart > n
         simp only [Program.copyRegisterRange, List.mem_map, List.mem_range] at hcopy
         obtain ⟨j, hj, rfl⟩ := hcopy
         simp only [Instr.writesTo, ne_eq, Option.some.injEq, Nat.zero_add]
         let h := prSavedInputsStart_ge_n n pF pG; omega
     exact Steps.straightLine_preserves hsl hsteps_k hnowrite_before
-  -- Combine via halts_unique
   have ⟨hsteps', hhalted', _⟩ := straightLineFinalState_spec hsl s
   have heq : c'.state = straightLineFinalState hsl s := by
     rw [Steps.halts_unique hsteps hhalted hsteps' hhalted']; rfl
@@ -379,12 +351,7 @@ theorem prLoopPrologue_restores_inputs (n : ℕ) (pF pG : Program)
     (hhalted : c'.isHalted (prLoopPrologue n pF pG)) (i : Fin n)
     (_hs_saved : ∀ j : Fin n, s.read (prSavedInputsStart n pF pG + j) = (fun j => s.read (prSavedInputsStart n pF pG + j)) j) :
     c'.state.read i = s.read (prSavedInputsStart n pF pG + i) := by
-  -- Similar to prBaseCasePrologue_restores_inputs but with extra T instructions at end
   have hsl := prLoopPrologue_isStraightLine n pF pG
-  -- Position of the T instruction that writes to register i
-  -- clearRegisters: positions 0..(base)
-  -- copyRegisterRange: positions (base+1)..(base+n)
-  -- The T at position (base+1+i) writes savedInputsStart+i to i
   have hk : (primitiveRecursionBase n pF pG + 1) + ↑i < (prLoopPrologue n pF pG).length := by
     simp only [prLoopPrologue, List.length_append, clearRegisters_length, copyRegisterRange_length,
       List.length]
@@ -392,8 +359,6 @@ theorem prLoopPrologue_restores_inputs (n : ℕ) (pF pG : Program)
   have hwrite : (prLoopPrologue n pF pG)[(primitiveRecursionBase n pF pG + 1) + ↑i] =
       Instr.T (prSavedInputsStart n pF pG + i) i := by
     simp only [prLoopPrologue]
-    -- prLoopPrologue = (clearRegisters ++ copyRegisterRange) ++ [T, T]
-    -- Index (base+1+i) is in copyRegisterRange since i < n
     let h_in_clear_copy : (primitiveRecursionBase n pF pG + 1) + ↑i <
         (clearRegisters (primitiveRecursionBase n pF pG) ++
          copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length := by len_append_omega
@@ -406,7 +371,6 @@ theorem prLoopPrologue_restores_inputs (n : ℕ) (pF pG : Program)
         (clearRegisters (primitiveRecursionBase n pF pG)).length = ↑i := by
       simp only [clearRegisters_length]; omega
     simp only [hidx, Program.copyRegisterRange, List.getElem_map, List.getElem_range, Nat.zero_add]
-  -- No instruction after this position writes to register i
   have hnowrite_after : ∀ j (hj : j < (prLoopPrologue n pF pG).length),
       (primitiveRecursionBase n pF pG + 1) + ↑i < j →
       ((prLoopPrologue n pF pG)[j]).writesTo ≠ some ↑i := by
@@ -416,9 +380,7 @@ theorem prLoopPrologue_restores_inputs (n : ℕ) (pF pG : Program)
     simp only [prLoopPrologue]
     by_cases hj_in_main : j < (clearRegisters (primitiveRecursionBase n pF pG) ++
         copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length
-    · -- In clearRegisters ++ copyRegisterRange section
-      -- prLoopPrologue = (clearRegisters ++ copyRegisterRange) ++ [T, T]
-      rw [List.getElem_append_left hj_in_main]
+    · rw [List.getElem_append_left hj_in_main]
       by_cases hj_clear : j < (clearRegisters (primitiveRecursionBase n pF pG)).length
       · simp only [clearRegisters_length] at hj_clear; omega
       · rw [List.getElem_append_right (Nat.not_lt.mp hj_clear)]
@@ -426,8 +388,7 @@ theorem prLoopPrologue_restores_inputs (n : ℕ) (pF pG : Program)
           Instr.writesTo, ne_eq, Option.some.injEq, Nat.zero_add, clearRegisters_length]
         simp only [List.length_append, clearRegisters_length, copyRegisterRange_length] at hj_in_main
         omega
-    · -- In the final [T counterReg n, T accumulatorReg (n+1)]
-      let hge : (clearRegisters (primitiveRecursionBase n pF pG) ++
+    · let hge : (clearRegisters (primitiveRecursionBase n pF pG) ++
           copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length ≤ j := Nat.not_lt.mp hj_in_main
       rw [List.getElem_append_right hge]
       let hj_idx : j - (clearRegisters (primitiveRecursionBase n pF pG) ++
@@ -444,7 +405,6 @@ theorem prLoopPrologue_restores_inputs (n : ℕ) (pF pG : Program)
   obtain ⟨s_before, ⟨c_k, hsteps_k, _, hs_before⟩, htransfer⟩ :=
     straightLine_transfer_result hsl s ((primitiveRecursionBase n pF pG + 1) + ↑i)
       (prSavedInputsStart n pF pG + i) ↑i hk hwrite hnowrite_after
-  -- No instruction before this position writes to source register (prSavedInputsStart + i)
   let hs_before_val : s_before.read (prSavedInputsStart n pF pG + ↑i) =
       s.read (prSavedInputsStart n pF pG + ↑i) := by
     rw [← hs_before]
@@ -452,7 +412,6 @@ theorem prLoopPrologue_restores_inputs (n : ℕ) (pF pG : Program)
         instr.writesTo ≠ some (prSavedInputsStart n pF pG + ↑i) := by
       intro instr hinstr
       simp only [prLoopPrologue, List.mem_append, List.mem_cons, List.mem_nil_iff] at hinstr
-      -- Structure: (A ∨ B) ∨ C ∨ D ∨ False
       rcases hinstr with (hclear | hcopy) | hT1 | hT2 | hfalse
       · simp only [Program.clearRegisters, List.mem_map, List.mem_range] at hclear
         obtain ⟨j, hj, rfl⟩ := hclear
@@ -480,14 +439,12 @@ theorem prLoopPrologue_sets_Rn (n : ℕ) (pF pG : Program)
     (hhalted : c'.isHalted (prLoopPrologue n pF pG)) :
     c'.state.read n = s.read (prCounterReg n pF pG) := by
   have hsl := prLoopPrologue_isStraightLine n pF pG
-  -- The T counterReg n instruction is at position (base+1+n)
   have hk : (primitiveRecursionBase n pF pG + 1) + n < (prLoopPrologue n pF pG).length := by
     simp only [prLoopPrologue, List.length_append, clearRegisters_length, copyRegisterRange_length,
       List.length]; omega
   have hwrite : (prLoopPrologue n pF pG)[(primitiveRecursionBase n pF pG + 1) + n] =
       Instr.T (prCounterReg n pF pG) n := by
     simp only [prLoopPrologue]
-    -- The index (base+1+n) is NOT in (clearRegisters ++ copyRegisterRange) which has length (base+1+n)
     let h_not_in_clear_copy : ¬((primitiveRecursionBase n pF pG + 1) + n <
         (clearRegisters (primitiveRecursionBase n pF pG) ++
          copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length) := by len_append_omega
@@ -503,15 +460,12 @@ theorem prLoopPrologue_sets_Rn (n : ℕ) (pF pG : Program)
     simp only [prLoopPrologue, List.length_append, clearRegisters_length, copyRegisterRange_length,
       List.length] at hj
     simp only [prLoopPrologue]
-    -- j > base+1+n, so j is at position base+2+n (the second T instruction)
     let h_not_in_clear_copy : ¬(j < (clearRegisters (primitiveRecursionBase n pF pG) ++
         copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length) := by len_append_omega
     rw [List.getElem_append_right (Nat.not_lt.mp h_not_in_clear_copy)]
-    -- Now accessing [T counterReg n, T accumulatorReg (n+1)] at index j - (base+1+n)
     let hidx : j - (clearRegisters (primitiveRecursionBase n pF pG) ++
         copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length = 1 := by len_append_omega
     simp only [hidx]
-    -- Access [T, T][1] = T accumulatorReg (n+1)
     simp only [List.getElem_cons_succ, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]
     let h := primitiveRecursionBase_ge_n n pF pG; omega
   obtain ⟨s_before, ⟨c_k, hsteps_k, _, hs_before⟩, htransfer⟩ :=
@@ -550,19 +504,16 @@ theorem prLoopPrologue_sets_Rn1 (n : ℕ) (pF pG : Program)
     (hhalted : c'.isHalted (prLoopPrologue n pF pG)) :
     c'.state.read (n + 1) = s.read (prAccumulatorReg n pF pG) := by
   have hsl := prLoopPrologue_isStraightLine n pF pG
-  -- The T accumulatorReg (n+1) instruction is at position (base+2+n)
   have hk : (primitiveRecursionBase n pF pG + 2) + n < (prLoopPrologue n pF pG).length := by
     simp only [prLoopPrologue, List.length_append, clearRegisters_length, copyRegisterRange_length,
       List.length]; omega
   have hwrite : (prLoopPrologue n pF pG)[(primitiveRecursionBase n pF pG + 2) + n] =
       Instr.T (prAccumulatorReg n pF pG) (n + 1) := by
     simp only [prLoopPrologue]
-    -- The index (base+2+n) is NOT in (clearRegisters ++ copyRegisterRange) which has length (base+1+n)
     let h_not_in_clear_copy : ¬((primitiveRecursionBase n pF pG + 2) + n <
         (clearRegisters (primitiveRecursionBase n pF pG) ++
          copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length) := by len_append_omega
     rw [List.getElem_append_right (Nat.not_lt.mp h_not_in_clear_copy)]
-    -- Now accessing [T counterReg n, T accumulatorReg (n+1)] at index (base+2+n) - (base+1+n) = 1
     let hidx : (primitiveRecursionBase n pF pG + 2) + n -
         (clearRegisters (primitiveRecursionBase n pF pG) ++
          copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length = 1 := by len_append_omega
@@ -594,7 +545,6 @@ theorem prLoopPrologue_sets_Rn1 (n : ℕ) (pF pG : Program)
       · rw [hT1]; simp only [Instr.writesTo, ne_eq, Option.some.injEq]
         let h := prAccumulatorReg_gt_n_plus_1 n pF pG; omega
       · rw [hT2]; simp only [Instr.writesTo, ne_eq, Option.some.injEq]
-        -- This is the instruction itself, but it writes to n+1 not accumulator reg
         let h := prAccumulatorReg_gt_n_plus_1 n pF pG; omega
       · exact hfalse.elim
     exact Steps.straightLine_preserves hsl hsteps_k hnowrite_before
