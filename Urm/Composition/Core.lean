@@ -25,6 +25,48 @@ def transferResultsToInputs (resultStart arityF : ℕ) : Program :=
 
 end Program
 
+/-- The maxRegister of transferResultsToInputs is bounded by max (resultStart + arityF - 1) (arityF - 1).
+    For arityF = 0, returns 0 (empty program). -/
+theorem transferResultsToInputs_maxRegister (resultStart arityF : ℕ) :
+    (Program.transferResultsToInputs resultStart arityF).maxRegister ≤
+    if arityF = 0 then 0 else max (resultStart + arityF - 1) (arityF - 1) := by
+  simp only [Program.transferResultsToInputs, Program.maxRegister]
+  cases arityF with
+  | zero => simp
+  | succ n =>
+    simp only [Nat.add_succ_sub_one]
+    -- For arityF = n + 1, we have instructions T (resultStart + i) i for i ∈ [0, n]
+    -- Each has maxRegister = max (resultStart + i) i ≤ max (resultStart + n) n
+    have hbound : ∀ i, i ≤ n → max (resultStart + i) i ≤ max (resultStart + n) n := by
+      intro i hi; omega
+    have hfoldl_bound : ∀ (xs : List Instr) (bound : ℕ),
+        (∀ x, x ∈ xs → x.maxRegister ≤ bound) → xs.foldl (fun acc i => max acc i.maxRegister) 0 ≤ bound := by
+      intro xs bound hxs
+      induction xs with
+      | nil => simp
+      | cons hd tl ih =>
+        simp only [List.foldl_cons, List.mem_cons, forall_eq_or_imp] at hxs ⊢
+        have ⟨hd_le, tl_le⟩ := hxs
+        have ih_bound := ih tl_le
+        have hshift : ∀ (ys : List Instr) (init : ℕ),
+            ys.foldl (fun acc i => max acc i.maxRegister) init =
+            max init (ys.foldl (fun acc i => max acc i.maxRegister) 0) := by
+          intro ys init
+          induction ys generalizing init with
+          | nil => simp
+          | cons hd' tl' ih' =>
+            simp only [List.foldl_cons]
+            rw [ih', ih' (max 0 hd'.maxRegister)]
+            omega
+        rw [hshift]
+        omega
+    apply hfoldl_bound
+    intro instr hinstr
+    simp only [List.mem_map, List.mem_range] at hinstr
+    obtain ⟨i, hi, rfl⟩ := hinstr
+    simp only [Instr.maxRegister]
+    exact hbound i (Nat.lt_succ_iff.mp hi)
+
 theorem copyRegisterRange_isStandardForm (srcStart dstStart count : ℕ) :
     (Program.copyRegisterRange srcStart dstStart count).IsStandardForm :=
   straightLine_isStandardForm (copyRegisterRange_isStraightLine srcStart dstStart count)

@@ -83,6 +83,42 @@ theorem concat_assoc (p1 p2 p3 : Program) :
   | T m n => simp [Instr.shiftJumps]
   | J m n q => simp [Instr.shiftJumps]; omega
 
+/-- The maxRegister of a concatenated program is the max of the two programs' maxRegisters.
+    Note: shiftJumps doesn't affect register references, only jump targets. -/
+theorem concat_maxRegister (p1 p2 : Program) :
+    (p1.concat p2).maxRegister = max p1.maxRegister p2.maxRegister := by
+  simp only [concat, maxRegister, shiftJumps]
+  rw [List.foldl_append]
+  -- First, show that foldl over the mapped list equals foldl over original list
+  -- since shiftJumps doesn't change maxRegister
+  have h : ∀ init, (p2.map (Instr.shiftJumps p1.length)).foldl (fun acc instr => max acc instr.maxRegister) init =
+           p2.foldl (fun acc instr => max acc instr.maxRegister) init := by
+    intro init
+    induction p2 generalizing init with
+    | nil => rfl
+    | cons hd tl ih =>
+      simp only [List.map_cons, List.foldl_cons]
+      cases hd with
+      | Z n => simp only [Instr.shiftJumps, Instr.maxRegister]; exact ih _
+      | S n => simp only [Instr.shiftJumps, Instr.maxRegister]; exact ih _
+      | T m n => simp only [Instr.shiftJumps, Instr.maxRegister]; exact ih _
+      | J m n q => simp only [Instr.shiftJumps, Instr.maxRegister]; exact ih _
+  rw [h]
+  -- Now we need: foldl f (foldl f 0 p1) p2 = max (foldl f 0 p1) (foldl f 0 p2)
+  -- where f acc i = max acc i.maxRegister
+  -- This follows because foldl max has the property: foldl max init xs = max init (foldl max 0 xs)
+  have hfoldl_max : ∀ (xs : List Instr) (init : ℕ),
+      xs.foldl (fun acc i => max acc i.maxRegister) init =
+      max init (xs.foldl (fun acc i => max acc i.maxRegister) 0) := by
+    intro xs init
+    induction xs generalizing init with
+    | nil => simp
+    | cons hd tl ih =>
+      simp only [List.foldl_cons]
+      rw [ih, ih (max 0 hd.maxRegister)]
+      omega
+  rw [hfoldl_max]
+
 /-- Program concatenation forms a semigroup.
 Note: This uses `concat` (which shifts jumps), not raw list append. -/
 instance : Semigroup Program where

@@ -188,6 +188,68 @@ theorem Steps.straightLine_preserves {p : Program} {c c' : Config} {r : ℕ}
     simp only [Program.getInstr] at hinstr
     exact List.mem_of_getElem? hinstr
 
+/-- Partial execution preserves registers not written by instructions 0..k-1.
+    For straight-line programs, execution from pc=0 to pc=k only executes instructions 0..k-1. -/
+theorem Steps.straightLine_preserves_partial {p : Program} {s : State} {k : ℕ} {r : ℕ}
+    (hsl : p.isStraightLine = true)
+    (hk : k ≤ p.length)
+    (hnowrite : ∀ j (hj : j < k), (p[j]'(Nat.lt_of_lt_of_le hj hk)).writesTo ≠ some r) :
+    ∀ c, Steps p ⟨0, s⟩ c → c.pc = k → c.state.read r = s.read r := by
+  intro c hsteps hpc
+  induction k generalizing c with
+  | zero =>
+    -- c.pc = 0, so no steps were taken (for straight-line, pc only increases)
+    have hc_eq : c = ⟨0, s⟩ := by
+      cases Relation.ReflTransGen.cases_tail hsteps with
+      | inl heq => exact heq
+      | inr h =>
+        obtain ⟨c', _, hstep⟩ := h
+        -- hstep takes c' to c, so c.pc > c'.pc (for straight-line)
+        exfalso
+        have hc'_lt := Step.pc_lt_length hstep
+        simp only [Program.isStraightLine, List.all_eq_true] at hsl
+        have hpc_inc : c.pc > c'.pc := by
+          cases hstep with
+          | zero | succ | trans => simp
+          | jump_eq hinstr | jump_ne hinstr =>
+            exact absurd (hsl _ ((List.getElem?_eq_some_iff.mp hinstr).2 ▸ List.getElem_mem hc'_lt))
+                         (by simp [Instr.isNonJumping])
+        omega
+    simp [hc_eq]
+  | succ k' ih =>
+    have hk'_le : k' ≤ p.length := Nat.le_of_succ_le hk
+    have hk'_lt : k' < p.length := Nat.lt_of_succ_le hk
+    have hnowrite_k' : ∀ j (hj : j < k'), (p[j]'(Nat.lt_of_lt_of_le hj hk'_le)).writesTo ≠ some r := by
+      intro j hj; exact hnowrite j (Nat.lt_succ_of_lt hj)
+    -- Use cases_tail to decompose: either c = ⟨0, s⟩ or there's a last step to c
+    cases Relation.ReflTransGen.cases_tail hsteps with
+    | inl heq =>
+      -- c = ⟨0, s⟩, but c.pc = k'+1 ≠ 0, contradiction
+      simp_all
+    | inr h =>
+      obtain ⟨c', hsteps', hstep⟩ := h
+      -- hstep takes c' to c, so c'.pc + 1 = c.pc = k'+1, hence c'.pc = k'
+      have hc'_lt := Step.pc_lt_length hstep
+      have hsl' : ∀ x ∈ p, x.isNonJumping = true := by
+        simp only [Program.isStraightLine, List.all_eq_true] at hsl; exact hsl
+      have hc'_pc : c'.pc = k' := by
+        cases hstep with
+        | zero | succ | trans => simp_all
+        | jump_eq hinstr | jump_ne hinstr =>
+          exact absurd (hsl' _ ((List.getElem?_eq_some_iff.mp hinstr).2 ▸ List.getElem_mem hc'_lt))
+                       (by simp [Instr.isNonJumping])
+      -- By IH, c'.state.read r = s.read r
+      have ih_applied := ih hk'_le hnowrite_k' c' hsteps' hc'_pc
+      -- The last step preserves r (since instruction k' doesn't write to r)
+      have hstep_preserves : c.state.read r = c'.state.read r := by
+        apply Step.straightLine_preserves hsl hstep
+        intro instr hinstr
+        simp only [Program.getInstr] at hinstr
+        have hinstr_eq := List.getElem?_eq_some_iff.mp hinstr
+        have : p[c'.pc].writesTo ≠ some r := hc'_pc ▸ hnowrite k' (Nat.lt_succ_self k')
+        exact hinstr_eq.2 ▸ this
+      rw [hstep_preserves, ih_applied]
+
 /-! ## clearRegistersFrom: Clear registers starting from a given index -/
 
 namespace Program
@@ -287,6 +349,72 @@ theorem clearRegistersFrom_preserves (start count : ℕ) (s : State) (r : ℕ)
   simp only [Instr.writesTo, ne_eq, Option.some.injEq]
   omega
 
+/-- The maxRegister of clearRegistersFrom.
+    For count = 0, returns 0 (empty program).
+    For count > 0, returns start + count - 1. -/
+theorem clearRegistersFrom_maxRegister (start count : ℕ) :
+    (Program.clearRegistersFrom start count).maxRegister =
+      if count = 0 then 0 else start + count - 1 := by
+  simp only [Program.clearRegistersFrom, Program.maxRegister]
+  cases count with
+  | zero => simp
+  | succ n =>
+    simp only [Nat.succ_ne_zero, ↓reduceIte, Nat.add_succ_sub_one]
+    -- clearRegistersFrom start (n+1) = [Z start, Z (start+1), ..., Z (start+n)]
+    -- The foldl of maxRegister starting from 0 over these instructions is start + n
+    -- Use general lemma about foldl max on lists of Z instructions
+    have hfoldl_Z : ∀ (xs : List ℕ) (init : ℕ),
+        (xs.map Instr.Z).foldl (fun acc i => max acc i.maxRegister) init =
+        max init (xs.foldl max 0) := by
+      intro xs init
+      induction xs generalizing init with
+      | nil => simp
+      | cons hd tl ih =>
+        simp only [List.map_cons, List.foldl_cons, Instr.maxRegister]
+        have ih' := ih (max init hd)
+        simp only [Instr.maxRegister] at ih'
+        rw [ih']
+        -- Need: max (max init hd) (foldl max 0 tl) = max init (foldl max (max 0 hd) tl)
+        -- Use foldl max (max 0 hd) tl = max hd (foldl max 0 tl) by the shift property
+        have hshift : ∀ (ys : List ℕ) (i : ℕ), ys.foldl max i = max i (ys.foldl max 0) := by
+          intro ys i
+          induction ys generalizing i with
+          | nil => simp
+          | cons y ys' ih'' => simp only [List.foldl_cons]; rw [ih'', ih'' (max 0 y)]; omega
+        rw [hshift tl (max 0 hd)]
+        -- max 0 hd = hd for naturals
+        have h0 : max 0 hd = hd := Nat.zero_max hd
+        rw [h0]
+        -- Now: max (max init hd) (foldl max 0 tl) = max init (max hd (foldl max 0 tl))
+        omega
+    have hrange_max : ∀ m s, ((List.range (m + 1)).map (· + s)).foldl max 0 = s + m := by
+      intro m
+      induction m with
+      | zero => simp [List.range_succ, List.range_zero]
+      | succ k ih =>
+        intro s
+        rw [List.range_succ, List.map_append, List.foldl_append]
+        simp only [List.map_cons, List.map_nil, List.foldl_cons, List.foldl_nil]
+        have hshift : ∀ (xs : List ℕ) (init : ℕ), xs.foldl max init = max init (xs.foldl max 0) := by
+          intro xs init
+          induction xs generalizing init with
+          | nil => simp
+          | cons hd tl ih' =>
+            simp only [List.foldl_cons]
+            rw [ih', ih' (max 0 hd)]
+            omega
+        rw [hshift, ih]
+        omega
+    have heq : (List.range (n + 1)).map (fun i => start + i) = (List.range (n + 1)).map (· + start) := by
+      congr 1; ext i; omega
+    -- The goal is: foldl f 0 (map (Instr.Z ∘ (· + start)) (range (n+1))) = start + n
+    -- Use hfoldl_Z with xs = (range (n+1)).map (· + start)
+    have hgoal : ((List.range (n + 1)).map (· + start)).map Instr.Z =
+                 (List.range (n + 1)).map (fun i => Instr.Z (start + i)) := by
+      rw [← heq, List.map_map]; rfl
+    rw [← hgoal, hfoldl_Z, hrange_max]
+    simp
+
 /-! ## clearRegisters and copyRegisterRange
 
 These are straight-line program building blocks used by both Composition and Minimization. -/
@@ -306,10 +434,88 @@ end Program
 theorem clearRegisters_length (maxReg : ℕ) :
     (Program.clearRegisters maxReg).length = maxReg + 1 := by simp [Program.clearRegisters]
 
+/-- The maxRegister of clearRegisters is exactly maxReg. -/
+theorem clearRegisters_maxRegister (maxReg : ℕ) :
+    (Program.clearRegisters maxReg).maxRegister = maxReg := by
+  simp only [Program.clearRegisters, Program.maxRegister]
+  -- clearRegisters maxReg = [Z 0, Z 1, ..., Z maxReg]
+  -- foldl max 0 [0, 1, 2, ..., maxReg]
+  -- We prove by induction and using that foldl behaves well
+  have haux : ∀ n : ℕ,
+      List.foldl (fun acc i => max acc i.maxRegister) 0 (List.map Instr.Z (List.range (n + 1))) = n := by
+    intro n
+    induction n with
+    | zero => simp [List.range, List.range.loop, Instr.maxRegister]
+    | succ k ih =>
+      rw [List.range_succ, List.map_append, List.foldl_append]
+      -- Don't simplify Instr.maxRegister - work with it abstractly
+      simp only [List.map_cons, List.map_nil, List.foldl_cons, List.foldl_nil]
+      -- Goal: max (foldl f 0 [Z 0, ..., Z k]) (Z (k+1)).maxRegister = k + 1
+      -- where f = (fun acc i => max acc i.maxRegister)
+      have hshift : ∀ (xs : List Instr) (init : ℕ),
+          xs.foldl (fun acc i => max acc i.maxRegister) init =
+          max init (xs.foldl (fun acc i => max acc i.maxRegister) 0) := by
+        intro xs init
+        induction xs generalizing init with
+        | nil => simp
+        | cons hd tl ih' =>
+          simp only [List.foldl_cons]
+          rw [ih', ih' (max 0 hd.maxRegister)]
+          omega
+      -- Now apply hshift to the single element list and ih
+      rw [hshift, ih]
+      simp only [Instr.maxRegister]
+      omega
+  exact haux maxReg
+
 @[simp]
 theorem copyRegisterRange_length (srcStart dstStart count : ℕ) :
     (Program.copyRegisterRange srcStart dstStart count).length = count := by
   simp [Program.copyRegisterRange]
+
+/-- The maxRegister of copyRegisterRange is bounded by max of endpoint registers.
+    For count = 0, returns 0 (empty program). -/
+theorem copyRegisterRange_maxRegister (srcStart dstStart count : ℕ) :
+    (Program.copyRegisterRange srcStart dstStart count).maxRegister ≤
+    if count = 0 then 0 else max (srcStart + count - 1) (dstStart + count - 1) := by
+  simp only [Program.copyRegisterRange, Program.maxRegister]
+  cases count with
+  | zero => simp
+  | succ n =>
+    simp only [Nat.add_succ_sub_one]
+    -- For count = n + 1, we have instructions T (srcStart + i) (dstStart + i) for i ∈ [0, n]
+    -- Each has maxRegister = max (srcStart + i) (dstStart + i)
+    -- We need: foldl max 0 [max (s+0) (d+0), ..., max (s+n) (d+n)] ≤ max (s+n) (d+n)
+    have hbound : ∀ i, i ≤ n → max (srcStart + i) (dstStart + i) ≤ max (srcStart + n) (dstStart + n) := by
+      intro i hi; omega
+    -- General lemma: foldl max for instructions bounded by bound
+    have hfoldl_bound : ∀ (xs : List Instr) (bound : ℕ),
+        (∀ x, x ∈ xs → x.maxRegister ≤ bound) → xs.foldl (fun acc i => max acc i.maxRegister) 0 ≤ bound := by
+      intro xs bound hxs
+      induction xs with
+      | nil => simp
+      | cons hd tl ih =>
+        simp only [List.foldl_cons, List.mem_cons, forall_eq_or_imp] at hxs ⊢
+        have ⟨hd_le, tl_le⟩ := hxs
+        have ih_bound := ih tl_le
+        have hshift : ∀ (ys : List Instr) (init : ℕ),
+            ys.foldl (fun acc i => max acc i.maxRegister) init =
+            max init (ys.foldl (fun acc i => max acc i.maxRegister) 0) := by
+          intro ys init
+          induction ys generalizing init with
+          | nil => simp
+          | cons hd' tl' ih' =>
+            simp only [List.foldl_cons]
+            rw [ih', ih' (max 0 hd'.maxRegister)]
+            omega
+        rw [hshift]
+        omega
+    apply hfoldl_bound
+    intro instr hinstr
+    simp only [List.mem_map, List.mem_range] at hinstr
+    obtain ⟨i, hi, rfl⟩ := hinstr
+    simp only [Instr.maxRegister]
+    exact hbound i (Nat.lt_succ_iff.mp hi)
 
 /-- Tactic for solving length arithmetic goals involving clearRegisters and copyRegisterRange. -/
 macro "len_append_omega" : tactic =>
