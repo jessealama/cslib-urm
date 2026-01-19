@@ -86,19 +86,55 @@ structure StraightLinePhaseResult (p : Program) (startPC : ℕ) (phase : Program
 /-! ## Helper Lemmas for copyToBody -/
 
 /-- After copyToBody executes, the target registers contain the source values. -/
-theorem copyToBody_effect (regs : List ℕ) (base : ℕ) (s : State) :
+theorem copyToBody_effect (regs : List ℕ) (base : ℕ) (s : State)
+    (hbase : ∀ r ∈ regs, r < base) :
     ∀ i : Fin regs.length,
       (straightLineFinalState (copyToBody_isStraightLine regs base) s) (base + i) = s (regs[i]) := by
-  intro i
+  intro ⟨i, hi⟩
+  have hsl := copyToBody_isStraightLine regs base
   -- copyToBody is a sequence of T instructions: T regs[j] (base + j) for each j
-  -- After execution, R[base + i] = original R[regs[i]]
-  sorry
+  -- The instruction at position i is T (regs[i]) (base + i)
+  have hcopy_len : (copyToBody regs base).length = regs.length := by
+    simp only [copyToBody, List.length_mapIdx]
+  have hi_lt : i < (copyToBody regs base).length := hcopy_len ▸ hi
+  have hwrite : (copyToBody regs base)[i]'hi_lt = Instr.T (regs[i]) (base + i) := by
+    simp only [copyToBody, List.getElem_mapIdx]
+  -- No later instruction writes to (base + i)
+  have hnowrite : ∀ j (hj : j < (copyToBody regs base).length),
+      i < j → ((copyToBody regs base)[j]'hj).writesTo ≠ some (base + i) := by
+    intro j hj hij
+    simp only [copyToBody, List.getElem_mapIdx, Instr.writesTo, ne_eq, Option.some.injEq]
+    omega
+  -- By straightLine_transfer_result, final state has the transfer result
+  obtain ⟨s_before, ⟨c_i, hsteps_i, hpc_i, hs_before⟩, hresult⟩ :=
+    straightLine_transfer_result hsl s i (regs[i]) (base + i) hi_lt hwrite hnowrite
+  simp only [State.read] at hresult ⊢
+  rw [hresult, ← hs_before]
+  -- Now show that c_i.state (regs[i]) = s (regs[i])
+  -- This is because earlier T instructions write to base+0, base+1, ..., base+(i-1)
+  -- and regs[i] < base, so they don't overwrite regs[i]
+  have hregs_i_lt : regs[i] < base := hbase (regs[i]) (List.getElem_mem hi)
+  have hpreserved : ∀ j (hj : j < i), ((copyToBody regs base)[j]'(Nat.lt_trans hj hi_lt)).writesTo ≠ some (regs[i]) := by
+    intro j hj
+    simp only [copyToBody, List.getElem_mapIdx, Instr.writesTo, ne_eq, Option.some.injEq]
+    omega
+  -- Use Steps.straightLine_preserves_partial to show regs[i] is unchanged
+  have hpres := Steps.straightLine_preserves_partial hsl (Nat.le_of_lt hi_lt) hpreserved c_i hsteps_i hpc_i
+  simp only [State.read] at hpres
+  exact hpres
 
 /-- copyToBody preserves registers outside its write range. -/
 theorem copyToBody_preserves (regs : List ℕ) (base : ℕ) (s : State) (r : ℕ)
     (hr : ∀ i : Fin regs.length, r ≠ base + i) :
     (straightLineFinalState (copyToBody_isStraightLine regs base) s) r = s r := by
-  sorry
+  have hsl := copyToBody_isStraightLine regs base
+  have ⟨hsteps, _, _⟩ := straightLineFinalState_spec hsl s
+  apply Steps.straightLine_preserves hsl hsteps
+  intro instr hmem
+  simp only [copyToBody, List.mem_mapIdx] at hmem
+  obtain ⟨i, hi, rfl⟩ := hmem
+  simp only [Instr.writesTo, ne_eq, Option.some.injEq]
+  exact Ne.symm (hr ⟨i, hi⟩)
 
 /-! ## Helper Lemmas for copyFromBody -/
 
@@ -107,13 +143,55 @@ theorem copyFromBody_effect (regs : List ℕ) (base : ℕ) (s : State)
     (hregs : regs ≠ []) :
     let h0 : 0 < regs.length := List.length_pos_of_ne_nil hregs
     (straightLineFinalState (copyFromBody_isStraightLine regs base) s) (regs[0]'h0) = s base := by
-  sorry
+  match regs with
+  | [] => exact absurd rfl hregs
+  | r :: rs =>
+    -- copyFromBody (r :: rs) base = [T base r]
+    -- This is a single T instruction that copies base to r
+    have hsl : Program.isStraightLine [Instr.T base r] = true := rfl
+    have hspec := straightLineFinalState_spec hsl s
+    have hinstr : Program.getInstr [Instr.T base r] 0 = some (Instr.T base r) := rfl
+    have hstep : Step [Instr.T base r] ⟨0, s⟩ ⟨1, s.write r (s.read base)⟩ := Step.trans hinstr
+    have hhalted : (⟨1, s.write r (s.read base)⟩ : Config).isHalted [Instr.T base r] := by simp [Config.isHalted]
+    have hsteps : Steps [Instr.T base r] ⟨0, s⟩ ⟨1, s.write r (s.read base)⟩ := Steps.single hstep
+    have heq : Classical.choose (straightLine_halts_from_state hsl s) = ⟨1, s.write r (s.read base)⟩ :=
+      Steps.halts_unique hspec.1 hspec.2.1 hsteps hhalted
+    -- Goal: straightLineFinalState ... s (r :: rs)[0] = s base
+    -- (r :: rs)[0] = r, and the final state writes (s base) to r
+    simp only [straightLineFinalState, heq, State.write, State.read, List.getElem_cons_zero,
+               Function.update_self]
 
 /-- copyFromBody preserves registers other than the first mapped register. -/
 theorem copyFromBody_preserves (regs : List ℕ) (base : ℕ) (s : State) (r : ℕ)
     (hr : regs.head? ≠ some r) :
     (straightLineFinalState (copyFromBody_isStraightLine regs base) s) r = s r := by
-  sorry
+  match regs with
+  | [] =>
+    -- copyFromBody [] base = [], empty program, state unchanged
+    have hsl : Program.isStraightLine ([] : Program) = true := rfl
+    have hspec := straightLineFinalState_spec hsl s
+    have hsteps : Steps [] ⟨0, s⟩ ⟨0, s⟩ := Steps.refl ⟨0, s⟩
+    have hhalted : (⟨0, s⟩ : Config).isHalted [] := by simp [Config.isHalted]
+    have heq : Classical.choose (straightLine_halts_from_state hsl s) = ⟨0, s⟩ :=
+      Steps.halts_unique hspec.1 hspec.2.1 hsteps hhalted
+    simp only [straightLineFinalState, heq]
+  | r0 :: rs =>
+    -- copyFromBody (r0 :: rs) base = [T base r0]
+    -- The T instruction writes to r0, so r ≠ r0 means r is preserved
+    have hr0 : r ≠ r0 := by
+      simp only [List.head?] at hr
+      intro heq
+      exact hr (heq ▸ rfl)
+    have hsl : Program.isStraightLine [Instr.T base r0] = true := rfl
+    have hspec := straightLineFinalState_spec hsl s
+    have hinstr : Program.getInstr [Instr.T base r0] 0 = some (Instr.T base r0) := rfl
+    have hstep : Step [Instr.T base r0] ⟨0, s⟩ ⟨1, s.write r0 (s.read base)⟩ := Step.trans hinstr
+    have hhalted : (⟨1, s.write r0 (s.read base)⟩ : Config).isHalted [Instr.T base r0] := by simp [Config.isHalted]
+    have hsteps : Steps [Instr.T base r0] ⟨0, s⟩ ⟨1, s.write r0 (s.read base)⟩ := Steps.single hstep
+    have heq : Classical.choose (straightLine_halts_from_state hsl s) = ⟨1, s.write r0 (s.read base)⟩ :=
+      Steps.halts_unique hspec.1 hspec.2.1 hsteps hhalted
+    simp only [straightLineFinalState, heq, State.write, State.read]
+    exact Function.update_of_ne hr0 (s base) s
 
 /-! ## Block Correctness -/
 
