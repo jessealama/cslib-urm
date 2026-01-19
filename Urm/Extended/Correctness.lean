@@ -201,21 +201,244 @@ Given:
 - A host state `s`
 - A register mapping `regs`
 - A body program `body` in standard form
+- Workspace registers are zeroed
 
 The compiled block executes as follows:
 1. Copy inputs from host registers to body workspace
 2. Execute body with shifted registers
 3. Copy result back to first host register
 
-The final state agrees with runBlock semantics. -/
+The final state agrees with runBlock semantics.
+
+Note: We use Steps directly from state `s` (not Halts from Config.init) because
+compileBlock needs to read from all registers in `regs`, not just R[0].
+
+The `hworkspace_zero` hypothesis requires that workspace registers beyond the
+input region are zeroed. This is automatically satisfied when running from
+a fresh Config.init state or when properly set up by an outer compilation. -/
 theorem compileBlock_correct (regs : List ℕ) (body : FlatProgram)
-    (hbody_sf : body.IsStandardForm) (s : State)
-    (hbody_halts : Halts body (List.ofFn fun i : Fin regs.length => s (regs[i]))) :
-    Halts (compileBlock regs body) [s 0] ∧
-    ∃ hH, (runBlock s regs body).Dom ∧
-      ∀ hD, Result (compileBlock regs body) [s 0] hH =
-        (((runBlock s regs body).get hD) 0) := by
-  sorry
+    (hbody_sf : body.IsStandardForm) (s : State) (hregs : regs ≠ [])
+    (hbody_halts : Halts body (List.ofFn fun i : Fin regs.length => s (regs[i])))
+    (hworkspace_zero : ∀ r, regs.length ≤ r → r ≤ body.maxRegister →
+        s (r + registerBase regs) = 0) :
+    ∃ c, Steps (compileBlock regs body) ⟨0, s⟩ c ∧
+         c.isHalted (compileBlock regs body) ∧
+         c.state (regs[0]'(List.length_pos_of_ne_nil hregs)) =
+           Result body (List.ofFn fun i : Fin regs.length => s (regs[i])) hbody_halts := by
+  -- compileBlock = copyIn ++ shiftedBody ++ copyOut
+  -- Phase 1: Execute copyIn (straight-line)
+  let base := registerBase regs
+  have hbase : ∀ r ∈ regs, r < base := registerBase_gt_all regs
+
+  -- Execute copyIn phase
+  have hsl_copyIn := copyToBody_isStraightLine regs base
+  have ⟨c_copyIn, hsteps_copyIn, hhalted_copyIn, hpc_copyIn⟩ :=
+    straightLine_halts_from_state hsl_copyIn s
+
+  -- After copyIn: R[base + i] = s(regs[i])
+  have h_copyIn_effect : ∀ i : Fin regs.length,
+      c_copyIn.state (base + i) = s (regs[i]) := by
+    intro i
+    have hspec := straightLineFinalState_spec hsl_copyIn s
+    have hc_eq : c_copyIn = Classical.choose (straightLine_halts_from_state hsl_copyIn s) :=
+      Steps.halts_unique hsteps_copyIn hhalted_copyIn hspec.1 hspec.2.1
+    rw [show c_copyIn.state = straightLineFinalState hsl_copyIn s by simp [straightLineFinalState, hc_eq]]
+    exact copyToBody_effect regs base s hbase i
+
+  -- The inputs for body are exactly what copyIn produced
+  let bodyInputs := List.ofFn fun i : Fin regs.length => s (regs[i])
+
+  -- copyIn preserves registers outside [base, base + regs.length - 1]
+  have h_copyIn_preserves : ∀ r, (∀ i : Fin regs.length, r ≠ base + i) →
+      c_copyIn.state r = s r := by
+    intro r hr
+    have hspec := straightLineFinalState_spec hsl_copyIn s
+    have hc_eq : c_copyIn = Classical.choose (straightLine_halts_from_state hsl_copyIn s) :=
+      Steps.halts_unique hsteps_copyIn hhalted_copyIn hspec.1 hspec.2.1
+    rw [show c_copyIn.state = straightLineFinalState hsl_copyIn s by simp [straightLineFinalState, hc_eq]]
+    exact copyToBody_preserves regs base s r hr
+
+  -- Phase 2: Execute shifted body using Halts.shift_from_state
+  -- The agreement condition: for r ≤ body.maxRegister, c_copyIn.state(r + base) = bodyInputs.getD r 0
+  have h_agreement : ∀ r, r ≤ body.maxRegister →
+      c_copyIn.state.read (r + base) = bodyInputs.getD r 0 := by
+    intro r hr
+    simp only [State.read]
+    by_cases hr_lt : r < regs.length
+    · -- r < regs.length: use h_copyIn_effect
+      have heq : (base + r) = (r + base) := Nat.add_comm base r
+      rw [← heq]
+      -- bodyInputs.getD r 0 = bodyInputs[r] when r < length
+      have hlen : bodyInputs.length = regs.length := List.length_ofFn
+      rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (hlen ▸ hr_lt)]
+      simp only [Option.getD_some, bodyInputs, List.getElem_ofFn]
+      exact h_copyIn_effect ⟨r, hr_lt⟩
+    · -- r ≥ regs.length: register is 0 in bodyInputs, wasn't written by copyIn
+      -- bodyInputs.getD r 0 = 0 when r ≥ length
+      have hlen : bodyInputs.length = regs.length := List.length_ofFn
+      have hge : regs.length ≤ r := Nat.not_lt.mp hr_lt
+      rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none (hlen ▸ hge)]
+      simp only [Option.getD_none]
+      -- Show copyIn preserves this register
+      have hne : ∀ i : Fin regs.length, r + base ≠ base + i := by
+        intro ⟨i, hi⟩
+        omega
+      rw [h_copyIn_preserves (r + base) hne]
+      exact hworkspace_zero r hge hr
+
+  -- Apply Halts.shift_from_state to get body execution
+  have ⟨c_body, hsteps_body, hhalted_body, hresult_body⟩ :=
+    Halts.shift_from_state base hbody_halts h_agreement
+
+  -- Lift body steps to the full program using Steps.shiftJumps_at_offset
+  let copyIn := copyToBody regs base
+  let shiftedBody := (body.shiftRegisters base).shiftJumps copyIn.length
+  let copyOut := copyFromBody regs base
+  have hcompile : compileBlock regs body = copyIn ++ shiftedBody ++ copyOut := by
+    simp only [compileBlock, copyIn, shiftedBody, copyOut, base]
+
+  -- Embedding condition: instructions at offset copyIn.length match shiftedBody
+  have hbody_embed : ∀ i, i < (body.shiftRegisters base).length →
+      (compileBlock regs body).getInstr (copyIn.length + i) =
+      ((body.shiftRegisters base).shiftJumps copyIn.length).getInstr i := by
+    intro i hi
+    simp only [Program.shiftRegisters_length] at hi
+    have hlen_copyIn : copyIn.length = regs.length := by
+      simp only [copyIn, copyToBody, List.length_mapIdx]
+    have hlen_shifted : shiftedBody.length = body.length := by
+      simp only [shiftedBody, Program.shiftJumps_length, Program.shiftRegisters_length]
+    -- compileBlock = copyIn ++ shiftedBody ++ copyOut
+    -- We need (copyIn ++ shiftedBody ++ copyOut)[copyIn.length + i]?
+    --       = shiftedBody[i]?
+    simp only [compileBlock, Program.getInstr]
+    -- First, show copyIn.length + i < copyIn.length + shiftedBody.length
+    have hlt1 : copyIn.length + i < (copyIn ++ shiftedBody).length := by
+      simp only [List.length_append, hlen_shifted]; omega
+    rw [List.getElem?_append_left hlt1]
+    -- Now show copyIn.length + i ≥ copyIn.length to get into shiftedBody
+    rw [List.getElem?_append_right (by omega : copyIn.length ≤ copyIn.length + i)]
+    simp only [Nat.add_sub_cancel_left, shiftedBody, Program.shiftJumps, Program.shiftRegisters,
+      List.getElem?_map]
+
+  -- Lift body steps
+  have hsteps_body_lifted := Steps.shiftJumps_at_offset copyIn.length hbody_embed hsteps_body
+
+  -- copyIn.length = regs.length
+  have hlen_copyIn : copyIn.length = regs.length := by
+    simp only [copyIn, copyToBody, List.length_mapIdx]
+
+  -- Lift copyIn steps to full program
+  have hcopyIn_embed : ∀ i, i < copyIn.length →
+      (compileBlock regs body).getInstr (0 + i) = copyIn.getInstr i := by
+    intro i hi
+    simp only [copyIn, hlen_copyIn] at hi
+    simp only [compileBlock, Program.getInstr, Nat.zero_add]
+    -- compileBlock = copyToBody ++ shifted ++ copyFromBody
+    -- We need (copyToBody ++ shifted ++ copyFromBody)[i]? = copyToBody[i]?
+    have hlen_copyIn' : (copyToBody regs (registerBase regs)).length = regs.length := by
+      simp only [copyToBody, List.length_mapIdx]
+    have hlen_sh : (Program.shiftJumps (copyToBody regs (registerBase regs)).length
+        (Program.shiftRegisters (registerBase regs) body)).length = body.length := by
+      simp only [Program.shiftJumps_length, Program.shiftRegisters_length]
+    rw [List.getElem?_append_left]
+    · rw [List.getElem?_append_left (by rw [hlen_copyIn']; exact hi)]
+    · simp only [List.length_append, hlen_copyIn']; omega
+  have hsteps_copyIn_lifted : Steps (compileBlock regs body) ⟨0, s⟩ ⟨copyIn.length, c_copyIn.state⟩ := by
+    have h := Steps.straightLine_at_offset 0 hsl_copyIn hcopyIn_embed hsteps_copyIn
+    simp only [Nat.zero_add, Nat.add_zero] at h
+    convert h using 2
+    simp only [copyIn, hpc_copyIn]
+
+  -- Chain copyIn and body steps
+  have hsteps_body_from_copyIn : Steps (compileBlock regs body)
+      ⟨copyIn.length, c_copyIn.state⟩
+      ⟨copyIn.length + c_body.pc, c_body.state⟩ := by
+    convert hsteps_body_lifted using 2
+
+  have hsteps_copyIn_body := Relation.ReflTransGen.trans hsteps_copyIn_lifted hsteps_body_from_copyIn
+
+  -- Body halts at PC = body.length (standard form property)
+  have hbody_sf_shifted := shiftRegisters_isStandardForm hbody_sf base
+  have hbody_pc : c_body.pc = body.length := by
+    have h := Program.IsStandardForm.pc_eq_length_of_halted hbody_sf_shifted hsteps_body (Nat.zero_le _) hhalted_body
+    simp only [Program.shiftRegisters_length] at h
+    exact h
+
+  -- After body: PC = copyIn.length + body.length = start of copyOut
+  have hpc_after_body : copyIn.length + c_body.pc = copyIn.length + body.length := by
+    rw [hbody_pc]
+
+  -- Phase 3: Execute copyOut (single T instruction if regs ≠ [])
+  have hsl_copyOut := copyFromBody_isStraightLine regs base
+  have ⟨c_copyOut, hsteps_copyOut, hhalted_copyOut_local, hpc_copyOut⟩ :=
+    straightLine_halts_from_state hsl_copyOut c_body.state
+
+  -- copyOut is at offset copyIn.length + body.length in the full program
+  let copyOutOffset := copyIn.length + body.length
+  have hcopyOut_embed : ∀ i, i < copyOut.length →
+      (compileBlock regs body).getInstr (copyOutOffset + i) = copyOut.getInstr i := by
+    intro i hi
+    have hlen_copyIn' : copyIn.length = regs.length := by
+      simp only [copyIn, copyToBody, List.length_mapIdx]
+    have hlen_sh : shiftedBody.length = body.length := by
+      simp only [shiftedBody, Program.shiftJumps_length, Program.shiftRegisters_length]
+    have hlen_out : copyOut.length = if regs = [] then 0 else 1 := by
+      simp only [copyOut, copyFromBody]; cases regs with | nil => rfl | cons _ _ => rfl
+    -- compileBlock = copyIn ++ shiftedBody ++ copyOut
+    rw [hcompile]
+    simp only [Program.getInstr]
+    -- Need: (copyIn ++ shiftedBody ++ copyOut)[copyOutOffset + i]? = copyOut[i]?
+    -- copyOutOffset = copyIn.length + body.length = copyIn.length + shiftedBody.length
+    have hoff : copyOutOffset = copyIn.length + shiftedBody.length := by
+      simp only [copyOutOffset, hlen_sh]
+    have h1 : copyOutOffset + i ≥ (copyIn ++ shiftedBody).length := by
+      simp only [List.length_append, hlen_sh, copyOutOffset]; omega
+    rw [List.getElem?_append_right h1]
+    simp only [List.length_append, hoff, Nat.add_sub_cancel_left]
+
+  have hsteps_copyOut_lifted := Steps.straightLine_at_offset copyOutOffset hsl_copyOut
+    hcopyOut_embed hsteps_copyOut
+
+  -- Rewrite to chain with body steps
+  have hsteps_copyOut_from_body : Steps (compileBlock regs body)
+      ⟨copyIn.length + c_body.pc, c_body.state⟩
+      ⟨copyOutOffset + c_copyOut.pc, c_copyOut.state⟩ := by
+    convert hsteps_copyOut_lifted using 2
+
+  -- Chain all steps
+  have hsteps_all := Relation.ReflTransGen.trans hsteps_copyIn_body hsteps_copyOut_from_body
+
+  -- Final configuration
+  let c_final : Config := ⟨copyOutOffset + c_copyOut.pc, c_copyOut.state⟩
+
+  -- Show final PC = program length (halted)
+  have hfinal_halted : c_final.isHalted (compileBlock regs body) := by
+    simp only [Config.isHalted, compileBlock_length, c_final, copyOutOffset, hpc_copyOut]
+    simp only [copyFromBody]
+    cases regs with
+    | nil => exact absurd rfl hregs
+    | cons h t =>
+      simp only [List.length_cons, List.cons_ne_nil, if_false, copyIn, copyToBody,
+        List.length_mapIdx, List.length_nil, Nat.zero_add, le_refl]
+
+  -- Show result: c_final.state (regs[0]) = Result body bodyInputs
+  have hresult : c_final.state (regs[0]'(List.length_pos_of_ne_nil hregs)) =
+      Result body bodyInputs hbody_halts := by
+    -- c_final.state = c_copyOut.state
+    -- copyFromBody copies base to regs[0]
+    -- base in c_body.state = Result (by hresult_body)
+    have hcopyOut_spec := straightLineFinalState_spec hsl_copyOut c_body.state
+    have hc_copyOut_eq : c_copyOut = Classical.choose (straightLine_halts_from_state hsl_copyOut c_body.state) :=
+      Steps.halts_unique hsteps_copyOut hhalted_copyOut_local hcopyOut_spec.1 hcopyOut_spec.2.1
+    have hstate_eq : c_copyOut.state = straightLineFinalState hsl_copyOut c_body.state := by
+      simp [straightLineFinalState, hc_copyOut_eq]
+    simp only [c_final, hstate_eq]
+    rw [copyFromBody_effect regs base c_body.state hregs]
+    -- c_body.state base = Result body bodyInputs hbody_halts
+    simp only [State.read] at hresult_body
+    exact hresult_body
+
+  exact ⟨c_final, hsteps_all, hfinal_halted, hresult⟩
 
 /-! ## Mu Setup Phase -/
 

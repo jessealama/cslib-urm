@@ -127,7 +127,8 @@ Structure:
 def compileBlock (regs : List ℕ) (body : FlatProgram) : FlatProgram :=
   let base := registerBase regs
   let copyIn := copyToBody regs base
-  let shiftedBody := body.shiftRegisters base
+  -- Shift both registers and jumps for proper embedding
+  let shiftedBody := (body.shiftRegisters base).shiftJumps copyIn.length
   let copyOut := copyFromBody regs base
   copyIn ++ shiftedBody ++ copyOut
 
@@ -135,7 +136,7 @@ theorem compileBlock_length (regs : List ℕ) (body : FlatProgram) :
     (compileBlock regs body).length =
       regs.length + body.length + (if regs = [] then 0 else 1) := by
   simp only [compileBlock, List.length_append, copyToBody, copyFromBody,
-    List.length_mapIdx, Program.shiftRegisters_length]
+    List.length_mapIdx, Program.shiftJumps_length, Program.shiftRegisters_length]
   cases regs with
   | nil => simp
   | cons h t => simp
@@ -380,15 +381,34 @@ theorem compileBlock_isStandardForm (regs : List ℕ) (body : FlatProgram)
       have hsl := copyToBody_isStraightLine regs (registerBase regs)
       simp only [Program.isStraightLine, List.all_eq_true] at hsl
       exact Instr.hasBoundedJump_of_isNonJumping (hsl instr hinCopyIn) _
-    · -- Instruction is in shiftedBody
+    · -- Instruction is in shiftedBody = (body.shiftRegisters base).shiftJumps copyIn.length
+      -- hinBody : instr ∈ (body.shiftRegisters base).shiftJumps copyIn.length
+      simp only [Program.shiftJumps] at hinBody
+      obtain ⟨origInstr, horigMem, hinstrEq⟩ := List.mem_map.mp hinBody
+      -- origInstr is in body.shiftRegisters base
       have hsfShifted := shiftRegisters_isStandardForm hbody (registerBase regs)
       unfold Program.IsStandardForm Program.isStandardForm at hsfShifted
       rw [List.all_eq_true] at hsfShifted
-      have hbound := hsfShifted instr hinBody
-      apply Instr.hasBoundedJump_mono hbound
-      simp only [List.length_append, copyToBody, copyFromBody, List.length_mapIdx,
-        Program.shiftRegisters, List.length_map]
-      omega
+      have hbound := hsfShifted origInstr horigMem
+      -- Now show that instr = origInstr.shiftJumps copyIn.length also has bounded jumps
+      cases origInstr with
+      | Z n | S n | T m n =>
+        -- Non-jumping instructions: shiftJumps doesn't change them
+        simp only [Instr.shiftJumps] at hinstrEq; subst hinstrEq
+        exact hbound
+      | J m n q =>
+        -- Jumping instruction: new jump target is q + copyIn.length
+        simp only [Instr.shiftJumps] at hinstrEq; subst hinstrEq
+        simp only [Instr.hasBoundedJump] at hbound ⊢
+        simp only [List.length_append, copyToBody, copyFromBody, List.length_mapIdx,
+          Program.shiftJumps_length, Program.shiftRegisters_length]
+        -- hbound : q ≤ (body.shiftRegisters base).length = body.length
+        simp only [Program.shiftRegisters_length] at hbound
+        -- Need: q + copyIn.length ≤ copyIn.length + body.length + copyOut.length
+        simp only [decide_eq_true_eq] at hbound ⊢
+        cases regs with
+        | nil => simp at hbound ⊢; omega
+        | cons h t => simp at hbound ⊢; omega
   · -- Instruction is in copyOut (T or empty, no jumps)
     have hsl := copyFromBody_isStraightLine regs (registerBase regs)
     simp only [Program.isStraightLine, List.all_eq_true] at hsl
