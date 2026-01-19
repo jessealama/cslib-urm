@@ -51,8 +51,7 @@ The structured constructs are:
 - `Block regs body`: Execute `body` with registers mapped through `regs`,
   writing the result back to the first mapped register.
 
-- `Mu regs body resultReg`: Execute `body` repeatedly with an incrementing counter
-  until body's R[0] = 0, then write `resultReg` to the first mapped register.
+- `While condReg body`: Loop while R[condReg] ≠ 0, executing body each iteration.
 -/
 inductive ExtendedInstr : Type where
   /-- Zero: set register n to 0 -/
@@ -73,31 +72,17 @@ inductive ExtendedInstr : Type where
   The body sees inputs at R[0], R[1], ..., R[n-1] where n = regs.length.
   -/
   | Block : List ℕ → FlatProgram → ExtendedInstr
-  /-- Mu: unbounded loop with built-in counter, modeling μ-recursion.
+  /-- While: loop while condition register is non-zero.
 
-  `Mu [r₀, r₁, ...] body resultReg` executes as:
+  `While condReg body` executes as:
+  1. Check R[condReg]: if = 0, exit loop
+  2. Run body (base URM) until halt
+  3. Go to step 1
 
-  **Register layout** (for n = regs.length):
-  - Body's R[0..n-1]: inputs from host's R[r₀, r₁, ...]
-  - Body's R[n]: counter (starts at 0, incremented each iteration)
-
-  **Semantics**:
-  1. **Setup**: Create body sub-state
-     - Body's R[i] ← host's R[rᵢ] for i in 0..n-1
-     - Body's R[n] ← 0 (counter)
-
-  2. **Loop iteration**:
-     - Run body until halt
-     - Check body's R[0]: if 0, exit loop
-     - Otherwise: increment body's R[n], repeat
-
-  3. **Write back**: host's R[r₀] ← body's R[resultReg]
-
-  **Usage patterns**:
-  - **μ-recursion** (minimization): resultReg = n (return counter when f(x,k) = 0)
-  - **primitive recursion**: resultReg = accumulator register
+  This is the machine-level while loop primitive. μ-recursion can be
+  implemented using While combined with arithmetic operations.
   -/
-  | Mu : List ℕ → FlatProgram → ℕ → ExtendedInstr
+  | While : ℕ → FlatProgram → ExtendedInstr
 deriving DecidableEq, Repr
 
 namespace ExtendedInstr
@@ -105,7 +90,7 @@ namespace ExtendedInstr
 /-- Check if an extended instruction is a basic (non-structured) instruction. -/
 def isBasic : ExtendedInstr → Bool
   | Z _ | S _ | T _ _ | J _ _ _ => true
-  | Block _ _ | Mu _ _ _ => false
+  | Block _ _ | While _ _ => false
 
 /-- Convert a basic ExtendedInstr to a base Instr, if applicable. -/
 def toBaseInstr? : ExtendedInstr → Option Instr
@@ -113,7 +98,7 @@ def toBaseInstr? : ExtendedInstr → Option Instr
   | S n => some (Instr.S n)
   | T m n => some (Instr.T m n)
   | J m n q => some (Instr.J m n q)
-  | Block _ _ | Mu _ _ _ => none
+  | Block _ _ | While _ _ => none
 
 /-- Embed a base Instr as an ExtendedInstr. -/
 def ofInstr : Instr → ExtendedInstr
@@ -133,40 +118,42 @@ theorem toBaseInstr_ofInstr {ei : ExtendedInstr} {i : Instr}
   | T m n => simp only [toBaseInstr?, Option.some.injEq] at h; subst h; rfl
   | J m n q => simp only [toBaseInstr?, Option.some.injEq] at h; subst h; rfl
   | Block _ _ => simp [toBaseInstr?] at h
-  | Mu _ _ _ => simp [toBaseInstr?] at h
+  | While _ _ => simp [toBaseInstr?] at h
 
 /-- The input registers referenced by an extended instruction.
 For basic instructions, this is the registers read.
-For Block/Mu, this is the mapped register list. -/
+For Block, this is the mapped register list.
+For While, this is the condition register. -/
 def inputRegisters : ExtendedInstr → List ℕ
   | Z _ => []
   | S n => [n]
   | T m _ => [m]
   | J m n _ => [m, n]
   | Block regs _ => regs
-  | Mu regs _ _ => regs
+  | While condReg _ => [condReg]
 
 /-- The output register written by an extended instruction (primary output).
 For basic instructions: the register written (if any).
-For Block/Mu: the first mapped register (where result is written). -/
+For Block: the first mapped register (where result is written).
+For While: none (writes to various registers via body). -/
 def outputRegister? : ExtendedInstr → Option ℕ
   | Z n => some n
   | S n => some n
   | T _ n => some n
   | J _ _ _ => none
   | Block regs _ => regs.head?
-  | Mu regs _ _ => regs.head?
+  | While _ _ => none
 
 /-- Get the body program of a structured instruction, if any. -/
 def body? : ExtendedInstr → Option FlatProgram
   | Z _ | S _ | T _ _ | J _ _ _ => none
   | Block _ body => some body
-  | Mu _ body _ => some body
+  | While _ body => some body
 
-/-- Check if a Block body is in standard form (bounded jumps). -/
+/-- Check if a Block/While body is in standard form (bounded jumps). -/
 def bodyIsStandardForm : ExtendedInstr → Bool
   | Block _ body => body.isStandardForm
-  | Mu _ body _ => body.isStandardForm
+  | While _ body => body.isStandardForm
   | _ => true
 
 end ExtendedInstr
@@ -224,17 +211,14 @@ def ExtendedInstr.BlockWellFormed : ExtendedInstr → Prop
   | Block regs body => regs ≠ [] ∧ body.IsStandardForm
   | _ => True
 
-/-- A Mu instruction is well-formed if:
-1. The register list is non-empty
-2. The body is in standard form
-3. The result register is valid (≤ body's max register or the counter position) -/
-def ExtendedInstr.MuWellFormed : ExtendedInstr → Prop
-  | Mu regs body resultReg => regs ≠ [] ∧ body.IsStandardForm ∧ resultReg ≤ regs.length + body.maxRegister
+/-- A While instruction is well-formed if the body is in standard form. -/
+def ExtendedInstr.WhileWellFormed : ExtendedInstr → Prop
+  | While _ body => body.IsStandardForm
   | _ => True
 
 /-- An extended instruction is well-formed. -/
 def ExtendedInstr.WellFormed (i : ExtendedInstr) : Prop :=
-  i.BlockWellFormed ∧ i.MuWellFormed
+  i.BlockWellFormed ∧ i.WhileWellFormed
 
 /-- An extended program is well-formed if all its instructions are well-formed. -/
 def ExtendedProgram.WellFormed (p : ExtendedProgram) : Prop :=

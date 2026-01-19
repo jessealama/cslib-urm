@@ -13,7 +13,7 @@ import Urm.Shift
 /-! # Extended URM: Compiler
 
 This module compiles ExtendedURM programs to base URM programs.
-The compilation handles structured control flow (BLOCK and MU) by
+The compilation handles structured control flow (BLOCK and WHILE) by
 expanding them into equivalent sequences of base URM instructions.
 
 ## Main Definitions
@@ -37,13 +37,13 @@ Compiled as:
 2. Run body (with appropriate register shifting)
 3. Copy result back
 
-### MU [r₀, r₁, ...] { body } resultReg
-Compiled as a while loop:
-1. Setup: save inputs, initialize counter
-2. Loop prologue: restore inputs to body, set counter
-3. Body execution
-4. Loop epilogue: check exit, increment counter, jump back
-5. Output: copy result register
+### WHILE condReg { body }
+Compiled as:
+1. Setup: ensure zeroReg = 0
+2. Check: J condReg zeroReg exitPC (if condition = 0, exit)
+3. Body execution (shifted jumps)
+4. Loop back: J zeroReg zeroReg checkPC (unconditional jump)
+5. Exit point
 
 ## Key Insight
 
@@ -141,173 +141,38 @@ theorem compileBlock_length (regs : List ℕ) (body : FlatProgram) :
   | nil => simp
   | cons h t => simp
 
-/-! ## Mu Compilation -/
+/-! ## While Compilation -/
 
-/-- Register layout for Mu compilation.
-Given n = regs.length and maxReg = body.maxRegister:
-- R[base..base+n-1]: body inputs
-- R[base+n]: body counter input
-- R[base..base+maxReg]: body workspace
-- counterReg: loop counter (beyond body workspace)
-- zeroReg: always 0 (for comparisons)
-- savedRegs: saved original inputs -/
-structure MuLayout where
-  /-- Number of input registers -/
-  n : ℕ
-  /-- Base offset for body execution -/
-  base : ℕ
-  /-- Maximum register used by body -/
-  bodyMaxReg : ℕ
-  /-- Counter register index -/
-  counterReg : ℕ
-  /-- Zero register index (always 0) -/
-  zeroReg : ℕ
-  /-- Start of saved input registers -/
-  savedStart : ℕ
+/-- Compile a WHILE construct.
 
-/-- Compute the register layout for Mu compilation. -/
-def mkMuLayout (regs : List ℕ) (body : FlatProgram) : MuLayout :=
-  let n := regs.length
-  let base := registerBase regs
-  let bodyMaxReg := body.maxRegister
-  -- Place counter, zero, and saved registers above body's workspace
-  let workspaceEnd := base + max n bodyMaxReg
-  { n := n
-    base := base
-    bodyMaxReg := bodyMaxReg
-    counterReg := workspaceEnd + 1
-    zeroReg := workspaceEnd + 2
-    savedStart := workspaceEnd + 3 }
+Structure (for condReg, body):
+```
+[0]              Z zeroReg                    -- ensure zeroReg = 0
+[1]              J condReg zeroReg exitPC     -- if R[condReg] = 0, exit
+[2..2+len-1]     body (jump-shifted by 2)     -- execute body
+[2+len]          J zeroReg zeroReg 1          -- unconditional jump to check
+[exitPC=2+len+1] (halted)
+```
 
-/-! ## MuLayout Properties -/
-
-/-- The layout has distinct counter and zero registers. -/
-theorem mkMuLayout_counterReg_ne_zeroReg (regs : List ℕ) (body : FlatProgram) :
-    (mkMuLayout regs body).counterReg ≠ (mkMuLayout regs body).zeroReg := by
-  simp only [mkMuLayout, ne_eq]; omega
-
-/-- Counter register is not in the saved area. -/
-theorem mkMuLayout_counterReg_ne_saved (regs : List ℕ) (body : FlatProgram) (i : Fin regs.length) :
-    (mkMuLayout regs body).counterReg ≠ (mkMuLayout regs body).savedStart + i := by
-  simp only [mkMuLayout, ne_eq]; omega
-
-/-- Zero register is not in the saved area. -/
-theorem mkMuLayout_zeroReg_ne_saved (regs : List ℕ) (body : FlatProgram) (i : Fin regs.length) :
-    (mkMuLayout regs body).zeroReg ≠ (mkMuLayout regs body).savedStart + i := by
-  simp only [mkMuLayout, ne_eq]; omega
-
-/-- Saved area registers are distinct. -/
-theorem mkMuLayout_saved_disjoint (regs : List ℕ) (body : FlatProgram)
-    (i j : Fin regs.length) (h : i ≠ j) :
-    (mkMuLayout regs body).savedStart + i ≠ (mkMuLayout regs body).savedStart + j := by
-  intro heq
-  have : (i : ℕ) = (j : ℕ) := Nat.add_left_cancel heq
-  exact h (Fin.ext this)
-
-/-- All host registers are below the saved area. -/
-theorem mkMuLayout_regs_lt_saved (regs : List ℕ) (body : FlatProgram) (i : Fin regs.length) :
-    regs[i] < (mkMuLayout regs body).savedStart := by
-  simp only [mkMuLayout]
-  have hbase : regs[i] < registerBase regs := registerBase_gt_all regs (regs[i]) (List.getElem_mem i.isLt)
-  omega
-
-/-- Counter register is above the body workspace (base + bodyMaxReg). -/
-theorem mkMuLayout_counterReg_gt_workspace (regs : List ℕ) (body : FlatProgram) :
-    (mkMuLayout regs body).counterReg > (mkMuLayout regs body).base + (mkMuLayout regs body).bodyMaxReg := by
-  simp only [mkMuLayout]; omega
-
-/-- Zero register is above the body workspace. -/
-theorem mkMuLayout_zeroReg_gt_workspace (regs : List ℕ) (body : FlatProgram) :
-    (mkMuLayout regs body).zeroReg > (mkMuLayout regs body).base + (mkMuLayout regs body).bodyMaxReg := by
-  simp only [mkMuLayout]; omega
-
-/-- Saved area starts above the body workspace. -/
-theorem mkMuLayout_savedStart_gt_workspace (regs : List ℕ) (body : FlatProgram) :
-    (mkMuLayout regs body).savedStart > (mkMuLayout regs body).base + (mkMuLayout regs body).bodyMaxReg := by
-  simp only [mkMuLayout]; omega
-
-/-- Counter register is above base + n (body's counter input position). -/
-theorem mkMuLayout_counterReg_gt_base_n (regs : List ℕ) (body : FlatProgram) :
-    (mkMuLayout regs body).counterReg > (mkMuLayout regs body).base + (mkMuLayout regs body).n := by
-  simp only [mkMuLayout]; omega
-
-/-- Zero register is above base + n. -/
-theorem mkMuLayout_zeroReg_gt_base_n (regs : List ℕ) (body : FlatProgram) :
-    (mkMuLayout regs body).zeroReg > (mkMuLayout regs body).base + (mkMuLayout regs body).n := by
-  simp only [mkMuLayout]; omega
-
-/-- Saved area starts above base + n. -/
-theorem mkMuLayout_savedStart_gt_base_n (regs : List ℕ) (body : FlatProgram) :
-    (mkMuLayout regs body).savedStart > (mkMuLayout regs body).base + (mkMuLayout regs body).n := by
-  simp only [mkMuLayout]; omega
-
-/-- n equals regs.length. -/
-theorem mkMuLayout_n_eq (regs : List ℕ) (body : FlatProgram) :
-    (mkMuLayout regs body).n = regs.length := by simp [mkMuLayout]
-
-/-- Setup phase: save inputs to savedRegs, zero counter and zeroReg. -/
-def muSetupPhase (layout : MuLayout) (regs : List ℕ) : FlatProgram :=
-  -- Copy inputs to saved area
-  let saveInputs := regs.mapIdx fun i r => Instr.T r (layout.savedStart + i)
-  -- Zero the counter and zeroReg
-  saveInputs ++ [Instr.Z layout.counterReg, Instr.Z layout.zeroReg]
-
-/-- Loop prologue: clear workspace, restore inputs, set counter. -/
-def muPrologue (layout : MuLayout) : FlatProgram :=
-  -- Clear body workspace
-  let clearWorkspace := clearBodyRegs layout.base (layout.bodyMaxReg + 1)
-  -- Restore inputs from saved area to body's input positions
-  let restoreInputs := List.range layout.n |>.map fun i =>
-    Instr.T (layout.savedStart + i) (layout.base + i)
-  -- Copy counter to body's counter position
-  let setCounter := [Instr.T layout.counterReg (layout.base + layout.n)]
-  clearWorkspace ++ restoreInputs ++ setCounter
-
-/-- Loop epilogue: check exit, increment counter, jump back.
-Takes absolute PC positions for exit and loop start. -/
-def muEpilogue (layout : MuLayout) (exitPC loopStartPC : ℕ) : FlatProgram :=
-  [ Instr.J layout.base layout.zeroReg exitPC  -- if body result = 0, exit
-  , Instr.S layout.counterReg                   -- increment counter
-  , Instr.J layout.zeroReg layout.zeroReg loopStartPC ]  -- unconditional jump back
-
-/-- Output phase: copy result register to output. -/
-def muOutputPhase (regs : List ℕ) (resultReg : ℕ) : FlatProgram :=
-  match regs with
-  | [] => []
-  | r :: _ => [Instr.T resultReg r]
-
-/-- Compile a MU construct.
-
-Structure:
-1. Setup: save inputs, zero counter/zeroReg
-2. Loop:
-   a. Prologue: clear workspace, restore inputs, set counter
-   b. Body execution (shifted)
-   c. Epilogue: check exit, increment, jump
-3. Output: copy result -/
-def compileMu (regs : List ℕ) (body : FlatProgram) (resultReg : ℕ) : FlatProgram :=
-  let layout := mkMuLayout regs body
-
-  -- Calculate phase lengths
-  let setupLen := regs.length + 2
-  let prologueLen := layout.bodyMaxReg + 1 + layout.n + 1
+The zeroReg is chosen to be beyond both condReg and body.maxRegister to avoid conflicts.
+-/
+def compileWhile (condReg : ℕ) (body : FlatProgram) : FlatProgram :=
+  let zeroReg := max condReg body.maxRegister + 1
   let bodyLen := body.length
-  let epilogueLen := 3
+  let exitPC := 2 + bodyLen + 1
+  let checkPC := 1
+  -- Build the program
+  [Instr.Z zeroReg,
+   Instr.J condReg zeroReg exitPC] ++
+  body.shiftJumps 2 ++
+  [Instr.J zeroReg zeroReg checkPC]
 
-  -- Calculate PC positions
-  let loopStartPC := setupLen
-  let bodyStartPC := setupLen + prologueLen
-  let epilogueStartPC := bodyStartPC + bodyLen
-  let outputPC := epilogueStartPC + epilogueLen
-
-  -- Build phases
-  let setup := muSetupPhase layout regs
-  let prologue := muPrologue layout
-  let shiftedBody := (body.shiftRegisters layout.base).shiftJumps bodyStartPC
-  let epilogue := muEpilogue layout outputPC loopStartPC
-  let output := muOutputPhase regs resultReg
-
-  setup ++ prologue ++ shiftedBody ++ epilogue ++ output
+/-- Length of compileWhile. -/
+theorem compileWhile_length (condReg : ℕ) (body : FlatProgram) :
+    (compileWhile condReg body).length = body.length + 3 := by
+  simp only [compileWhile, List.length_append, List.length_cons, List.length_nil,
+    Program.shiftJumps_length]
+  omega
 
 /-! ## Main Compilation -/
 
@@ -323,7 +188,7 @@ def compileInstr (i : ExtendedInstr) : FlatProgram :=
   | ExtendedInstr.T m n => [Instr.T m n]
   | ExtendedInstr.J m n q => [Instr.J m n q]  -- Warning: target may be invalid
   | ExtendedInstr.Block regs body => compileBlock regs body
-  | ExtendedInstr.Mu regs body resultReg => compileMu regs body resultReg
+  | ExtendedInstr.While condReg body => compileWhile condReg body
 
 /-- Compile an extended program to base URM.
 
@@ -370,27 +235,14 @@ theorem compileInstr_length (i : ExtendedInstr) :
       | ExtendedInstr.J _ _ _ => 1
       | ExtendedInstr.Block regs body =>
           regs.length + body.length + (if regs = [] then 0 else 1)
-      | ExtendedInstr.Mu regs body _ =>
-          -- setup + prologue + body + epilogue + output
-          let layout := mkMuLayout regs body
-          (regs.length + 2) +
-          (layout.bodyMaxReg + 1 + layout.n + 1) +
-          body.length +
-          3 +
-          (if regs = [] then 0 else 1) := by
+      | ExtendedInstr.While _ body => body.length + 3 := by
   cases i with
   | Z n => rfl
   | S n => rfl
   | T m n => rfl
   | J m n q => rfl
   | Block regs body => exact compileBlock_length regs body
-  | Mu regs body resultReg =>
-    simp only [compileInstr, compileMu, List.length_append]
-    simp only [muSetupPhase, muPrologue, muEpilogue, muOutputPhase,
-      clearBodyRegs, Program.shiftRegisters_length, Program.shiftJumps_length]
-    cases regs with
-    | nil => simp [mkMuLayout]
-    | cons h t => simp [mkMuLayout]; omega
+  | While condReg body => exact compileWhile_length condReg body
 
 /-! ## Standard Form Properties -/
 
@@ -480,115 +332,43 @@ theorem compileBlock_isStandardForm (regs : List ℕ) (body : FlatProgram)
     simp only [Program.isStraightLine, List.all_eq_true] at hsl
     exact Instr.hasBoundedJump_of_isNonJumping (hsl instr hinCopyOut) _
 
-/-- muSetupPhase is straight-line. -/
-theorem muSetupPhase_isStraightLine (layout : MuLayout) (regs : List ℕ) :
-    (muSetupPhase layout regs).isStraightLine = true := by
-  simp only [muSetupPhase, Program.isStraightLine, List.all_append]
-  rw [Bool.and_eq_true]
-  refine ⟨?_, rfl⟩
-  rw [List.all_eq_true]
-  intro instr hinstr
-  rw [List.mem_mapIdx] at hinstr
-  obtain ⟨_, _, rfl⟩ := hinstr
-  rfl
-
-/-- muPrologue is straight-line. -/
-theorem muPrologue_isStraightLine (layout : MuLayout) :
-    (muPrologue layout).isStraightLine = true := by
-  simp only [muPrologue, Program.isStraightLine, List.all_append, clearBodyRegs]
-  rw [Bool.and_eq_true, Bool.and_eq_true]
-  refine ⟨⟨?_, ?_⟩, rfl⟩
-  · rw [List.all_eq_true]
-    intro instr hinstr
-    simp only [List.mem_map, List.mem_range] at hinstr
-    obtain ⟨_, _, rfl⟩ := hinstr
-    rfl
-  · rw [List.all_eq_true]
-    intro instr hinstr
-    simp only [List.mem_map, List.mem_range] at hinstr
-    obtain ⟨_, _, rfl⟩ := hinstr
-    rfl
-
-/-- muOutputPhase is straight-line. -/
-theorem muOutputPhase_isStraightLine (regs : List ℕ) (resultReg : ℕ) :
-    (muOutputPhase regs resultReg).isStraightLine = true := by
-  cases regs with
-  | nil => rfl
-  | cons r _ => rfl
-
-/-- Compiled Mu produces a standard form program if body is standard form. -/
-theorem compileMu_isStandardForm (regs : List ℕ) (body : FlatProgram) (resultReg : ℕ)
+/-- Compiled While produces a standard form program if body is standard form. -/
+theorem compileWhile_isStandardForm (condReg : ℕ) (body : FlatProgram)
     (hbody : body.IsStandardForm) :
-    (compileMu regs body resultReg).IsStandardForm := by
-  simp only [compileMu]
+    (compileWhile condReg body).IsStandardForm := by
+  simp only [compileWhile]
   unfold Program.IsStandardForm Program.isStandardForm
   rw [List.all_eq_true]
   intro instr hinstr
-  -- The program is: setup ++ prologue ++ shiftedBody ++ epilogue ++ output
-  rw [List.mem_append] at hinstr
-  rcases hinstr with h1 | h2
-  · rw [List.mem_append] at h1
-    rcases h1 with h1a | h1b
-    · rw [List.mem_append] at h1a
-      rcases h1a with h1a1 | h1a2
-      · rw [List.mem_append] at h1a1
-        rcases h1a1 with hinSetup | hinPrologue
-        · -- In setup (straight-line)
-          have hsl := muSetupPhase_isStraightLine (mkMuLayout regs body) regs
-          simp only [Program.isStraightLine, List.all_eq_true] at hsl
-          exact Instr.hasBoundedJump_of_isNonJumping (hsl instr hinSetup) _
-        · -- In prologue (straight-line)
-          have hsl := muPrologue_isStraightLine (mkMuLayout regs body)
-          simp only [Program.isStraightLine, List.all_eq_true] at hsl
-          exact Instr.hasBoundedJump_of_isNonJumping (hsl instr hinPrologue) _
-      · -- In shiftedBody
-        -- Body jumps are shifted by bodyStartPC, resulting in jumps ≤ bodyStartPC + body.length
-        have hsfShifted := shiftRegisters_isStandardForm hbody (mkMuLayout regs body).base
-        unfold Program.IsStandardForm Program.isStandardForm at hsfShifted
-        rw [List.all_eq_true] at hsfShifted
-        simp only [Program.shiftJumps, List.mem_map] at h1a2
-        obtain ⟨instr', hinstr', rfl⟩ := h1a2
-        have horigBound := hsfShifted instr' hinstr'
-        -- shiftRegisters preserves length, so convert the bound
-        rw [Program.shiftRegisters_length] at horigBound
-        -- bodyStartPC = setupLen + prologueLen
-        have hshifted := Instr.hasBoundedJump_shiftJumps (len := body.length)
-          (offset := regs.length + 2 + (body.maxRegister + 1 + regs.length + 1)) horigBound
-        apply Instr.hasBoundedJump_mono hshifted
-        simp only [muSetupPhase, muPrologue, muEpilogue, muOutputPhase, clearBodyRegs, mkMuLayout,
-          List.length_append, List.length_mapIdx, List.length_map, List.length_range,
-          Program.shiftRegisters, Program.shiftJumps, List.length_map, List.length_cons,
-          List.length_nil]
-        cases regs with
-        | nil => simp
-        | cons h t => simp; omega
-    · -- In epilogue (has jumps with specific targets)
-      simp only [muEpilogue, List.mem_cons, List.mem_nil_iff, or_false] at h1b
-      rcases h1b with rfl | rfl | rfl
-      · -- Exit jump: J base zeroReg outputPC
-        simp only [Instr.hasBoundedJump, decide_eq_true_eq]
-        simp only [muSetupPhase, muPrologue, muEpilogue, muOutputPhase, clearBodyRegs, mkMuLayout,
-          List.length_append, List.length_mapIdx, List.length_map, List.length_range,
-          Program.shiftRegisters, Program.shiftJumps, List.length_map, List.length_cons,
-          List.length_nil]
-        cases regs with
-        | nil => simp
-        | cons h t => simp
-      · -- Successor: S counterReg (no jump)
-        simp [Instr.hasBoundedJump]
-      · -- Loop jump: J zeroReg zeroReg loopStartPC
-        simp only [Instr.hasBoundedJump, decide_eq_true_eq]
-        simp only [muSetupPhase, muPrologue, muEpilogue, muOutputPhase, clearBodyRegs, mkMuLayout,
-          List.length_append, List.length_mapIdx, List.length_map, List.length_range,
-          Program.shiftRegisters, Program.shiftJumps, List.length_map, List.length_cons,
-          List.length_nil]
-        cases regs with
-        | nil => simp
-        | cons h t => simp; omega
-  · -- In output (straight-line)
-    have hsl := muOutputPhase_isStraightLine regs resultReg
-    simp only [Program.isStraightLine, List.all_eq_true] at hsl
-    exact Instr.hasBoundedJump_of_isNonJumping (hsl instr h2) _
+  -- The program is: [Z zeroReg, J condReg zeroReg exitPC] ++ shiftedBody ++ [J zeroReg zeroReg 1]
+  simp only [List.mem_append, List.mem_cons] at hinstr
+  rcases hinstr with ((rfl | hinrest) | hinBody) | hinlast
+  · -- Z zeroReg: no jump
+    simp [Instr.hasBoundedJump]
+  · -- Either J condReg zeroReg exitPC or empty
+    rcases hinrest with rfl | hempty
+    · -- J condReg zeroReg exitPC: exitPC = 2 + body.length + 1 ≤ program length
+      simp only [Instr.hasBoundedJump, decide_eq_true_eq, List.length_append, List.length_cons,
+        List.length_nil, Program.shiftJumps_length]
+      omega
+    · simp at hempty
+  · -- In shiftedBody
+    simp only [Program.shiftJumps, List.mem_map] at hinBody
+    obtain ⟨instr', hinstr', rfl⟩ := hinBody
+    unfold Program.IsStandardForm Program.isStandardForm at hbody
+    rw [List.all_eq_true] at hbody
+    have horigBound := hbody instr' hinstr'
+    -- Body jumps are shifted by 2, targets become q + 2
+    have hshifted := Instr.hasBoundedJump_shiftJumps (len := body.length) (offset := 2) horigBound
+    apply Instr.hasBoundedJump_mono hshifted
+    simp only [List.length_append, List.length_cons, List.length_nil, Program.shiftJumps_length]
+    omega
+  · -- J zeroReg zeroReg 1: either the single element or empty
+    rcases hinlast with rfl | hempty
+    · simp only [Instr.hasBoundedJump, decide_eq_true_eq, List.length_append, List.length_cons,
+        List.length_nil, Program.shiftJumps_length]
+      omega
+    · simp at hempty
 
 /-- Each compileInstr produces a standard form program when the body is standard form. -/
 theorem compileInstr_isStandardForm (i : ExtendedInstr)
@@ -631,7 +411,7 @@ theorem compileInstr_isStandardForm (i : ExtendedInstr)
       rw [List.all_eq_true] at this
       exact this x hx
     exact compileBlock_isStandardForm regs body h
-  | Mu regs body resultReg =>
+  | While condReg body =>
     simp only [ExtendedInstr.bodyIsStandardForm] at hbody
     simp only [compileInstr]
     have h : body.IsStandardForm := by
@@ -641,7 +421,7 @@ theorem compileInstr_isStandardForm (i : ExtendedInstr)
       unfold Program.isStandardForm at this
       rw [List.all_eq_true] at this
       exact this x hx
-    exact compileMu_isStandardForm regs body resultReg h
+    exact compileWhile_isStandardForm condReg body h
 
 /-- Helper: sublist implies length ≤ -/
 private theorem length_le_of_mem_flatMap {α β : Type*} (f : α → List β) {a : α} {l : List α}

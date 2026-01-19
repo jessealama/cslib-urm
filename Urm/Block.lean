@@ -9,8 +9,6 @@ import Urm.Block.Pseudo
 import Urm.Block.Compile
 import Urm.Block.Glue
 import Urm.Block.Compose
-import Urm.Block.While
-import Urm.Block.Min
 import Urm.Block.Prec
 
 /-! # URMBlock: Structured URM Programming
@@ -26,7 +24,8 @@ namespaces and supports compositional construction.
 - `Urm.Block.Compile`: Compilation with register offset preservation
 - `Urm.Block.Glue`: Block sequencing lemmas
 - `Urm.Block.Compose`: Composition combinator
-- `Urm.Block.While`: While loop combinator (unbounded iteration)
-- `Urm.Block.Min`: Minimization combinator (μ-recursion)
 - `Urm.Block.Prec`: Primitive recursion combinator
+
+Note: Minimization (μ-recursion) is handled via the Extended URM module
+(`Urm.Extended`), which provides a cleaner compilation approach.
 -/

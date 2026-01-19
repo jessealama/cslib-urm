@@ -8,6 +8,8 @@ import Urm.Extended.Basic
 import Urm.Execution
 import Mathlib.Data.Part
 import Mathlib.Computability.Partrec
+import Mathlib.Control.Fix
+import Mathlib.Control.LawfulFix
 
 /-! # Extended URM: Semantics
 
@@ -20,7 +22,7 @@ to state (possibly partially, for non-terminating computations).
 - `evalInstr`: Evaluate a single extended instruction
 - `evalProgram`: Evaluate an extended program (sequential composition)
 - `runBlock`: Execute a BLOCK construct
-- `runMu`: Execute a MU construct (μ-recursion)
+- `runWhile`: Execute a WHILE construct
 
 ## Semantics Overview
 
@@ -35,10 +37,10 @@ only for flat programs or compile to base URM for full execution.
 2. Run body (as base URM) until halt
 3. Write back: host's R[r₀] ← body's R[0]
 
-### MU [r₀, r₁, ...] { body } resultReg
-1. Setup: body's R[i] ← host's R[rᵢ], body's R[n] ← 0
-2. Loop: run body, check R[0], if ≠ 0 increment counter and repeat
-3. Write back: host's R[r₀] ← body's R[resultReg]
+### WHILE condReg { body }
+1. Check R[condReg]: if = 0, exit
+2. Run body (as base URM) until halt
+3. Go to step 1
 
 ## References
 
@@ -84,7 +86,7 @@ def evalBasicInstr (i : ExtendedInstr) (s : State) : Option State :=
   | ExtendedInstr.T m n => some (s.write n (s m))
   | ExtendedInstr.J _ _ _ => none  -- J requires program context
   | ExtendedInstr.Block _ _ => none  -- Not a basic instruction
-  | ExtendedInstr.Mu _ _ _ => none  -- Not a basic instruction
+  | ExtendedInstr.While _ _ => none  -- Not a basic instruction
 
 /-! ## Block Evaluation -/
 
@@ -111,54 +113,33 @@ theorem runBlock_eq_runBlock' (hostState : State) (regs : List ℕ) (body : Flat
   simp only [runBlock, runBlock', Urm.eval]
   rfl
 
-/-! ## Mu Evaluation (μ-recursion) -/
+/-! ## While Evaluation -/
 
-/-- Create sub-state for Mu body: inputs from mapped registers + counter at position n.
-Body's R[i] for i < n gets host's R[regs[i]].
-Body's R[n] gets the counter value.
-Body's R[i] for i > n is initialized to 0. -/
-def mkMuSubState (hostState : State) (regs : List ℕ) (counter : ℕ) : State :=
-  fun i =>
-    if h : i < regs.length then hostState (regs[i]'h)
-    else if i = regs.length then counter
-    else 0
+/-- Evaluate a flat program starting from a given state.
+Returns the final state if the program halts.
 
-/-- Run one iteration of the Mu loop body.
-Returns (result in R[0], final body state) if body halts. -/
-noncomputable def runMuIteration (hostState : State) (regs : List ℕ) (body : FlatProgram)
-    (counter : ℕ) : Part (ℕ × State) :=
-  let subState := mkMuSubState hostState regs counter
-  let inputs := (List.ofFn (fun i : Fin regs.length => hostState (regs[i]))) ++ [counter]
-  ⟨Halts body inputs,
+This differs from `Urm.eval` which loads inputs into R[0], R[1], etc.
+Here, the program runs directly on the given state. -/
+noncomputable def evalFlat (body : FlatProgram) (s : State) : Part State :=
+  ⟨∃ c, Steps body ⟨0, s⟩ c ∧ c.isHalted body,
    fun hHalts =>
-     let finalConfig := Classical.choose hHalts
-     (finalConfig.state 0, finalConfig.state)⟩
+     (Classical.choose hHalts).state⟩
 
-/-- Check if Mu body halts with result 0 at a given counter value. -/
-noncomputable def muExitCondition (hostState : State) (regs : List ℕ) (body : FlatProgram)
-    (counter : ℕ) : Part Bool :=
-  let inputs := (List.ofFn (fun i : Fin regs.length => hostState (regs[i]))) ++ [counter]
-  (Urm.eval body inputs).map (· == 0)
+/-- The step function for a while loop.
+Returns `Sum.inl s` to stop (when condition is 0) or `Sum.inr s'` to continue. -/
+noncomputable def whileStep (condReg : ℕ) (body : FlatProgram) (s : State) : Part (State ⊕ State) :=
+  if s condReg = 0 then Part.some (Sum.inl s)
+  else (evalFlat body s).map Sum.inr
 
-/-- Find the least counter value k such that body(inputs, k) halts with R[0] = 0.
-This is the core of μ-recursion. -/
-noncomputable def findMuExit (hostState : State) (regs : List ℕ) (body : FlatProgram) : Part ℕ :=
-  Nat.rfind fun k => muExitCondition hostState regs body k
+/-- Run a while loop: iterate body while R[condReg] ≠ 0.
+Returns the final state when R[condReg] becomes 0, or diverges if loop never exits.
 
-/-- Run a MU construct: find least k where body returns 0, then return resultReg value.
-This implements μ-recursion: μk[f(x,k) = 0]. -/
-noncomputable def runMu (hostState : State) (regs : List ℕ) (body : FlatProgram)
-    (resultReg : ℕ) : Part State :=
-  (findMuExit hostState regs body).bind fun exitCounter =>
-    -- Run body one more time at exitCounter to get final state
-    (runMuIteration hostState regs body exitCounter).map fun ⟨_, finalBodyState⟩ =>
-      writeBackReg hostState regs finalBodyState resultReg
-
-/-- Simplified Mu for minimization: resultReg = regs.length (the counter position).
-Returns the counter value when body first returns 0. -/
-noncomputable def runMuMin (hostState : State) (regs : List ℕ) (body : FlatProgram) : Part State :=
-  (findMuExit hostState regs body).map fun exitCounter =>
-    writeBackResult hostState regs exitCounter
+Semantics:
+1. Check R[condReg]: if = 0, return current state
+2. Run body from current state until it halts
+3. Recurse with the new state -/
+noncomputable def runWhile (s : State) (condReg : ℕ) (body : FlatProgram) : Part State :=
+  PFun.fix (whileStep condReg body) s
 
 /-! ## Single Instruction Evaluation -/
 
@@ -166,7 +147,7 @@ noncomputable def runMuMin (hostState : State) (regs : List ℕ) (body : FlatPro
 - Basic instructions (Z, S, T): update state directly
 - J: Not directly evaluable (requires program context), returns none/diverges
 - Block: Run body with register mapping
-- Mu: Find exit counter via μ-recursion -/
+- While: Run body while condition register is non-zero -/
 noncomputable def evalInstr (i : ExtendedInstr) (s : State) : Part State :=
   match i with
   | ExtendedInstr.Z n => Part.some (s.write n 0)
@@ -174,7 +155,7 @@ noncomputable def evalInstr (i : ExtendedInstr) (s : State) : Part State :=
   | ExtendedInstr.T m n => Part.some (s.write n (s m))
   | ExtendedInstr.J _ _ _ => Part.none  -- J requires full program context
   | ExtendedInstr.Block regs body => runBlock s regs body
-  | ExtendedInstr.Mu regs body resultReg => runMu s regs body resultReg
+  | ExtendedInstr.While condReg body => runWhile s condReg body
 
 /-! ## Program Evaluation -/
 
@@ -267,33 +248,59 @@ theorem writeBackResult_nil (hostState : State) (result : ℕ) :
 theorem writeBackResult_cons (hostState : State) (r : ℕ) (rs : List ℕ) (result : ℕ) :
     writeBackResult hostState (r :: rs) result = hostState.write r result := rfl
 
-/-! ## Mu Properties -/
+/-! ## While Properties -/
 
-/-- mkMuSubState at index i < regs.length returns host value at regs[i]. -/
-theorem mkMuSubState_lt (hostState : State) (regs : List ℕ) (counter : ℕ)
-    (i : ℕ) (hi : i < regs.length) :
-    mkMuSubState hostState regs counter i = hostState (regs[i]'hi) := by
-  simp [mkMuSubState, hi]
+/-- evalFlat terminates when the body program halts from the initial state. -/
+theorem evalFlat_dom_iff (body : FlatProgram) (s : State) :
+    (evalFlat body s).Dom ↔ ∃ c, Steps body ⟨0, s⟩ c ∧ c.isHalted body := by
+  rfl
 
-/-- mkMuSubState at index regs.length returns the counter. -/
-theorem mkMuSubState_counter (hostState : State) (regs : List ℕ) (counter : ℕ) :
-    mkMuSubState hostState regs counter regs.length = counter := by
-  simp [mkMuSubState]
+/-- whileStep at 0 returns Sum.inl s. -/
+theorem whileStep_zero (condReg : ℕ) (body : FlatProgram) (s : State) (hs : s condReg = 0) :
+    whileStep condReg body s = Part.some (Sum.inl s) := by
+  simp only [whileStep, hs, ↓reduceIte]
 
-/-- mkMuSubState at index > regs.length returns 0. -/
-theorem mkMuSubState_gt (hostState : State) (regs : List ℕ) (counter : ℕ)
-    (i : ℕ) (hi : i > regs.length) :
-    mkMuSubState hostState regs counter i = 0 := by
-  simp only [mkMuSubState]
-  have hlt : ¬(i < regs.length) := Nat.not_lt.mpr (Nat.le_of_lt hi)
-  have hne : i ≠ regs.length := Nat.ne_of_gt hi
-  simp [hlt, hne]
+/-- whileStep at non-zero returns Sum.inr of body result. -/
+theorem whileStep_nonzero (condReg : ℕ) (body : FlatProgram) (s : State) (hs : s condReg ≠ 0) :
+    whileStep condReg body s = (evalFlat body s).map Sum.inr := by
+  simp only [whileStep, hs, ↓reduceIte]
 
-/-- runMuMin domain characterization: defined iff there exists k with body(inputs, k) = 0. -/
-theorem runMuMin_dom_iff (hostState : State) (regs : List ℕ) (body : FlatProgram) :
-    (runMuMin hostState regs body).Dom ↔ (findMuExit hostState regs body).Dom := by
-  -- runMuMin uses Part.map, and map preserves domain
-  simp only [runMuMin, Part.map_Dom]
+/-- runWhile at 0 returns immediately. -/
+theorem runWhile_zero (condReg : ℕ) (body : FlatProgram) (s : State) (hs : s condReg = 0) :
+    runWhile s condReg body = Part.some s := by
+  simp only [runWhile]
+  have h : Sum.inl s ∈ whileStep condReg body s := by
+    simp only [whileStep_zero condReg body s hs, Part.mem_some_iff]
+  exact Part.eq_some_iff.mpr (PFun.fix_stop h)
+
+/-- runWhile unfolds: if condition is non-zero, run body then recurse. -/
+theorem runWhile_unfold (condReg : ℕ) (body : FlatProgram) (s : State) (hs : s condReg ≠ 0) :
+    runWhile s condReg body = (evalFlat body s).bind (fun s' => runWhile s' condReg body) := by
+  simp only [runWhile]
+  ext x
+  rw [PFun.mem_fix_iff]
+  constructor
+  · intro hx
+    cases hx with
+    | inl hstop =>
+      -- whileStep returns Sum.inl at stop, but condition is non-zero
+      simp only [whileStep_nonzero condReg body s hs, Part.mem_map_iff] at hstop
+      obtain ⟨_, _, h⟩ := hstop
+      exact absurd h (by simp)
+    | inr hcont =>
+      obtain ⟨s', hs', hfix⟩ := hcont
+      simp only [whileStep_nonzero condReg body s hs, Part.mem_map_iff] at hs'
+      obtain ⟨s'', hs'', hinj⟩ := hs'
+      cases hinj
+      exact Part.mem_bind_iff.mpr ⟨s', hs'', hfix⟩
+  · intro hx
+    obtain ⟨s', hs', hfix⟩ := Part.mem_bind_iff.mp hx
+    right
+    use s'
+    constructor
+    · simp only [whileStep_nonzero condReg body s hs, Part.mem_map_iff]
+      exact ⟨s', hs', rfl⟩
+    · exact hfix
 
 end Extended
 
