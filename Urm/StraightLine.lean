@@ -188,6 +188,15 @@ theorem Steps.straightLine_preserves {p : Program} {c c' : Config} {r : ℕ}
     simp only [Program.getInstr] at hinstr
     exact List.mem_of_getElem? hinstr
 
+/-- The final state of a straight-line program preserves registers not written by any instruction.
+    This is a convenient wrapper around `Steps.straightLine_preserves` for `straightLineFinalState`. -/
+theorem straightLineFinalState_preserves {p : Program} {r : ℕ}
+    (hsl : p.isStraightLine = true) (s : State)
+    (hnowrite : ∀ instr, instr ∈ p → instr.writesTo ≠ some r) :
+    (straightLineFinalState hsl s).read r = s.read r := by
+  obtain ⟨hsteps, -, -⟩ := straightLineFinalState_spec hsl s
+  exact Steps.straightLine_preserves hsl hsteps hnowrite
+
 /-- Partial execution preserves registers not written by instructions 0..k-1.
     For straight-line programs, execution from pc=0 to pc=k only executes instructions 0..k-1. -/
 theorem Steps.straightLine_preserves_partial {p : Program} {s : State} {k : ℕ} {r : ℕ}
