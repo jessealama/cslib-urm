@@ -7,6 +7,7 @@ Authors: Jesse Alama
 import Urm.Extended.Basic
 import Urm.Extended.Eval
 import Urm.Extended.Compile
+import Urm.Extended.Correctness
 
 /-! # Extended URM
 
@@ -25,6 +26,7 @@ The ExtendedURM IR separates concerns:
 - `Basic`: Core types (`ExtendedInstr`, `ExtendedProgram`)
 - `Eval`: Evaluation semantics (`evalInstr`, `evalProgram`)
 - `Compile`: Compilation to base URM (`compile`, `compileInstr`)
+- `Correctness`: Compiler correctness proofs
 
 ## Main Constructs
 
