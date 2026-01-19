@@ -179,6 +179,72 @@ def mkMuLayout (regs : List ℕ) (body : FlatProgram) : MuLayout :=
     zeroReg := workspaceEnd + 2
     savedStart := workspaceEnd + 3 }
 
+/-! ## MuLayout Properties -/
+
+/-- The layout has distinct counter and zero registers. -/
+theorem mkMuLayout_counterReg_ne_zeroReg (regs : List ℕ) (body : FlatProgram) :
+    (mkMuLayout regs body).counterReg ≠ (mkMuLayout regs body).zeroReg := by
+  simp only [mkMuLayout, ne_eq]; omega
+
+/-- Counter register is not in the saved area. -/
+theorem mkMuLayout_counterReg_ne_saved (regs : List ℕ) (body : FlatProgram) (i : Fin regs.length) :
+    (mkMuLayout regs body).counterReg ≠ (mkMuLayout regs body).savedStart + i := by
+  simp only [mkMuLayout, ne_eq]; omega
+
+/-- Zero register is not in the saved area. -/
+theorem mkMuLayout_zeroReg_ne_saved (regs : List ℕ) (body : FlatProgram) (i : Fin regs.length) :
+    (mkMuLayout regs body).zeroReg ≠ (mkMuLayout regs body).savedStart + i := by
+  simp only [mkMuLayout, ne_eq]; omega
+
+/-- Saved area registers are distinct. -/
+theorem mkMuLayout_saved_disjoint (regs : List ℕ) (body : FlatProgram)
+    (i j : Fin regs.length) (h : i ≠ j) :
+    (mkMuLayout regs body).savedStart + i ≠ (mkMuLayout regs body).savedStart + j := by
+  intro heq
+  have : (i : ℕ) = (j : ℕ) := Nat.add_left_cancel heq
+  exact h (Fin.ext this)
+
+/-- All host registers are below the saved area. -/
+theorem mkMuLayout_regs_lt_saved (regs : List ℕ) (body : FlatProgram) (i : Fin regs.length) :
+    regs[i] < (mkMuLayout regs body).savedStart := by
+  simp only [mkMuLayout]
+  have hbase : regs[i] < registerBase regs := registerBase_gt_all regs (regs[i]) (List.getElem_mem i.isLt)
+  omega
+
+/-- Counter register is above the body workspace (base + bodyMaxReg). -/
+theorem mkMuLayout_counterReg_gt_workspace (regs : List ℕ) (body : FlatProgram) :
+    (mkMuLayout regs body).counterReg > (mkMuLayout regs body).base + (mkMuLayout regs body).bodyMaxReg := by
+  simp only [mkMuLayout]; omega
+
+/-- Zero register is above the body workspace. -/
+theorem mkMuLayout_zeroReg_gt_workspace (regs : List ℕ) (body : FlatProgram) :
+    (mkMuLayout regs body).zeroReg > (mkMuLayout regs body).base + (mkMuLayout regs body).bodyMaxReg := by
+  simp only [mkMuLayout]; omega
+
+/-- Saved area starts above the body workspace. -/
+theorem mkMuLayout_savedStart_gt_workspace (regs : List ℕ) (body : FlatProgram) :
+    (mkMuLayout regs body).savedStart > (mkMuLayout regs body).base + (mkMuLayout regs body).bodyMaxReg := by
+  simp only [mkMuLayout]; omega
+
+/-- Counter register is above base + n (body's counter input position). -/
+theorem mkMuLayout_counterReg_gt_base_n (regs : List ℕ) (body : FlatProgram) :
+    (mkMuLayout regs body).counterReg > (mkMuLayout regs body).base + (mkMuLayout regs body).n := by
+  simp only [mkMuLayout]; omega
+
+/-- Zero register is above base + n. -/
+theorem mkMuLayout_zeroReg_gt_base_n (regs : List ℕ) (body : FlatProgram) :
+    (mkMuLayout regs body).zeroReg > (mkMuLayout regs body).base + (mkMuLayout regs body).n := by
+  simp only [mkMuLayout]; omega
+
+/-- Saved area starts above base + n. -/
+theorem mkMuLayout_savedStart_gt_base_n (regs : List ℕ) (body : FlatProgram) :
+    (mkMuLayout regs body).savedStart > (mkMuLayout regs body).base + (mkMuLayout regs body).n := by
+  simp only [mkMuLayout]; omega
+
+/-- n equals regs.length. -/
+theorem mkMuLayout_n_eq (regs : List ℕ) (body : FlatProgram) :
+    (mkMuLayout regs body).n = regs.length := by simp [mkMuLayout]
+
 /-- Setup phase: save inputs to savedRegs, zero counter and zeroReg. -/
 def muSetupPhase (layout : MuLayout) (regs : List ℕ) : FlatProgram :=
   -- Copy inputs to saved area

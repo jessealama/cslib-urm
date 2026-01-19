@@ -442,15 +442,21 @@ theorem compileBlock_correct (regs : List ℕ) (body : FlatProgram)
 
 /-! ## Mu Setup Phase -/
 
-/-- After muSetupPhase executes:
+/-- After muSetupPhase executes with mkMuLayout:
 1. Counter register is 0
 2. Zero register is 0
 3. Saved inputs contain the original input values -/
-theorem muSetupPhase_effect (layout : MuLayout) (regs : List ℕ) (s : State) :
+theorem muSetupPhase_effect' (regs : List ℕ) (body : FlatProgram) (s : State) :
+    let layout := mkMuLayout regs body
     let s' := straightLineFinalState (muSetupPhase_isStraightLine layout regs) s
     s' layout.counterReg = 0 ∧
     s' layout.zeroReg = 0 ∧
     ∀ i : Fin regs.length, s' (layout.savedStart + i) = s (regs[i]) := by
+  -- The proof follows from analyzing the straight-line execution of muSetupPhase:
+  -- 1. saveInputs copies regs[i] to savedStart + i for each i
+  -- 2. Z counterReg sets counterReg to 0
+  -- 3. Z zeroReg sets zeroReg to 0
+  -- The mkMuLayout lemmas ensure all these registers are disjoint.
   sorry
 
 /-! ## Mu Prologue -/
@@ -458,16 +464,24 @@ theorem muSetupPhase_effect (layout : MuLayout) (regs : List ℕ) (s : State) :
 /-- After muPrologue executes from state with counter = k:
 1. Body input registers contain saved input values
 2. Body counter input (at position n) contains k
-3. Counter and zero registers are preserved -/
-theorem muPrologue_effect (layout : MuLayout) (s : State) (k : ℕ)
-    (hs_counter : s layout.counterReg = k)
-    (hs_zero : s layout.zeroReg = 0)
-    (hs_saved : ∀ i : Fin layout.n, s (layout.savedStart + i) = s (layout.savedStart + i)) :
+3. Counter and zero registers are preserved
+
+This version uses mkMuLayout directly to get the necessary register disjointness properties. -/
+theorem muPrologue_effect' (regs : List ℕ) (body : FlatProgram) (s : State) (k : ℕ)
+    (hs_counter : s (mkMuLayout regs body).counterReg = k)
+    (hs_zero : s (mkMuLayout regs body).zeroReg = 0) :
+    let layout := mkMuLayout regs body
     let s' := straightLineFinalState (muPrologue_isStraightLine layout) s
-    (∀ i : Fin layout.n, s' (layout.base + i) = s (layout.savedStart + i)) ∧
+    (∀ i : Fin regs.length, s' (layout.base + i) = s (layout.savedStart + i)) ∧
     s' (layout.base + layout.n) = k ∧
     s' layout.counterReg = k ∧
     s' layout.zeroReg = 0 := by
+  -- The proof analyzes the straight-line execution of muPrologue:
+  -- muPrologue = clearWorkspace ++ restoreInputs ++ setCounter
+  -- 1. clearWorkspace zeros base..base+bodyMaxReg (doesn't affect counter, zero, or saved)
+  -- 2. restoreInputs copies savedStart+i to base+i for i < n
+  -- 3. setCounter copies counterReg to base+n
+  -- The mkMuLayout lemmas ensure all target registers are disjoint from preserved registers.
   sorry
 
 /-! ## Mu Loop Iteration -/
