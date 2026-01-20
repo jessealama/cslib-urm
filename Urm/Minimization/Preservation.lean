@@ -23,10 +23,13 @@ namespace Urm
 
 open Program
 
+section
+variable (n : ℕ) (pF : Program)
+
 /-! ## Setup Phase Results -/
 
 /-- Setup phase is a straight-line program. -/
-theorem setupPhase_isStraightLine (n : ℕ) (pF : Program) :
+theorem setupPhase_isStraightLine :
     (setupPhase n pF).isStraightLine = true := by
   simp only [setupPhase, Program.isStraightLine, List.all_append, List.all_cons, List.all_nil,
     Bool.and_true, Bool.and_eq_true]
@@ -34,7 +37,7 @@ theorem setupPhase_isStraightLine (n : ℕ) (pF : Program) :
   simp [Instr.isNonJumping]
 
 /-- After setup phase, saved inputs contain original inputs. -/
-theorem setupPhase_saves_inputs (n : ℕ) (pF : Program) (inputs : Fin n → ℕ)
+theorem setupPhase_saves_inputs (inputs : Fin n → ℕ)
     (s : State) (hs : s = State.fromInputs (List.ofFn inputs))
     (c' : Config) (hsteps : Steps (setupPhase n pF) ⟨0, s⟩ c')
     (hhalted : c'.isHalted (setupPhase n pF)) (i : Fin n) :
@@ -94,7 +97,7 @@ theorem setupPhase_saves_inputs (n : ℕ) (pF : Program) (inputs : Fin n → ℕ
   rw [heq, htransfer, hs_before_val, hinput_val]
 
 /-- After setup phase, counter is 0. -/
-theorem setupPhase_counter_zero (n : ℕ) (pF : Program)
+theorem setupPhase_counter_zero
     (s : State)
     (c' : Config) (hsteps : Steps (setupPhase n pF) ⟨0, s⟩ c')
     (hhalted : c'.isHalted (setupPhase n pF)) :
@@ -118,7 +121,7 @@ theorem setupPhase_counter_zero (n : ℕ) (pF : Program)
   exact straightLine_zeros_register hsl s (counterReg n pF) n hk hwrite hnowrite
 
 /-- After setup phase, zero register is 0. -/
-theorem setupPhase_zeroReg_zero (n : ℕ) (pF : Program)
+theorem setupPhase_zeroReg_zero
     (s : State)
     (c' : Config) (hsteps : Steps (setupPhase n pF) ⟨0, s⟩ c')
     (hhalted : c'.isHalted (setupPhase n pF)) :
@@ -141,7 +144,7 @@ theorem setupPhase_zeroReg_zero (n : ℕ) (pF : Program)
 /-! ## Loop Prologue Results -/
 
 /-- Loop prologue is a straight-line program. -/
-theorem loopPrologue_isStraightLine (n : ℕ) (pF : Program) :
+theorem loopPrologue_isStraightLine :
     (loopPrologue n pF).isStraightLine = true := by
   simp only [loopPrologue, Program.isStraightLine, List.all_append, List.all_cons, List.all_nil,
     Bool.and_true, Bool.and_eq_true]
@@ -149,7 +152,7 @@ theorem loopPrologue_isStraightLine (n : ℕ) (pF : Program) :
            copyRegisterRange_isStraightLine (savedInputsStart n pF) 0 n⟩, rfl⟩
 
 /-- After loop prologue, R[0..n-1] contain saved inputs. -/
-theorem loopPrologue_restores_inputs (n : ℕ) (pF : Program)
+theorem loopPrologue_restores_inputs
     (s : State) (c' : Config)
     (hsteps : Steps (loopPrologue n pF) ⟨0, s⟩ c')
     (hhalted : c'.isHalted (loopPrologue n pF)) (i : Fin n) :
@@ -222,7 +225,7 @@ theorem loopPrologue_restores_inputs (n : ℕ) (pF : Program)
   rw [heq, htransfer, hs_before_val]
 
 /-- After loop prologue, R[n] contains counter value. -/
-theorem loopPrologue_sets_counter_input (n : ℕ) (pF : Program)
+theorem loopPrologue_sets_counter_input
     (s : State) (c' : Config)
     (hsteps : Steps (loopPrologue n pF) ⟨0, s⟩ c')
     (hhalted : c'.isHalted (loopPrologue n pF)) :
@@ -271,7 +274,7 @@ theorem loopPrologue_sets_counter_input (n : ℕ) (pF : Program)
 
 /-- Loop prologue preserves any register > minimizationBase.
     loopPrologue only writes to registers 0..base (clearRegisters) and 0..n (copyRegisterRange, T). -/
-theorem loopPrologue_preserves_high_register (n : ℕ) (pF : Program)
+theorem loopPrologue_preserves_high_register
     (s : State) (c' : Config)
     (hsteps : Steps (loopPrologue n pF) ⟨0, s⟩ c')
     (hhalted : c'.isHalted (loopPrologue n pF))
@@ -298,7 +301,7 @@ theorem loopPrologue_preserves_high_register (n : ℕ) (pF : Program)
   exact Steps.straightLine_preserves hsl hsteps' hnowrite
 
 /-- Loop prologue clears registers in range [n+1, minimizationBase n pF]. -/
-theorem loopPrologue_clears_high_registers (n : ℕ) (pF : Program)
+theorem loopPrologue_clears_high_registers
     (s : State) (c' : Config)
     (hsteps : Steps (loopPrologue n pF) ⟨0, s⟩ c')
     (hhalted : c'.isHalted (loopPrologue n pF))
@@ -335,5 +338,7 @@ theorem loopPrologue_clears_high_registers (n : ℕ) (pF : Program)
   have ⟨hsteps', hhalted', _⟩ := straightLineFinalState_spec hsl s
   rw [Steps.halts_unique hsteps hhalted hsteps' hhalted']
   exact straightLine_zeros_register hsl s r r hr_lt_prologue hwrite hnowrite
+
+end
 
 end Urm
