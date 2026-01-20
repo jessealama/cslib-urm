@@ -125,8 +125,8 @@ it halts exactly at the program length (not beyond). This is because:
 4. The only way to halt (pc ≥ p.length) is to have pc = p.length -/
 
 /-- Extract the bounded jump property for a specific instruction from IsStandardForm. -/
-theorem Program.IsStandardForm.getInstr_hasBoundedJump {p : Program} (hsf : p.IsStandardForm)
-    {i : ℕ} {instr : Instr} (h : p.getInstr i = some instr) :
+theorem Program.IsStandardForm.getElem?_hasBoundedJump {p : Program} (hsf : p.IsStandardForm)
+    {i : ℕ} {instr : Instr} (h : p[i]? = some instr) :
     instr.hasBoundedJump p.length = true := by
   unfold IsStandardForm isStandardForm at hsf
   rw [List.all_eq_true] at hsf
@@ -141,7 +141,7 @@ theorem Step.pc_le_length_of_step {p : Program} (hsf : p.IsStandardForm)
   | zero hinstr | succ hinstr | trans hinstr | jump_ne hinstr _ =>
     show c.pc + 1 ≤ p.length; have := List.getElem?_eq_some_iff.mp hinstr |>.1; omega
   | jump_eq hinstr _ =>
-    have hbounded := hsf.getInstr_hasBoundedJump hinstr
+    have hbounded := hsf.getElem?_hasBoundedJump hinstr
     simp only [Instr.hasBoundedJump, decide_eq_true_eq] at hbounded; exact hbounded
 
 /-- The pc stays ≤ p.length throughout execution of a standard form program. -/
@@ -225,9 +225,9 @@ theorem Program.toStandardForm_isStandardForm (p : Program) :
 /-! ### Instruction Access in toStandardForm -/
 
 /-- Accessing an instruction in toStandardForm gives the capJump'd instruction. -/
-theorem Program.getInstr_toStandardForm (p : Program) (i : ℕ) :
-    p.toStandardForm.getInstr i = (p.getInstr i).map (Instr.capJump p.length) := by
-  simp only [getInstr, toStandardForm, List.getElem?_map]
+theorem Program.getElem?_toStandardForm (p : Program) (i : ℕ) :
+    p.toStandardForm[i]? = (p[i]?).map (Instr.capJump p.length) := by
+  simp only [toStandardForm, List.getElem?_map]
 
 /-! ### Behavioral Equivalence
 
@@ -240,55 +240,55 @@ behaviorally equivalent. -/
 For each instruction type, we show correspondence between steps in p and p.toStandardForm. -/
 
 /-- If original program has instruction at pc, the transformed program has the capped version. -/
-theorem Program.toStandardForm_getInstr_some {p : Program} {i : ℕ} {instr : Instr}
-    (h : p.getInstr i = some instr) :
-    p.toStandardForm.getInstr i = some (instr.capJump p.length) := by
-  simp [getInstr_toStandardForm, h]
+theorem Program.toStandardForm_getElem?_some {p : Program} {i : ℕ} {instr : Instr}
+    (h : p[i]? = some instr) :
+    p.toStandardForm[i]? = some (instr.capJump p.length) := by
+  simp [getElem?_toStandardForm, h]
 
 /-- Z instruction: identical step in both programs. -/
 theorem Step.toStandardForm_zero {p : Program} {c : Config} {n : ℕ}
-    (h : p.getInstr c.pc = some (Instr.Z n)) :
+    (h : p[c.pc]? = some (Instr.Z n)) :
     Step p.toStandardForm c ⟨c.pc + 1, c.state.write n 0⟩ := by
-  have hcap : p.toStandardForm.getInstr c.pc = some (Instr.Z n) := by
-    simp [Program.getInstr_toStandardForm, h]
+  have hcap : p.toStandardForm[c.pc]? = some (Instr.Z n) := by
+    simp [Program.getElem?_toStandardForm, h]
   exact Step.zero hcap
 
 /-- S instruction: identical step in both programs. -/
 theorem Step.toStandardForm_succ {p : Program} {c : Config} {n : ℕ}
-    (h : p.getInstr c.pc = some (Instr.S n)) :
+    (h : p[c.pc]? = some (Instr.S n)) :
     Step p.toStandardForm c ⟨c.pc + 1, c.state.write n (c.state.read n + 1)⟩ := by
-  have hcap : p.toStandardForm.getInstr c.pc = some (Instr.S n) := by
-    simp [Program.getInstr_toStandardForm, h]
+  have hcap : p.toStandardForm[c.pc]? = some (Instr.S n) := by
+    simp [Program.getElem?_toStandardForm, h]
   exact Step.succ hcap
 
 /-- T instruction: identical step in both programs. -/
 theorem Step.toStandardForm_trans {p : Program} {c : Config} {m n : ℕ}
-    (h : p.getInstr c.pc = some (Instr.T m n)) :
+    (h : p[c.pc]? = some (Instr.T m n)) :
     Step p.toStandardForm c ⟨c.pc + 1, c.state.write n (c.state.read m)⟩ := by
-  have hcap : p.toStandardForm.getInstr c.pc = some (Instr.T m n) := by
-    simp [Program.getInstr_toStandardForm, h]
+  have hcap : p.toStandardForm[c.pc]? = some (Instr.T m n) := by
+    simp [Program.getElem?_toStandardForm, h]
   exact Step.trans hcap
 
 /-- J instruction with bounded target (q ≤ p.length): identical step in both programs
     when condition is true. -/
 theorem Step.toStandardForm_jump_eq_bounded {p : Program} {c : Config} {m n q : ℕ}
-    (h : p.getInstr c.pc = some (Instr.J m n q))
+    (h : p[c.pc]? = some (Instr.J m n q))
     (hbounded : q ≤ p.length)
     (heq : c.state.read m = c.state.read n) :
     Step p.toStandardForm c ⟨q, c.state⟩ := by
-  have hcap : p.toStandardForm.getInstr c.pc = some (Instr.J m n (min q p.length)) := by
-    simp [Program.getInstr_toStandardForm, h]
+  have hcap : p.toStandardForm[c.pc]? = some (Instr.J m n (min q p.length)) := by
+    simp [Program.getElem?_toStandardForm, h]
   have hmin : min q p.length = q := Nat.min_eq_left hbounded
   rw [hmin] at hcap
   exact Step.jump_eq hcap heq
 
 /-- J instruction: identical step in both programs when condition is false. -/
 theorem Step.toStandardForm_jump_ne {p : Program} {c : Config} {m n q : ℕ}
-    (h : p.getInstr c.pc = some (Instr.J m n q))
+    (h : p[c.pc]? = some (Instr.J m n q))
     (hne : c.state.read m ≠ c.state.read n) :
     Step p.toStandardForm c ⟨c.pc + 1, c.state⟩ := by
-  have hcap : p.toStandardForm.getInstr c.pc = some (Instr.J m n (min q p.length)) := by
-    simp [Program.getInstr_toStandardForm, h]
+  have hcap : p.toStandardForm[c.pc]? = some (Instr.J m n (min q p.length)) := by
+    simp [Program.getElem?_toStandardForm, h]
   exact Step.jump_ne hcap hne
 
 /-! #### Halting Equivalence
@@ -319,7 +319,7 @@ theorem Step.simulate_toStandardForm {p : Program} {c₁ c₁' : Config}
     · exact ⟨⟨q, c₁.state⟩, Steps.single (Step.toStandardForm_jump_eq_bounded hinstr hbounded heq_reg),
              Or.inl ⟨rfl, rfl⟩⟩
     · have hgt : q > p.length := Nat.not_le.mp hbounded
-      have hcap := Program.toStandardForm_getInstr_some hinstr
+      have hcap := Program.toStandardForm_getElem?_some hinstr
       simp only [Instr.capJump, Nat.min_eq_right (Nat.le_of_lt hgt)] at hcap
       exact ⟨⟨p.length, c₁.state⟩, Steps.single (Step.jump_eq hcap heq_reg),
              Or.inr ⟨by simp; omega, by simp [Program.toStandardForm_length], rfl⟩⟩
@@ -356,26 +356,26 @@ theorem Step.simulate_from_toStandardForm {p : Program} {c₁ c₁' : Config}
     ∃ c₂', Steps p c₁ c₂' ∧ ConfigRelated p c₂' c₁' := by
   cases hstep with
   | zero hinstr =>
-    rw [Program.getInstr_toStandardForm] at hinstr; simp only [Option.map_eq_some_iff] at hinstr
+    rw [Program.getElem?_toStandardForm] at hinstr; simp only [Option.map_eq_some_iff] at hinstr
     obtain ⟨instr_orig, hinstr_orig, hcap⟩ := hinstr
     cases instr_orig with
     | Z n' => simp at hcap; subst hcap; exact ⟨_, Steps.single (Step.zero hinstr_orig), Or.inl ⟨rfl, rfl⟩⟩
     | S _ | T _ _ | J _ _ _ => simp at hcap
   | succ hinstr =>
-    rw [Program.getInstr_toStandardForm] at hinstr; simp only [Option.map_eq_some_iff] at hinstr
+    rw [Program.getElem?_toStandardForm] at hinstr; simp only [Option.map_eq_some_iff] at hinstr
     obtain ⟨instr_orig, hinstr_orig, hcap⟩ := hinstr
     cases instr_orig with
     | S n' => simp at hcap; subst hcap; exact ⟨_, Steps.single (Step.succ hinstr_orig), Or.inl ⟨rfl, rfl⟩⟩
     | Z _ | T _ _ | J _ _ _ => simp at hcap
   | trans hinstr =>
-    rw [Program.getInstr_toStandardForm] at hinstr; simp only [Option.map_eq_some_iff] at hinstr
+    rw [Program.getElem?_toStandardForm] at hinstr; simp only [Option.map_eq_some_iff] at hinstr
     obtain ⟨instr_orig, hinstr_orig, hcap⟩ := hinstr
     cases instr_orig with
     | T m' n' => simp at hcap; obtain ⟨rfl, rfl⟩ := hcap
                  exact ⟨_, Steps.single (Step.trans hinstr_orig), Or.inl ⟨rfl, rfl⟩⟩
     | Z _ | S _ | J _ _ _ => simp at hcap
   | jump_eq hinstr heq_reg =>
-    rw [Program.getInstr_toStandardForm] at hinstr; simp only [Option.map_eq_some_iff] at hinstr
+    rw [Program.getElem?_toStandardForm] at hinstr; simp only [Option.map_eq_some_iff] at hinstr
     obtain ⟨instr_orig, hinstr_orig, hcap⟩ := hinstr
     cases instr_orig with
     | J m' n' q' =>
@@ -389,7 +389,7 @@ theorem Step.simulate_from_toStandardForm {p : Program} {c₁ c₁' : Config}
                Or.inr ⟨by simp; omega, by simp [Program.toStandardForm_length], rfl⟩⟩
     | Z _ | S _ | T _ _ => simp at hcap
   | jump_ne hinstr hne_reg =>
-    rw [Program.getInstr_toStandardForm] at hinstr; simp only [Option.map_eq_some_iff] at hinstr
+    rw [Program.getElem?_toStandardForm] at hinstr; simp only [Option.map_eq_some_iff] at hinstr
     obtain ⟨instr_orig, hinstr_orig, hcap⟩ := hinstr
     cases instr_orig with
     | J m' n' q' => simp at hcap; obtain ⟨rfl, rfl, _⟩ := hcap

@@ -245,9 +245,9 @@ private theorem encodedStep_correct_zero (p : Program) (c : Config) (n : ℕ)
   rw [nthEncoded_encodeRegs_map_encodeInstr p c.pc hpc]
   simp only [hinstr, encodeInstr, Nat.unpair_pair]
   have hn : n ≤ p.maxRegister := by
-    have hinstr' : p.getInstr c.pc = some (Instr.Z n) := by
-      simp only [Program.getInstr, List.getElem?_eq_getElem hpc, hinstr]
-    have h := Program.getInstr_maxRegister hinstr'
+    have hinstr' : p[c.pc]? = some (Instr.Z n) := by
+      simp only [List.getElem?_eq_getElem hpc, hinstr]
+    have h := Program.getElem?_maxRegister hinstr'
     simp only [Instr.maxRegister] at h
     exact h
   simp only [hn, ↓reduceIte]
@@ -271,9 +271,9 @@ private theorem encodedStep_correct_succ (p : Program) (c : Config) (n : ℕ)
   simp only [hinstr, encodeInstr, Nat.unpair_pair]
   simp only [show (1 : ℕ) = 0 ↔ False from ⟨Nat.one_ne_zero, False.elim⟩, ↓reduceIte]
   have hn : n ≤ p.maxRegister := by
-    have hinstr' : p.getInstr c.pc = some (Instr.S n) := by
-      simp only [Program.getInstr, List.getElem?_eq_getElem hpc, hinstr]
-    have h := Program.getInstr_maxRegister hinstr'
+    have hinstr' : p[c.pc]? = some (Instr.S n) := by
+      simp only [List.getElem?_eq_getElem hpc, hinstr]
+    have h := Program.getElem?_maxRegister hinstr'
     simp only [Instr.maxRegister] at h
     exact h
   simp only [hn, ↓reduceIte]
@@ -299,9 +299,9 @@ private theorem encodedStep_correct_trans (p : Program) (c : Config) (m n : ℕ)
   simp only [show (2 : ℕ) = 0 ↔ False from ⟨by omega, False.elim⟩,
              show (2 : ℕ) = 1 ↔ False from ⟨by omega, False.elim⟩, ↓reduceIte]
   have hmn : max m n ≤ p.maxRegister := by
-    have hinstr' : p.getInstr c.pc = some (Instr.T m n) := by
-      simp only [Program.getInstr, List.getElem?_eq_getElem hpc, hinstr]
-    have h := Program.getInstr_maxRegister hinstr'
+    have hinstr' : p[c.pc]? = some (Instr.T m n) := by
+      simp only [List.getElem?_eq_getElem hpc, hinstr]
+    have h := Program.getElem?_maxRegister hinstr'
     simp only [Instr.maxRegister] at h
     exact h
   have hm : m ≤ p.maxRegister := le_of_max_le_left hmn
@@ -330,9 +330,9 @@ private theorem encodedStep_correct_jump_eq (p : Program) (c : Config) (m n q : 
              show (3 : ℕ) = 1 ↔ False from ⟨by omega, False.elim⟩,
              show (3 : ℕ) = 2 ↔ False from ⟨by omega, False.elim⟩, ↓reduceIte]
   have hmn : max m n ≤ p.maxRegister := by
-    have hinstr' : p.getInstr c.pc = some (Instr.J m n q) := by
-      simp only [Program.getInstr, List.getElem?_eq_getElem hpc, hinstr]
-    have h := Program.getInstr_maxRegister hinstr'
+    have hinstr' : p[c.pc]? = some (Instr.J m n q) := by
+      simp only [List.getElem?_eq_getElem hpc, hinstr]
+    have h := Program.getElem?_maxRegister hinstr'
     simp only [Instr.maxRegister] at h
     exact h
   have hm : m ≤ p.maxRegister := le_of_max_le_left hmn
@@ -362,9 +362,9 @@ private theorem encodedStep_correct_jump_ne (p : Program) (c : Config) (m n q : 
              show (3 : ℕ) = 1 ↔ False from ⟨by omega, False.elim⟩,
              show (3 : ℕ) = 2 ↔ False from ⟨by omega, False.elim⟩, ↓reduceIte]
   have hmn : max m n ≤ p.maxRegister := by
-    have hinstr' : p.getInstr c.pc = some (Instr.J m n q) := by
-      simp only [Program.getInstr, List.getElem?_eq_getElem hpc, hinstr]
-    have h := Program.getInstr_maxRegister hinstr'
+    have hinstr' : p[c.pc]? = some (Instr.J m n q) := by
+      simp only [List.getElem?_eq_getElem hpc, hinstr]
+    have h := Program.getElem?_maxRegister hinstr'
     simp only [Instr.maxRegister] at h
     exact h
   have hm : m ≤ p.maxRegister := le_of_max_le_left hmn
@@ -391,23 +391,23 @@ theorem encodedStep_correct (p : Program) (c c' : Config)
   cases hstep with
   | zero hinstr =>
     rename_i n
-    simp only [Program.getInstr, List.getElem?_eq_getElem hpc, Option.some.injEq] at hinstr
+    simp only [List.getElem?_eq_getElem hpc, Option.some.injEq] at hinstr
     exact encodedStep_correct_zero p c n hpc hinstr
   | succ hinstr =>
     rename_i n
-    simp only [Program.getInstr, List.getElem?_eq_getElem hpc, Option.some.injEq] at hinstr
+    simp only [List.getElem?_eq_getElem hpc, Option.some.injEq] at hinstr
     exact encodedStep_correct_succ p c n hpc hinstr
   | trans hinstr =>
     rename_i m n
-    simp only [Program.getInstr, List.getElem?_eq_getElem hpc, Option.some.injEq] at hinstr
+    simp only [List.getElem?_eq_getElem hpc, Option.some.injEq] at hinstr
     exact encodedStep_correct_trans p c m n hpc hinstr
   | jump_eq hinstr heq =>
     rename_i m n q
-    simp only [Program.getInstr, List.getElem?_eq_getElem hpc, Option.some.injEq] at hinstr
+    simp only [List.getElem?_eq_getElem hpc, Option.some.injEq] at hinstr
     exact encodedStep_correct_jump_eq p c m n q hpc hinstr heq
   | jump_ne hinstr hne =>
     rename_i m n q
-    simp only [Program.getInstr, List.getElem?_eq_getElem hpc, Option.some.injEq] at hinstr
+    simp only [List.getElem?_eq_getElem hpc, Option.some.injEq] at hinstr
     exact encodedStep_correct_jump_ne p c m n q hpc hinstr hne
 
 /-- If Step exists, configuration is not halted. -/

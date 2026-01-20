@@ -101,10 +101,10 @@ variable {p1 p2 : Program}
 theorem Step.of_concat_right {c c' : Config} (hpc_lo : p1.length ≤ c.pc) (hpc_hi : c.pc < p1.length + p2.length)
     (hstep : Step (p1.concat p2) c c') : Step p2 ⟨c.pc - p1.length, c.state⟩ ⟨c'.pc - p1.length, c'.state⟩ := by
   have hp2_pc : c.pc - p1.length < p2.length := by omega
-  obtain ⟨instr, hinstr⟩ : ∃ instr, p2.getInstr (c.pc - p1.length) = some instr :=
-    ⟨p2[c.pc - p1.length], by simp only [Program.getInstr]; exact List.getElem?_eq_getElem hp2_pc⟩
-  have hconcat_instr : (p1.concat p2).getInstr c.pc = some (instr.shiftJumps p1.length) := by
-    rw [Program.getInstr_concat_right c.pc hpc_lo, Program.getInstr_shiftJumps, hinstr]; rfl
+  obtain ⟨instr, hinstr⟩ : ∃ instr, p2[c.pc - p1.length]? = some instr :=
+    ⟨p2[c.pc - p1.length], List.getElem?_eq_getElem hp2_pc⟩
+  have hconcat_instr : (p1.concat p2)[c.pc]? = some (instr.shiftJumps p1.length) := by
+    rw [Program.getElem?_concat_right c.pc hpc_lo, Program.getElem?_shiftJumps, hinstr]; rfl
   set pc2 := c.pc - p1.length with hpc2_def
   cases instr with
   | Z n => have hc' : c' = ⟨c.pc + 1, c.state.write n 0⟩ := by cases hstep <;> simp_all [Instr.shiftJumps]
@@ -144,8 +144,8 @@ theorem Steps.of_concat_right {s : State} {c' : Config}
       cases hstep with
       | zero _ | succ _ | trans _ | jump_ne _ _ => simp only []; omega
       | jump_eq h _ =>
-        rw [Program.getInstr_concat_right a.pc hstart, Program.getInstr_shiftJumps] at h
-        cases hp2 : p2.getInstr (a.pc - p1.length) with
+        rw [Program.getElem?_concat_right a.pc hstart, Program.getElem?_shiftJumps] at h
+        cases hp2 : p2[a.pc - p1.length]? with
         | none => simp only [hp2, Option.map_none] at h; nomatch h
         | some instr => simp only [hp2, Option.map_some] at h; cases instr with
           | J _ _ q' => simp only [Instr.shiftJumps, Option.some.injEq, Instr.J.injEq] at h; obtain ⟨_, _, hq_eq⟩ := h; simp only [← hq_eq]; omega

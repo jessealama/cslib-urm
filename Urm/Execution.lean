@@ -46,20 +46,20 @@ Each constructor corresponds to one of the four instruction types:
 -/
 inductive Step : Config → Config → Prop where
   | zero {c : Config} {n : ℕ}
-      (h : p.getInstr c.pc = some (Instr.Z n)) :
+      (h : p[c.pc]? = some (Instr.Z n)) :
       Step c ⟨c.pc + 1, c.state.write n 0⟩
   | succ {c : Config} {n : ℕ}
-      (h : p.getInstr c.pc = some (Instr.S n)) :
+      (h : p[c.pc]? = some (Instr.S n)) :
       Step c ⟨c.pc + 1, c.state.write n (c.state.read n + 1)⟩
   | trans {c : Config} {m n : ℕ}
-      (h : p.getInstr c.pc = some (Instr.T m n)) :
+      (h : p[c.pc]? = some (Instr.T m n)) :
       Step c ⟨c.pc + 1, c.state.write n (c.state.read m)⟩
   | jump_eq {c : Config} {m n q : ℕ}
-      (h : p.getInstr c.pc = some (Instr.J m n q))
+      (h : p[c.pc]? = some (Instr.J m n q))
       (heq : c.state.read m = c.state.read n) :
       Step c ⟨q, c.state⟩
   | jump_ne {c : Config} {m n q : ℕ}
-      (h : p.getInstr c.pc = some (Instr.J m n q))
+      (h : p[c.pc]? = some (Instr.J m n q))
       (hne : c.state.read m ≠ c.state.read n) :
       Step c ⟨c.pc + 1, c.state⟩
 
@@ -77,7 +77,7 @@ theorem deterministic {c c' c'' : Config} (h1 : Step p c c') (h2 : Step p c c'')
 /-- A halted configuration has no successor in the step relation. -/
 theorem halted_no_step {c c' : Config} (hhalted : c.isHalted p) : ¬Step p c c' := by
   intro hstep
-  cases hstep <;> simp_all [Config.isHalted, Program.getInstr]
+  cases hstep <;> simp_all [Config.isHalted]
 
 /-- If a step exists from config c, then c.pc < p.length (contrapositive of halted_no_step). -/
 theorem pc_lt_length {c c' : Config} (hstep : Step p c c') : c.pc < p.length := by
@@ -85,8 +85,7 @@ theorem pc_lt_length {c c' : Config} (hstep : Step p c c') : c.pc < p.length := 
 
 /-- If an instruction is at position i, its maxRegister is at most p.maxRegister. -/
 private theorem instr_maxRegister_le {i : ℕ} {instr : Instr}
-    (h : p.getInstr i = some instr) : instr.maxRegister ≤ p.maxRegister := by
-  simp only [Program.getInstr] at h
+    (h : p[i]? = some instr) : instr.maxRegister ≤ p.maxRegister := by
   have hi : i < p.length := by by_contra hc; simp only [not_lt] at hc; simp [List.getElem?_eq_none hc] at h
   have foldl_ge_init : ∀ (init : ℕ) (l : List Instr), init ≤ l.foldl (fun acc i => max acc i.maxRegister) init := by
     intro init l; induction l generalizing init with

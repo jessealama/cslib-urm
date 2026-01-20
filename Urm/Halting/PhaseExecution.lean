@@ -81,7 +81,7 @@ let result := execPhaseInHost hsl_prologue offset hembed s
 -/
 noncomputable def execPhaseInHost
     {phase host : Program} (hsl : phase.isStraightLine = true) (offset : ℕ)
-    (hembed : ∀ i, i < phase.length → host.getInstr (offset + i) = phase.getInstr i)
+    (hembed : ∀ i, i < phase.length → host[offset + i]? = phase[i]?)
     (s : State) : PhaseExecutionResult host phase offset s :=
   let localResult := straightLineExec hsl s
   let lifted := Steps.straightLine_at_offset offset hsl hembed localResult.steps
@@ -181,7 +181,7 @@ embedded at an offset via shiftJumps. It combines:
 
 Parameters:
 - `hsf`: The subprogram must be standard form (so PC = length when halted)
-- `hembed`: Embedding lemma (host.getInstr (offset + i) = sub.shiftJumps.getInstr i)
+- `hembed`: Embedding lemma (host[offset + i]? = sub.shiftJumps[i]?)
 - `hHalts`: Proof that sub halts on the original inputs
 - `hagree`: State agreement (s agrees with init state on 0..sub.maxRegister)
 - `inputs`: The original inputs (used for Result definition)
@@ -195,7 +195,7 @@ Returns a `SubprogramExecResult` with:
 noncomputable def execSubprogramInHost
     {sub host : Program} {inputs : List ℕ}
     (hsf : sub.IsStandardForm) (offset : ℕ)
-    (hembed : ∀ i, i < sub.length → host.getInstr (offset + i) = (sub.shiftJumps offset).getInstr i)
+    (hembed : ∀ i, i < sub.length → host[offset + i]? = (sub.shiftJumps offset)[i]?)
     (hHalts : Halts sub inputs)
     (s : State)
     (hagree : s.agreeOn (Config.init inputs).state 0 sub.maxRegister) :

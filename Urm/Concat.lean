@@ -100,21 +100,24 @@ Use with `simp only [concat_eq_mul, mul_assoc]` to leverage Monoid associativity
 theorem concat_eq_mul (p q : Program) : p.concat q = p * q := rfl
 
 /-- Get instruction from concatenated program in the first part. -/
-theorem getInstr_concat_left {p1 p2 : Program} (i : ℕ) (hi : i < p1.length) :
-    (p1.concat p2).getInstr i = p1.getInstr i := by
-  simp only [Program.concat, Program.getInstr]
+@[simp]
+theorem getElem?_concat_left {p1 p2 : Program} (i : ℕ) (hi : i < p1.length) :
+    (p1.concat p2)[i]? = p1[i]? := by
+  simp only [Program.concat]
   rw [List.getElem?_append_left hi]
 
 /-- Get instruction from concatenated program in the second part (with shiftJumps). -/
-theorem getInstr_concat_right {p1 p2 : Program} (i : ℕ) (hi : p1.length ≤ i) :
-    (p1.concat p2).getInstr i = (p2.shiftJumps p1.length).getInstr (i - p1.length) := by
-  simp only [Program.concat, Program.getInstr]
+@[simp]
+theorem getElem?_concat_right {p1 p2 : Program} (i : ℕ) (hi : p1.length ≤ i) :
+    (p1.concat p2)[i]? = (p2.shiftJumps p1.length)[i - p1.length]? := by
+  simp only [Program.concat]
   rw [List.getElem?_append_right (by omega)]
 
 /-- Get instruction from shifted program. -/
-theorem getInstr_shiftJumps (offset : ℕ) (p : Program) (i : ℕ) :
-    (p.shiftJumps offset).getInstr i = (p.getInstr i).map (Instr.shiftJumps offset) := by
-  simp only [Program.shiftJumps, Program.getInstr, List.getElem?_map]
+@[simp]
+theorem getElem?_shiftJumps (offset : ℕ) (p : Program) (i : ℕ) :
+    (p.shiftJumps offset)[i]? = p[i]?.map (Instr.shiftJumps offset) := by
+  simp only [Program.shiftJumps, List.getElem?_map]
 
 end Program
 
@@ -129,21 +132,21 @@ theorem Step.concat_left {c c' : Config} (hpc : c.pc < p1.length)
     (hstep : Step p1 c c') : Step (p1.concat p2) c c' := by
   cases hstep with
   | zero h =>
-    exact Step.zero (by rw [Program.getInstr_concat_left _ hpc]; exact h)
+    exact Step.zero (by rw [Program.getElem?_concat_left _ hpc]; exact h)
   | succ h =>
-    exact Step.succ (by rw [Program.getInstr_concat_left _ hpc]; exact h)
+    exact Step.succ (by rw [Program.getElem?_concat_left _ hpc]; exact h)
   | trans h =>
-    exact Step.trans (by rw [Program.getInstr_concat_left _ hpc]; exact h)
+    exact Step.trans (by rw [Program.getElem?_concat_left _ hpc]; exact h)
   | jump_eq h heq =>
-    exact Step.jump_eq (by rw [Program.getInstr_concat_left _ hpc]; exact h) heq
+    exact Step.jump_eq (by rw [Program.getElem?_concat_left _ hpc]; exact h) heq
   | jump_ne h hne =>
-    exact Step.jump_ne (by rw [Program.getInstr_concat_left _ hpc]; exact h) hne
+    exact Step.jump_ne (by rw [Program.getElem?_concat_left _ hpc]; exact h) hne
 
 /-- Reverse direction: stepping in concatenated program with pc in first part gives step in p1. -/
 theorem Step.of_concat_left {c c' : Config} (hpc : c.pc < p1.length)
     (hstep : Step (p1.concat p2) c c') : Step p1 c c' := by
-  have hinstr_eq : (p1.concat p2).getInstr c.pc = p1.getInstr c.pc :=
-    Program.getInstr_concat_left c.pc hpc
+  have hinstr_eq : (p1.concat p2)[c.pc]? = p1[c.pc]? :=
+    Program.getElem?_concat_left c.pc hpc
   cases hstep with
   | zero h => rw [hinstr_eq] at h; exact Step.zero h
   | succ h => rw [hinstr_eq] at h; exact Step.succ h
@@ -156,30 +159,30 @@ If we can step in p2 from pc=k, we can step in p1.concat p2 from pc=k+p1.length.
 theorem Step.concat_right {c c' : Config}
     (hstep : Step p2 c c') :
     Step (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ ⟨c'.pc + p1.length, c'.state⟩ := by
-  have hinstr_eq : (p1.concat p2).getInstr (c.pc + p1.length) =
-      (p2.shiftJumps p1.length).getInstr c.pc := by
-    rw [Program.getInstr_concat_right (c.pc + p1.length) (by omega)]
+  have hinstr_eq : (p1.concat p2)[c.pc + p1.length]? =
+      (p2.shiftJumps p1.length)[c.pc]? := by
+    rw [Program.getElem?_concat_right (c.pc + p1.length) (by omega)]
     simp only [Nat.add_sub_cancel]
   match hstep with
   | .zero (n := n) h =>
-    have h' : (p1.concat p2).getInstr (c.pc + p1.length) = some (Instr.Z n) := by
-      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
+    have h' : (p1.concat p2)[c.pc + p1.length]? = some (Instr.Z n) := by
+      rw [hinstr_eq, Program.getElem?_shiftJumps, h]; rfl
     convert @Step.zero (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ n h' using 2; simp; omega
   | .succ (n := n) h =>
-    have h' : (p1.concat p2).getInstr (c.pc + p1.length) = some (Instr.S n) := by
-      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
+    have h' : (p1.concat p2)[c.pc + p1.length]? = some (Instr.S n) := by
+      rw [hinstr_eq, Program.getElem?_shiftJumps, h]; rfl
     convert @Step.succ (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ n h' using 2; simp; omega
   | .trans (m := m) (n := n) h =>
-    have h' : (p1.concat p2).getInstr (c.pc + p1.length) = some (Instr.T m n) := by
-      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
+    have h' : (p1.concat p2)[c.pc + p1.length]? = some (Instr.T m n) := by
+      rw [hinstr_eq, Program.getElem?_shiftJumps, h]; rfl
     convert @Step.trans (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ m n h' using 2; simp; omega
   | .jump_eq (m := m) (n := n) (q := q) h heq =>
-    have h' : (p1.concat p2).getInstr (c.pc + p1.length) = some (Instr.J m n (q + p1.length)) := by
-      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
+    have h' : (p1.concat p2)[c.pc + p1.length]? = some (Instr.J m n (q + p1.length)) := by
+      rw [hinstr_eq, Program.getElem?_shiftJumps, h]; rfl
     exact @Step.jump_eq (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ m n (q + p1.length) h' heq
   | .jump_ne (m := m) (n := n) (q := q) h hne =>
-    have h' : (p1.concat p2).getInstr (c.pc + p1.length) = some (Instr.J m n (q + p1.length)) := by
-      rw [hinstr_eq, Program.getInstr_shiftJumps, h]; rfl
+    have h' : (p1.concat p2)[c.pc + p1.length]? = some (Instr.J m n (q + p1.length)) := by
+      rw [hinstr_eq, Program.getElem?_shiftJumps, h]; rfl
     convert @Step.jump_ne (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ m n (q + p1.length) h' hne using 2; simp; omega
 
 /-- Multi-step in the second part of a concatenated program. -/

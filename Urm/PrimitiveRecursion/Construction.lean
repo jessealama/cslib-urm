@@ -207,9 +207,9 @@ theorem prLoopBodyPC_eq (n : ℕ) (pF pG : Program) :
 
 /-- The loop check instruction is a J comparing counter to savedY. -/
 theorem instr_at_loopCheck (n : ℕ) (pF pG : Program) :
-    (primitiveRecursionProgram n pF pG).getInstr (prLoopCheckPC n pF pG) =
+    (primitiveRecursionProgram n pF pG)[prLoopCheckPC n pF pG]? =
       some (Instr.J (prCounterReg n pF pG) (prSavedYReg n pF pG) (prOutputPC n pF pG)) := by
-  simp only [primitiveRecursionProgram, getInstr, prLoopCheckPC, prLoopCheck,
+  simp only [primitiveRecursionProgram, prLoopCheckPC, prLoopCheck,
     List.getElem?_append, List.length_append, prSetupPhase_length, prBaseCasePhase_length]
   simp only [prSetupPhaseLength, prBaseCasePhaseLength, prBaseCasePrologueLength]
   simp only [List.length] at *
@@ -222,9 +222,9 @@ theorem instr_at_loopCheck (n : ℕ) (pF pG : Program) :
 
 /-- The output instruction is a T copying accumulator to R[0]. -/
 theorem instr_at_output (n : ℕ) (pF pG : Program) :
-    (primitiveRecursionProgram n pF pG).getInstr (prOutputPC n pF pG) =
+    (primitiveRecursionProgram n pF pG)[prOutputPC n pF pG]? =
       some (Instr.T (prAccumulatorReg n pF pG) 0) := by
-  simp only [primitiveRecursionProgram, getInstr, prOutputPC, prLoopBodyPC, prLoopCheckPC,
+  simp only [primitiveRecursionProgram, prOutputPC, prLoopBodyPC, prLoopCheckPC,
     prOutputPhase, List.getElem?_append, List.length_append, prSetupPhase_length,
     prBaseCasePhase_length, prLoopCheck_length, prLoopBody_length]
   simp only [prSetupPhaseLength, prBaseCasePhaseLength, prBaseCasePrologueLength,

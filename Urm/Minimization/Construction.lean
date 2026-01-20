@@ -123,9 +123,9 @@ def epilogueStartPC (n : ℕ) (pF : Program) : ℕ := pFOffset n pF + pF.length
 
 /-- Helper for epilogue instruction proofs: the common setup. -/
 private theorem epilogue_instr_setup (n : ℕ) (pF : Program) (k : ℕ) (hk : k < 3) :
-    (minimizeProgram n pF).getInstr (epilogueStartPC n pF + k) =
+    (minimizeProgram n pF)[epilogueStartPC n pF + k]? =
       (loopEpilogue n pF)[k]? := by
-  simp only [minimizeProgram, getInstr, epilogueStartPC, pFOffset, setupPhaseLength, loopPrologueLength,
+  simp only [minimizeProgram, epilogueStartPC, pFOffset, setupPhaseLength, loopPrologueLength,
     List.getElem?_append, List.length_append, setupPhase_length, loopPrologue_length,
     shiftJumps_length, loopEpilogue_length]
   simp only [show ¬ (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + k < n + 2) by omega,
@@ -140,18 +140,18 @@ private theorem epilogue_instr_setup (n : ℕ) (pF : Program) (k : ℕ) (hk : k 
     ite_true, ite_false]
 
 theorem instr_at_epilogue_J0 (n : ℕ) (pF : Program) :
-    (minimizeProgram n pF).getInstr (epilogueStartPC n pF) =
+    (minimizeProgram n pF)[epilogueStartPC n pF]? =
       some (Instr.J 0 (zeroReg n pF) (outputPC n pF)) := by
   rw [show epilogueStartPC n pF = epilogueStartPC n pF + 0 from rfl,
       epilogue_instr_setup n pF 0 (by omega), loopEpilogue]; rfl
 
 theorem instr_at_epilogue_S (n : ℕ) (pF : Program) :
-    (minimizeProgram n pF).getInstr (epilogueStartPC n pF + 1) =
+    (minimizeProgram n pF)[epilogueStartPC n pF + 1]? =
       some (Instr.S (counterReg n pF)) := by
   rw [epilogue_instr_setup n pF 1 (by omega), loopEpilogue]; rfl
 
 theorem instr_at_epilogue_J1 (n : ℕ) (pF : Program) :
-    (minimizeProgram n pF).getInstr (epilogueStartPC n pF + 2) =
+    (minimizeProgram n pF)[epilogueStartPC n pF + 2]? =
       some (Instr.J (zeroReg n pF) (zeroReg n pF) (loopStartPC n)) := by
   rw [epilogue_instr_setup n pF 2 (by omega), loopEpilogue]; rfl
 

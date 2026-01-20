@@ -121,7 +121,7 @@ structure SingleTransferResult (src dst : ℕ) (s : State) where
 /-- Execute a single transfer and get bundled result. -/
 noncomputable def executeSingleTransfer (src dst : ℕ) (s : State) : SingleTransferResult src dst s where
   finalState := s.write dst (s.read src)
-  steps := .single (by apply Step.trans; simp [Program.getInstr])
+  steps := .single (by apply Step.trans; simp)
   halted := by simp
   dst_eq := State.write_read_same s dst (s.read src)
   preserved := fun r hr => State.write_read_diff s r dst (s.read src) hr

@@ -43,7 +43,7 @@ def Program.isStraightLine (p : Program) : Bool :=
 
 /-- A non-jumping instruction produces a step that increments PC by 1. -/
 theorem Step.of_nonJumping {p : Program} {c : Config} (hlt : c.pc < p.length)
-    (hinstr : p.getInstr c.pc = some p[c.pc]) (hnonjump : (p[c.pc]'hlt).isNonJumping = true) :
+    (hinstr : p[c.pc]? = some p[c.pc]) (hnonjump : (p[c.pc]'hlt).isNonJumping = true) :
     ∃ c', Step p c c' ∧ c'.pc = c.pc + 1 := by
   cases hp : (p[c.pc]'hlt) with
   | Z n => exact ⟨_, Step.zero (hp ▸ hinstr), rfl⟩
@@ -71,7 +71,7 @@ theorem straightLine_halts {p : Program} (hsl : p.isStraightLine = true) (inputs
     by_cases hhalted : c.pc ≥ p.length
     · exact ⟨c, Relation.ReflTransGen.refl, hhalted⟩
     · push_neg at hhalted
-      have hinstr : p.getInstr c.pc = some p[c.pc] := List.getElem?_eq_getElem hhalted
+      have hinstr : p[c.pc]? = some p[c.pc] := List.getElem?_eq_getElem hhalted
       simp only [Program.isStraightLine, List.all_eq_true] at hsl
       have hnonjump := hsl p[c.pc] (List.getElem_mem hhalted)
       obtain ⟨c', hstep', hpc'⟩ := Step.of_nonJumping hhalted hinstr hnonjump
@@ -123,7 +123,7 @@ theorem straightLine_halts_from_state {p : Program} (hsl : p.isStraightLine = tr
     by_cases hhalted : c.pc ≥ p.length
     · exact ⟨c, Relation.ReflTransGen.refl, by omega⟩
     · push_neg at hhalted
-      have hinstr : p.getInstr c.pc = some p[c.pc] := List.getElem?_eq_getElem hhalted
+      have hinstr : p[c.pc]? = some p[c.pc] := List.getElem?_eq_getElem hhalted
       simp only [Program.isStraightLine, List.all_eq_true] at hsl
       have hnonjump := hsl p[c.pc] (List.getElem_mem hhalted)
       obtain ⟨c', hstep', hpc'⟩ := Step.of_nonJumping hhalted hinstr hnonjump
@@ -152,7 +152,7 @@ theorem straightLine_state_at_pc {p : Program} (hsl : p.isStraightLine = true)
     obtain ⟨c_n, hsteps_n, hpc_n⟩ := ih (Nat.le_of_succ_le htarget)
     have hn_lt : n < p.length := Nat.lt_of_succ_le htarget
     have hpc_lt : c_n.pc < p.length := hpc_n ▸ hn_lt
-    have hinstr : p.getInstr c_n.pc = some p[c_n.pc] := List.getElem?_eq_getElem hpc_lt
+    have hinstr : p[c_n.pc]? = some p[c_n.pc] := List.getElem?_eq_getElem hpc_lt
     simp only [Program.isStraightLine, List.all_eq_true] at hsl
     have hnonjump := hsl p[c_n.pc] (List.getElem_mem hpc_lt)
     obtain ⟨c', hstep', hpc'⟩ := Step.of_nonJumping hpc_lt hinstr hnonjump
@@ -161,7 +161,7 @@ theorem straightLine_state_at_pc {p : Program} (hsl : p.isStraightLine = true)
 /-- A single step in a straight-line program modifies at most one register. -/
 theorem Step.straightLine_preserves {p : Program} {c c' : Config} {r : ℕ}
     (hsl : p.isStraightLine = true) (hstep : Step p c c')
-    (hr : ∀ instr, p.getInstr c.pc = some instr → instr.writesTo ≠ some r) :
+    (hr : ∀ instr, p[c.pc]? = some instr → instr.writesTo ≠ some r) :
     c'.state.read r = c.state.read r := by
   cases hstep with
   | zero hinstr | succ hinstr | trans hinstr =>
@@ -185,7 +185,6 @@ theorem Steps.straightLine_preserves {p : Program} {c c' : Config} {r : ℕ}
     apply Step.straightLine_preserves hsl hstep
     intro instr hinstr
     apply hr
-    simp only [Program.getInstr] at hinstr
     exact List.mem_of_getElem? hinstr
 
 /-! ## clearRegistersFrom: Clear registers starting from a given index -/
@@ -217,7 +216,7 @@ theorem straightLine_zero_after_exec {p : Program} (hsl : p.isStraightLine = tru
     (s : State) (k : ℕ) (r : ℕ) (hk : k < p.length) (hwrite : p[k] = Instr.Z r) :
     ∃ c, Steps p ⟨0, s⟩ c ∧ c.pc = k + 1 ∧ c.state.read r = 0 := by
   obtain ⟨c_k, hsteps_k, hpc_k⟩ := straightLine_state_at_pc hsl s k (Nat.le_of_lt hk)
-  have hinstr : p.getInstr c_k.pc = some (Instr.Z r) := by simp [Program.getInstr, hpc_k, hk, hwrite]
+  have hinstr : p[c_k.pc]? = some (Instr.Z r) := by simp [hpc_k, hk, hwrite]
   refine ⟨_, Relation.ReflTransGen.tail hsteps_k (Step.zero hinstr), hpc_k ▸ rfl, ?_⟩
   simp only [State.read, State.write, Function.update_self]
 
@@ -364,8 +363,8 @@ private theorem straightLine_transfer_after_exec {p : Program} (_hsl : p.isStrai
     (s : State) (k src dst : ℕ) (hk : k < p.length) (hwrite : p[k] = Instr.T src dst)
     (c_k : Config) (hsteps_k : Steps p ⟨0, s⟩ c_k) (hpc_k : c_k.pc = k) :
     ∃ c, Steps p ⟨0, s⟩ c ∧ c.pc = k + 1 ∧ c.state.read dst = c_k.state.read src := by
-  have hinstr : p.getInstr k = some (Instr.T src dst) := by simp only [Program.getInstr, List.getElem?_eq_getElem hk, hwrite]
-  have hinstr' : p.getInstr c_k.pc = some (Instr.T src dst) := hpc_k ▸ hinstr
+  have hinstr : p[k]? = some (Instr.T src dst) := by simp only [List.getElem?_eq_getElem hk, hwrite]
+  have hinstr' : p[c_k.pc]? = some (Instr.T src dst) := hpc_k ▸ hinstr
   let c_next : Config := ⟨c_k.pc + 1, c_k.state.write dst (c_k.state.read src)⟩
   refine ⟨c_next, Relation.ReflTransGen.tail hsteps_k (Step.trans hinstr'), by simp [c_next, hpc_k], by simp [c_next]⟩
 

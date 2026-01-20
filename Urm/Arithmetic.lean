@@ -58,43 +58,43 @@ def addProgram : Program := [
 
 namespace addProgram
 
--- Helper lemmas about getInstr
-@[simp] theorem getInstr_0 : addProgram.getInstr 0 = some (Instr.Z 2) := rfl
-@[simp] theorem getInstr_1 : addProgram.getInstr 1 = some (Instr.J 2 1 5) := rfl
-@[simp] theorem getInstr_2 : addProgram.getInstr 2 = some (Instr.S 0) := rfl
-@[simp] theorem getInstr_3 : addProgram.getInstr 3 = some (Instr.S 2) := rfl
-@[simp] theorem getInstr_4 : addProgram.getInstr 4 = some (Instr.J 0 0 1) := rfl
+-- Helper lemmas about instruction lookup
+@[simp] theorem instr_0 : addProgram[0]? = some (Instr.Z 2) := rfl
+@[simp] theorem instr_1 : addProgram[1]? = some (Instr.J 2 1 5) := rfl
+@[simp] theorem instr_2 : addProgram[2]? = some (Instr.S 0) := rfl
+@[simp] theorem instr_3 : addProgram[3]? = some (Instr.S 2) := rfl
+@[simp] theorem instr_4 : addProgram[4]? = some (Instr.J 0 0 1) := rfl
 @[simp] theorem length_eq : addProgram.length = 5 := rfl
 
 /-- The initial instruction (Z 2) takes us from pc=0 to pc=1 with R2=0. -/
 theorem step_init (s : State) :
     Step addProgram ⟨0, s⟩ ⟨1, s.write 2 0⟩ :=
-  Step.zero getInstr_0
+  Step.zero instr_0
 
 /-- When counter equals y (R2 = R1), we exit the loop by jumping to pc=5. -/
 theorem step_exit (s : State) (heq : s.read 2 = s.read 1) :
     Step addProgram ⟨1, s⟩ ⟨5, s⟩ :=
-  Step.jump_eq getInstr_1 heq
+  Step.jump_eq instr_1 heq
 
 /-- When counter < y (R2 ≠ R1), we continue to the increment instructions. -/
 theorem step_continue (s : State) (hne : s.read 2 ≠ s.read 1) :
     Step addProgram ⟨1, s⟩ ⟨2, s⟩ :=
-  Step.jump_ne getInstr_1 hne
+  Step.jump_ne instr_1 hne
 
 /-- Increment R0 at instruction 2. -/
 theorem step_inc_r0 (s : State) :
     Step addProgram ⟨2, s⟩ ⟨3, s.write 0 (s.read 0 + 1)⟩ :=
-  Step.succ getInstr_2
+  Step.succ instr_2
 
 /-- Increment R2 at instruction 3. -/
 theorem step_inc_r2 (s : State) :
     Step addProgram ⟨3, s⟩ ⟨4, s.write 2 (s.read 2 + 1)⟩ :=
-  Step.succ getInstr_3
+  Step.succ instr_3
 
 /-- Unconditional jump back at instruction 4 (J 0 0 1 always jumps since R0 = R0). -/
 theorem step_jump_back (s : State) :
     Step addProgram ⟨4, s⟩ ⟨1, s⟩ :=
-  Step.jump_eq getInstr_4 rfl
+  Step.jump_eq instr_4 rfl
 
 /-- One complete loop iteration: from pc=1 with k < y, to pc=1 with k+1.
     Precondition: s.read 2 = k, s.read 1 = y, k < y
@@ -241,72 +241,72 @@ def predProgram : Program := [
 
 namespace predProgram
 
--- Helper lemmas about getInstr
-@[simp] theorem getInstr_0 : predProgram.getInstr 0 = some (Instr.Z 1) := rfl
-@[simp] theorem getInstr_1 : predProgram.getInstr 1 = some (Instr.J 0 1 9) := rfl
-@[simp] theorem getInstr_2 : predProgram.getInstr 2 = some (Instr.Z 2) := rfl
-@[simp] theorem getInstr_3 : predProgram.getInstr 3 = some (Instr.S 1) := rfl
-@[simp] theorem getInstr_4 : predProgram.getInstr 4 = some (Instr.J 0 1 8) := rfl
-@[simp] theorem getInstr_5 : predProgram.getInstr 5 = some (Instr.S 2) := rfl
-@[simp] theorem getInstr_6 : predProgram.getInstr 6 = some (Instr.S 1) := rfl
-@[simp] theorem getInstr_7 : predProgram.getInstr 7 = some (Instr.J 0 0 4) := rfl
-@[simp] theorem getInstr_8 : predProgram.getInstr 8 = some (Instr.T 2 0) := rfl
+-- Helper lemmas about instruction lookup
+@[simp] theorem instr_0 : predProgram[0]? = some (Instr.Z 1) := rfl
+@[simp] theorem instr_1 : predProgram[1]? = some (Instr.J 0 1 9) := rfl
+@[simp] theorem instr_2 : predProgram[2]? = some (Instr.Z 2) := rfl
+@[simp] theorem instr_3 : predProgram[3]? = some (Instr.S 1) := rfl
+@[simp] theorem instr_4 : predProgram[4]? = some (Instr.J 0 1 8) := rfl
+@[simp] theorem instr_5 : predProgram[5]? = some (Instr.S 2) := rfl
+@[simp] theorem instr_6 : predProgram[6]? = some (Instr.S 1) := rfl
+@[simp] theorem instr_7 : predProgram[7]? = some (Instr.J 0 0 4) := rfl
+@[simp] theorem instr_8 : predProgram[8]? = some (Instr.T 2 0) := rfl
 @[simp] theorem length_eq : predProgram.length = 9 := rfl
 
 /-- Clear R1 for zero check (pc 0 → 1). -/
 theorem step_clear_r1 (s : State) :
     Step predProgram ⟨0, s⟩ ⟨1, s.write 1 0⟩ :=
-  Step.zero getInstr_0
+  Step.zero instr_0
 
 /-- When R0 = 0 (= R1 after clear), jump to halt (pc 1 → 9). -/
 theorem step_zero_exit (s : State) (heq : s.read 0 = s.read 1) :
     Step predProgram ⟨1, s⟩ ⟨9, s⟩ :=
-  Step.jump_eq getInstr_1 heq
+  Step.jump_eq instr_1 heq
 
 /-- When R0 ≠ 0, continue to main loop setup (pc 1 → 2). -/
 theorem step_nonzero_continue (s : State) (hne : s.read 0 ≠ s.read 1) :
     Step predProgram ⟨1, s⟩ ⟨2, s⟩ :=
-  Step.jump_ne getInstr_1 hne
+  Step.jump_ne instr_1 hne
 
 /-- Clear R2 for result tracking (pc 2 → 3). -/
 theorem step_clear_r2 (s : State) :
     Step predProgram ⟨2, s⟩ ⟨3, s.write 2 0⟩ :=
-  Step.zero getInstr_2
+  Step.zero instr_2
 
 /-- Initialize R1 to 1 (pc 3 → 4). -/
 theorem step_init_r1 (s : State) :
     Step predProgram ⟨3, s⟩ ⟨4, s.write 1 (s.read 1 + 1)⟩ :=
-  Step.succ getInstr_3
+  Step.succ instr_3
 
 /-- When R0 = R1, jump to copy result (pc 4 → 8). -/
 theorem step_found_pred (s : State) (heq : s.read 0 = s.read 1) :
     Step predProgram ⟨4, s⟩ ⟨8, s⟩ :=
-  Step.jump_eq getInstr_4 heq
+  Step.jump_eq instr_4 heq
 
 /-- When R0 ≠ R1, continue loop (pc 4 → 5). -/
 theorem step_continue_loop (s : State) (hne : s.read 0 ≠ s.read 1) :
     Step predProgram ⟨4, s⟩ ⟨5, s⟩ :=
-  Step.jump_ne getInstr_4 hne
+  Step.jump_ne instr_4 hne
 
 /-- Increment R2 (pc 5 → 6). -/
 theorem step_inc_r2 (s : State) :
     Step predProgram ⟨5, s⟩ ⟨6, s.write 2 (s.read 2 + 1)⟩ :=
-  Step.succ getInstr_5
+  Step.succ instr_5
 
 /-- Increment R1 (pc 6 → 7). -/
 theorem step_inc_r1 (s : State) :
     Step predProgram ⟨6, s⟩ ⟨7, s.write 1 (s.read 1 + 1)⟩ :=
-  Step.succ getInstr_6
+  Step.succ instr_6
 
 /-- Unconditional jump back to loop check (pc 7 → 4). -/
 theorem step_jump_back (s : State) :
     Step predProgram ⟨7, s⟩ ⟨4, s⟩ :=
-  Step.jump_eq getInstr_7 rfl
+  Step.jump_eq instr_7 rfl
 
 /-- Copy R2 to R0 (pc 8 → 9). -/
 theorem step_copy_result (s : State) :
     Step predProgram ⟨8, s⟩ ⟨9, s.write 0 (s.read 2)⟩ :=
-  Step.trans getInstr_8
+  Step.trans instr_8
 
 /-- Configuration at pc=9 is halted. -/
 theorem halted_at_9 (s : State) : (⟨9, s⟩ : Config).isHalted predProgram := by

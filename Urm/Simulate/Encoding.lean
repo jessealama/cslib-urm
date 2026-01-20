@@ -135,7 +135,7 @@ private theorem decodeRegs_encodeRegs_map (p : Program) :
 /-- Get instruction at position from encoded program. -/
 def getEncodedInstr (progCode : ℕ) (pc : ℕ) : Option Instr :=
   let p := decodeProgram progCode
-  p.getInstr pc
+  p[pc]?
 
 /-! ## Helper: Update encoded registers -/
 

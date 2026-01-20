@@ -97,8 +97,8 @@ theorem isHaltedAtStep_correct (p : Program) (n : ℕ) (c c' : Config)
 theorem Step.of_not_halted (p : Program) (c : Config) (h : ¬c.isHalted p) :
     ∃ c', Step p c c' := by
   simp only [Config.isHalted, Nat.not_le] at h
-  have hinstr : p.getInstr c.pc ≠ none := by
-    simp only [Program.getInstr, ne_eq]
+  have hinstr : p[c.pc]? ≠ none := by
+    simp only [ne_eq]
     intro heq
     rw [List.getElem?_eq_none_iff] at heq
     exact Nat.not_lt.mpr heq h

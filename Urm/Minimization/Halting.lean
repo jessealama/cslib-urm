@@ -34,9 +34,9 @@ variable (n : ℕ) (pF : Program)
 /-- loopPrologue is embedded in minimizeProgram at offset loopStartPC n. -/
 theorem loopPrologue_embed :
     ∀ i, i < (loopPrologue n pF).length →
-    (minimizeProgram n pF).getInstr (loopStartPC n + i) = (loopPrologue n pF).getInstr i := by
+    (minimizeProgram n pF)[loopStartPC n + i]? = (loopPrologue n pF)[i]? := by
   intro i hi
-  simp only [minimizeProgram, loopStartPC, setupPhaseLength, getInstr, List.getElem?_append,
+  simp only [minimizeProgram, loopStartPC, setupPhaseLength, List.getElem?_append,
     List.length_append, setupPhase_length, loopPrologue_length, shiftJumps_length,
     loopEpilogue_length, loopPrologueLength] at *
   split_ifs <;> first | omega | (congr 1; omega)
@@ -44,9 +44,9 @@ theorem loopPrologue_embed :
 /-- pF.shiftJumps is embedded in minimizeProgram at offset pFOffset n pF. -/
 theorem pF_shiftJumps_embed :
     ∀ i, i < pF.length →
-    (minimizeProgram n pF).getInstr (pFOffset n pF + i) = (pF.shiftJumps (pFOffset n pF)).getInstr i := by
+    (minimizeProgram n pF)[pFOffset n pF + i]? = (pF.shiftJumps (pFOffset n pF))[i]? := by
   intro i hi
-  simp only [minimizeProgram, pFOffset, setupPhaseLength, loopPrologueLength, getInstr,
+  simp only [minimizeProgram, pFOffset, setupPhaseLength, loopPrologueLength,
     List.getElem?_append, List.length_append, setupPhase_length, loopPrologue_length,
     shiftJumps_length, loopEpilogue_length]
   split_ifs <;> try omega
@@ -672,16 +672,16 @@ theorem loop_k_iterations (hpF_sf : pF.IsStandardForm)
 /-- setupPhase instructions are embedded at the start of minimizeProgram. -/
 theorem setupPhase_embed :
     ∀ i, i < (setupPhase n pF).length →
-    (minimizeProgram n pF).getInstr (0 + i) = (setupPhase n pF).getInstr i := by
+    (minimizeProgram n pF)[0 + i]? = (setupPhase n pF)[i]? := by
   intro i hi
-  simp only [Nat.zero_add, minimizeProgram, getInstr, List.getElem?_append, List.length_append,
+  simp only [Nat.zero_add, minimizeProgram, List.getElem?_append, List.length_append,
     setupPhase_length, loopPrologue_length, shiftJumps_length, loopEpilogue_length] at *
   split_ifs <;> first | rfl | omega
 
 /-- outputPhase instruction is at outputPC in minimizeProgram. -/
 theorem outputPhase_instr :
-    (minimizeProgram n pF).getInstr (outputPC n pF) = some (Instr.T (counterReg n pF) 0) := by
-  simp only [minimizeProgram, outputPC, pFOffset, getInstr, setupPhaseLength, loopPrologueLength]
+    (minimizeProgram n pF)[outputPC n pF]? = some (Instr.T (counterReg n pF) 0) := by
+  simp only [minimizeProgram, outputPC, pFOffset, setupPhaseLength, loopPrologueLength]
   simp only [List.getElem?_append, List.length_append, setupPhase_length, loopPrologue_length,
     shiftJumps_length, loopEpilogue_length, setupPhaseLength, loopPrologueLength]
   have h2 : ¬ n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 <

@@ -100,10 +100,6 @@ abbrev Program := List Instr
 
 namespace Program
 
-/-- Get the instruction at position i (0-indexed). Returns `none` if out of bounds. -/
-@[scoped grind =]
-def getInstr (p : Program) (i : ℕ) : Option Instr := p[i]?
-
 /-- The maximum register index referenced by any instruction in the program. -/
 @[scoped grind =]
 def maxRegister (p : Program) : ℕ :=

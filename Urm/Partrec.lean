@@ -156,37 +156,37 @@ def signProgram : Program := [
 
 namespace signProgram
 
--- Helper lemmas about getInstr
-@[simp] theorem getInstr_0 : signProgram.getInstr 0 = Option.some (Instr.Z 1) := rfl
-@[simp] theorem getInstr_1 : signProgram.getInstr 1 = Option.some (Instr.J 0 1 4) := rfl
-@[simp] theorem getInstr_2 : signProgram.getInstr 2 = Option.some (Instr.Z 0) := rfl
-@[simp] theorem getInstr_3 : signProgram.getInstr 3 = Option.some (Instr.S 0) := rfl
+-- Helper lemmas about instruction lookup
+@[simp] theorem instr_0 : signProgram[0]? = Option.some (Instr.Z 1) := rfl
+@[simp] theorem instr_1 : signProgram[1]? = Option.some (Instr.J 0 1 4) := rfl
+@[simp] theorem instr_2 : signProgram[2]? = Option.some (Instr.Z 0) := rfl
+@[simp] theorem instr_3 : signProgram[3]? = Option.some (Instr.S 0) := rfl
 @[simp] theorem length_eq : signProgram.length = 4 := rfl
 
 /-- Clear R1 for zero check (pc 0 → 1). -/
 theorem step_clear_r1 (s : State) :
     Step signProgram ⟨0, s⟩ ⟨1, s.write 1 0⟩ :=
-  Step.zero getInstr_0
+  Step.zero instr_0
 
 /-- When R0 = 0 (= R1 after clear), jump to halt (pc 1 → 4). -/
 theorem step_zero_exit (s : State) (heq : s.read 0 = s.read 1) :
     Step signProgram ⟨1, s⟩ ⟨4, s⟩ :=
-  Step.jump_eq getInstr_1 heq
+  Step.jump_eq instr_1 heq
 
 /-- When R0 ≠ 0, continue to clear R0 (pc 1 → 2). -/
 theorem step_nonzero_continue (s : State) (hne : s.read 0 ≠ s.read 1) :
     Step signProgram ⟨1, s⟩ ⟨2, s⟩ :=
-  Step.jump_ne getInstr_1 hne
+  Step.jump_ne instr_1 hne
 
 /-- Clear R0 (pc 2 → 3). -/
 theorem step_clear_r0 (s : State) :
     Step signProgram ⟨2, s⟩ ⟨3, s.write 0 0⟩ :=
-  Step.zero getInstr_2
+  Step.zero instr_2
 
 /-- Increment R0 to 1 (pc 3 → 4). -/
 theorem step_inc_r0 (s : State) :
     Step signProgram ⟨3, s⟩ ⟨4, s.write 0 (s.read 0 + 1)⟩ :=
-  Step.succ getInstr_3
+  Step.succ instr_3
 
 /-- Configuration at pc=4 is halted. -/
 theorem halted_at_4 (s : State) : (⟨4, s⟩ : Config).isHalted signProgram := by

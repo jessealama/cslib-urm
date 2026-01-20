@@ -69,7 +69,7 @@ structure LiftedPhaseResult (host : Program) (offset : ℕ) (s : State) (phaseLe
     Combines straightLineExec with Steps.straightLine_at_offset. -/
 noncomputable def liftStraightLinePhase
     {phase host : Program} (hsl : phase.isStraightLine = true) (offset : ℕ)
-    (hembed : ∀ i, i < phase.length → host.getInstr (offset + i) = phase.getInstr i)
+    (hembed : ∀ i, i < phase.length → host[offset + i]? = phase[i]?)
     (s : State) : LiftedPhaseResult host offset s phase.length :=
   let result := straightLineExec hsl s
   let hsteps_lifted := Steps.straightLine_at_offset offset hsl hembed result.steps
@@ -100,7 +100,7 @@ The proof uses strong induction on step count, with case analysis on each instru
 -/
 theorem halts_of_exits_embedded_region
     {host sub : Program} {offset : ℕ}
-    (hembed : ∀ i, i < sub.length → host.getInstr (offset + i) = (sub.shiftJumps offset).getInstr i)
+    (hembed : ∀ i, i < sub.length → host[offset + i]? = (sub.shiftJumps offset)[i]?)
     (hsub_sf : Program.IsStandardForm sub)
     (k : ℕ) (state : State) (c : Config)
     (hk_le : k ≤ sub.length)
@@ -127,19 +127,18 @@ theorem halts_of_exits_embedded_region
       -- Get the embedding at position k
       have hembed_k := hembed k hk_lt
       -- Get subprogram instruction at k
-      have hsub_instr_exists : ∃ instr, sub.getInstr k = some instr := by
-        simp only [Program.getInstr]
+      have hsub_instr_exists : ∃ instr, sub[k]? = some instr := by
         exact ⟨sub[k], List.getElem?_eq_getElem hk_lt⟩
       obtain ⟨instr, hsub_instr⟩ := hsub_instr_exists
       -- The shifted instruction in the host program
-      have hhost_instr : host.getInstr (offset + k) = some (instr.shiftJumps offset) := by
-        rw [hembed_k, Program.getInstr_shiftJumps, hsub_instr]; rfl
+      have hhost_instr : host[offset + k]? = some (instr.shiftJumps offset) := by
+        rw [hembed_k, getElem?_shiftJumps, hsub_instr]; rfl
       have hm_lt : m < numSteps := by omega
       have hk1_le : k + 1 ≤ sub.length := Nat.succ_le_of_lt hk_lt
       match instr with
       | Instr.Z r =>
         have hsub_step : Step sub ⟨k, state⟩ ⟨k + 1, state.write r 0⟩ := Step.zero hsub_instr
-        have hhost_instr' : host.getInstr (offset + k) = some (Instr.Z r) := by rw [hhost_instr]; rfl
+        have hhost_instr' : host[offset + k]? = some (Instr.Z r) := by rw [hhost_instr]; rfl
         have hexpected : Step host ⟨offset + k, state⟩ ⟨offset + k + 1, state.write r 0⟩ := Step.zero hhost_instr'
         have hc_mid_eq := Step.deterministic hfirst_step hexpected
         have hrest_steps' : StepsN host m ⟨offset + (k + 1), state.write r 0⟩ c := by
@@ -149,7 +148,7 @@ theorem halts_of_exits_embedded_region
         exact ⟨c_sub, Relation.ReflTransGen.head hsub_step hsub_steps, hsub_pc⟩
       | Instr.S r =>
         have hsub_step : Step sub ⟨k, state⟩ ⟨k + 1, state.write r (state.read r + 1)⟩ := Step.succ hsub_instr
-        have hhost_instr' : host.getInstr (offset + k) = some (Instr.S r) := by rw [hhost_instr]; rfl
+        have hhost_instr' : host[offset + k]? = some (Instr.S r) := by rw [hhost_instr]; rfl
         have hexpected : Step host ⟨offset + k, state⟩ ⟨offset + k + 1, state.write r (state.read r + 1)⟩ := Step.succ hhost_instr'
         have hc_mid_eq := Step.deterministic hfirst_step hexpected
         have hrest_steps' : StepsN host m ⟨offset + (k + 1), state.write r (state.read r + 1)⟩ c := by
@@ -159,7 +158,7 @@ theorem halts_of_exits_embedded_region
         exact ⟨c_sub, Relation.ReflTransGen.head hsub_step hsub_steps, hsub_pc⟩
       | Instr.T m' r =>
         have hsub_step : Step sub ⟨k, state⟩ ⟨k + 1, state.write r (state.read m')⟩ := Step.trans hsub_instr
-        have hhost_instr' : host.getInstr (offset + k) = some (Instr.T m' r) := by rw [hhost_instr]; rfl
+        have hhost_instr' : host[offset + k]? = some (Instr.T m' r) := by rw [hhost_instr]; rfl
         have hexpected : Step host ⟨offset + k, state⟩ ⟨offset + k + 1, state.write r (state.read m')⟩ := Step.trans hhost_instr'
         have hc_mid_eq := Step.deterministic hfirst_step hexpected
         have hrest_steps' : StepsN host m ⟨offset + (k + 1), state.write r (state.read m')⟩ c := by
@@ -168,10 +167,10 @@ theorem halts_of_exits_embedded_region
             hrest_steps'.toSteps hpc_ge hrest_steps'
         exact ⟨c_sub, Relation.ReflTransGen.head hsub_step hsub_steps, hsub_pc⟩
       | Instr.J m' r' q =>
-        have hhost_instr' : host.getInstr (offset + k) = some (Instr.J m' r' (q + offset)) := by
+        have hhost_instr' : host[offset + k]? = some (Instr.J m' r' (q + offset)) := by
           rw [hhost_instr]; rfl
         have hq_le : q ≤ sub.length := by
-          simpa [Instr.hasBoundedJump] using hsub_sf.getInstr_hasBoundedJump hsub_instr
+          simpa [Instr.hasBoundedJump] using hsub_sf.getElem?_hasBoundedJump hsub_instr
         by_cases heq : state.read m' = state.read r'
         · -- Equal: jump to q
           have hsub_step : Step sub ⟨k, state⟩ ⟨q, state⟩ := Step.jump_eq hsub_instr heq

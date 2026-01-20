@@ -165,9 +165,10 @@ theorem shiftRegisters_add (k₁ k₂ : ℕ) (p : Program) :
     (p.shiftRegisters k₁).shiftRegisters k₂ = p.shiftRegisters (k₁ + k₂) := by
   simp only [shiftRegisters, List.map_map, Function.comp_def, Instr.shiftRegisters_add]
 
-theorem getInstr_shiftRegisters (offset : ℕ) (p : Program) (i : ℕ) :
-    (p.shiftRegisters offset).getInstr i = (p.getInstr i).map (Instr.shiftRegisters offset) := by
-  simp only [shiftRegisters, getInstr, List.getElem?_map]
+@[simp]
+theorem getElem?_shiftRegisters (offset : ℕ) (p : Program) (i : ℕ) :
+    (p.shiftRegisters offset)[i]? = p[i]?.map (Instr.shiftRegisters offset) := by
+  simp only [shiftRegisters, List.getElem?_map]
 
 /-- Helper: foldl max with offset on function values shifts the result. -/
 private theorem foldl_max_add_aux (offset : ℕ) (init : ℕ) (p : Program) :
@@ -204,36 +205,36 @@ theorem Step.shift {p : Program} {c c' : Config} (offset : ℕ)
   cases hstep with
   | zero hinstr =>
     rename_i n
-    have h : (p.shiftRegisters offset).getInstr c.pc = some (Instr.Z (n + offset)) := by
-      rw [Program.getInstr_shiftRegisters, hinstr]; rfl
+    have h : (p.shiftRegisters offset)[c.pc]? = some (Instr.Z (n + offset)) := by
+      simp only [Program.getElem?_shiftRegisters, hinstr, Option.map_some, Instr.shiftRegisters]
     show Step _ _ ⟨c.pc + 1, (c.state.write n 0).shift offset⟩
     rw [← State.shift_write]; exact Step.zero h
   | succ hinstr =>
     rename_i n
-    have h : (p.shiftRegisters offset).getInstr c.pc = some (Instr.S (n + offset)) := by
-      rw [Program.getInstr_shiftRegisters, hinstr]; rfl
+    have h : (p.shiftRegisters offset)[c.pc]? = some (Instr.S (n + offset)) := by
+      simp only [Program.getElem?_shiftRegisters, hinstr, Option.map_some, Instr.shiftRegisters]
     show Step _ _ ⟨c.pc + 1, (c.state.write n (c.state.read n + 1)).shift offset⟩
     rw [← State.shift_write, show c.state.read n = (c.state.shift offset).read (n + offset) by
       simp only [State.shift_read (hr := Nat.le_add_left offset n), Nat.add_sub_cancel]]
     exact Step.succ h
   | trans hinstr =>
     rename_i m n
-    have h : (p.shiftRegisters offset).getInstr c.pc = some (Instr.T (m + offset) (n + offset)) := by
-      rw [Program.getInstr_shiftRegisters, hinstr]; rfl
+    have h : (p.shiftRegisters offset)[c.pc]? = some (Instr.T (m + offset) (n + offset)) := by
+      simp only [Program.getElem?_shiftRegisters, hinstr, Option.map_some, Instr.shiftRegisters]
     show Step _ _ ⟨c.pc + 1, (c.state.write n (c.state.read m)).shift offset⟩
     rw [← State.shift_write, show c.state.read m = (c.state.shift offset).read (m + offset) by
       simp only [State.shift_read (hr := Nat.le_add_left offset m), Nat.add_sub_cancel]]
     exact Step.trans h
   | jump_eq hinstr hcmp =>
     rename_i m n q
-    have h : (p.shiftRegisters offset).getInstr c.pc = some (Instr.J (m + offset) (n + offset) q) := by
-      rw [Program.getInstr_shiftRegisters, hinstr]; rfl
+    have h : (p.shiftRegisters offset)[c.pc]? = some (Instr.J (m + offset) (n + offset) q) := by
+      simp only [Program.getElem?_shiftRegisters, hinstr, Option.map_some, Instr.shiftRegisters]
     exact Step.jump_eq h (by simp only [Config.shift_state, State.shift_read (hr := Nat.le_add_left offset m),
       State.shift_read (hr := Nat.le_add_left offset n), Nat.add_sub_cancel]; exact hcmp)
   | jump_ne hinstr hcmp =>
     rename_i m n q
-    have h : (p.shiftRegisters offset).getInstr c.pc = some (Instr.J (m + offset) (n + offset) q) := by
-      rw [Program.getInstr_shiftRegisters, hinstr]; rfl
+    have h : (p.shiftRegisters offset)[c.pc]? = some (Instr.J (m + offset) (n + offset) q) := by
+      simp only [Program.getElem?_shiftRegisters, hinstr, Option.map_some, Instr.shiftRegisters]
     exact Step.jump_ne h (by simp only [Config.shift_state, State.shift_read (hr := Nat.le_add_left offset m),
       State.shift_read (hr := Nat.le_add_left offset n), Nat.add_sub_cancel]; exact hcmp)
 
@@ -260,15 +261,15 @@ theorem Halts.shift {p : Program} {inputs : List ℕ} (offset : ℕ) (h : Halts 
 theorem Step.shift_inv {p : Program} {c : Config} {c' : Config} (offset : ℕ)
     (hstep : Step (p.shiftRegisters offset) (c.shift offset) c') :
     ∃ d, c' = d.shift offset ∧ Step p c d := by
-  cases hinstr : p.getInstr c.pc with
+  cases hinstr : p[c.pc]? with
   | none =>
-    have h : (p.shiftRegisters offset).getInstr (c.shift offset).pc = none := by
-      simp only [Config.shift_pc, Program.getInstr_shiftRegisters, hinstr]; rfl
+    have h : (p.shiftRegisters offset)[(c.shift offset).pc]? = none := by
+      simp only [Config.shift_pc, Program.getElem?_shiftRegisters, hinstr]; rfl
     cases hstep <;> simp_all
   | some instr =>
-    have hshift_instr : (p.shiftRegisters offset).getInstr (c.shift offset).pc =
+    have hshift_instr : (p.shiftRegisters offset)[(c.shift offset).pc]? =
                         some (instr.shiftRegisters offset) := by
-      simp only [Config.shift_pc, Program.getInstr_shiftRegisters, hinstr]; rfl
+      simp only [Config.shift_pc, Program.getElem?_shiftRegisters, hinstr]; rfl
     cases instr with
     | Z n =>
       simp only [Instr.shiftRegisters] at hshift_instr
@@ -372,9 +373,8 @@ private theorem foldl_max_ge_elem (p : List Instr) (init : ℕ) (instr : Instr) 
       exact ih _ htl
 
 /-- Helper: the instruction at a position has maxRegister ≤ program's maxRegister. -/
-theorem Program.getInstr_maxRegister {p : Program} {i : ℕ} {instr : Instr}
-    (h : p.getInstr i = some instr) : instr.maxRegister ≤ p.maxRegister := by
-  simp only [getInstr] at h
+theorem Program.getElem?_maxRegister {p : Program} {i : ℕ} {instr : Instr}
+    (h : p[i]? = some instr) : instr.maxRegister ≤ p.maxRegister := by
   have hmem : instr ∈ p := List.mem_of_getElem? h
   simp only [maxRegister]
   exact foldl_max_ge_elem p 0 instr hmem
@@ -393,24 +393,24 @@ theorem Step.agreeOn {p : Program} {c₁ c₁' c₂ : Config}
     exact ⟨⟨c₂.pc + 1, c₂.state.write _ 0⟩, Step.zero hinstr, by simp [hpc], State.agreeOn_write_same hagree⟩
   | succ hinstr =>
     rename_i n; rw [hpc] at hinstr
-    have hmax : n ≤ p.maxRegister := by simpa [Instr.maxRegister] using Program.getInstr_maxRegister hinstr
+    have hmax : n ≤ p.maxRegister := by simpa [Instr.maxRegister] using Program.getElem?_maxRegister hinstr
     have hread := hagree n (Nat.zero_le n) hmax
     exact ⟨⟨c₂.pc + 1, c₂.state.write n (c₂.state.read n + 1)⟩, Step.succ hinstr, by simp [hpc],
            by rw [hread]; exact State.agreeOn_write_same hagree⟩
   | trans hinstr =>
     rename_i m n; rw [hpc] at hinstr
-    have hmax := by simpa [Instr.maxRegister] using Program.getInstr_maxRegister hinstr
+    have hmax := by simpa [Instr.maxRegister] using Program.getElem?_maxRegister hinstr
     have hread := hagree m (Nat.zero_le m) (by omega : m ≤ p.maxRegister)
     exact ⟨⟨c₂.pc + 1, c₂.state.write n (c₂.state.read m)⟩, Step.trans hinstr, by simp [hpc],
            by rw [hread]; exact State.agreeOn_write_same hagree⟩
   | jump_eq hinstr hcmp =>
     rename_i m n q; rw [hpc] at hinstr
-    have hmax := by simpa [Instr.maxRegister] using Program.getInstr_maxRegister hinstr
+    have hmax := by simpa [Instr.maxRegister] using Program.getElem?_maxRegister hinstr
     have hreadm := hagree m (Nat.zero_le m) (by omega); have hreadn := hagree n (Nat.zero_le n) (by omega)
     exact ⟨⟨q, c₂.state⟩, Step.jump_eq hinstr (by rw [← hreadm, ← hreadn]; exact hcmp), rfl, hagree⟩
   | jump_ne hinstr hcmp =>
     rename_i m n q; rw [hpc] at hinstr
-    have hmax := by simpa [Instr.maxRegister] using Program.getInstr_maxRegister hinstr
+    have hmax := by simpa [Instr.maxRegister] using Program.getElem?_maxRegister hinstr
     have hreadm := hagree m (Nat.zero_le m) (by omega); have hreadn := hagree n (Nat.zero_le n) (by omega)
     exact ⟨⟨c₂.pc + 1, c₂.state⟩, Step.jump_ne hinstr (by rw [← hreadm, ← hreadn]; exact hcmp), by simp [hpc], hagree⟩
 
@@ -431,10 +431,10 @@ theorem Steps.agreeOn {p : Program} {c₁ c₁' c₂ : Config}
 
 /-- A shifted program only uses registers in [offset, offset + maxRegister]. -/
 theorem Program.shiftRegisters_uses_range {p : Program} {offset i : ℕ} {instr : Instr}
-    (h : (p.shiftRegisters offset).getInstr i = some instr) :
+    (h : (p.shiftRegisters offset)[i]? = some instr) :
     ∀ r, (r ∈ instr.readsFrom ∨ instr.writesTo = some r) → offset ≤ r ∧ r ≤ offset + p.maxRegister := by
   intro r hr
-  simp only [shiftRegisters, getInstr, List.getElem?_map] at h
+  simp only [shiftRegisters, List.getElem?_map] at h
   cases hp : p[i]? with
   | none => simp [hp] at h
   | some orig_instr =>

@@ -34,19 +34,19 @@ variable (n : ℕ) (pF pG : Program)
 /-- Setup phase is embedded at the start of the program. -/
 theorem prSetupPhase_embed :
     ∀ i, i < (prSetupPhase n pF pG).length →
-    (primitiveRecursionProgram n pF pG).getInstr i = (prSetupPhase n pF pG).getInstr i := by
+    (primitiveRecursionProgram n pF pG)[i]? = (prSetupPhase n pF pG)[i]? := by
   intro i hi
-  simp only [primitiveRecursionProgram, getInstr, List.getElem?_append, prSetupPhase_length,
+  simp only [primitiveRecursionProgram, List.getElem?_append, prSetupPhase_length,
     List.length_append, prBaseCasePhase_length, prLoopCheck_length, prLoopBody_length] at *
   split_ifs <;> first | rfl | omega
 
 /-- Base case prologue is embedded after setup phase. -/
 theorem prBaseCasePrologue_embed :
     ∀ i, i < (prBaseCasePrologue n pF pG).length →
-    (primitiveRecursionProgram n pF pG).getInstr (prBaseCasePC n + i) =
-      (prBaseCasePrologue n pF pG).getInstr i := by
+    (primitiveRecursionProgram n pF pG)[prBaseCasePC n + i]? =
+      (prBaseCasePrologue n pF pG)[i]? := by
   intro i hi
-  simp only [primitiveRecursionProgram, prBaseCasePC, prBaseCasePhase, getInstr, List.getElem?_append,
+  simp only [primitiveRecursionProgram, prBaseCasePC, prBaseCasePhase, List.getElem?_append,
     prSetupPhase_length, prSetupPhaseLength, prBaseCasePrologue_length, prBaseCasePrologueLength,
     List.length_append, prLoopCheck_length, prLoopBody_length, shiftJumps_length] at *
   split_ifs <;> first | omega | (congr 1; omega)
@@ -54,10 +54,10 @@ theorem prBaseCasePrologue_embed :
 /-- Shifted pF is embedded in the base case phase. -/
 theorem prPF_shiftJumps_embed :
     ∀ i, i < pF.length →
-    (primitiveRecursionProgram n pF pG).getInstr (prPFOffset n pF pG + i) =
-      (pF.shiftJumps (prPFOffset n pF pG)).getInstr i := by
+    (primitiveRecursionProgram n pF pG)[prPFOffset n pF pG + i]? =
+      (pF.shiftJumps (prPFOffset n pF pG))[i]? := by
   intro i hi
-  simp only [primitiveRecursionProgram, prPFOffset, prBaseCasePhase, getInstr, List.getElem?_append,
+  simp only [primitiveRecursionProgram, prPFOffset, prBaseCasePhase, List.getElem?_append,
     prSetupPhase_length, prSetupPhaseLength, prBaseCasePrologueLength, prBaseCasePrologue_length,
     shiftJumps_length, List.length_append, prLoopCheck_length, prLoopBody_length]
   split_ifs <;> try omega
@@ -66,17 +66,17 @@ theorem prPF_shiftJumps_embed :
 
 /-- Loop check instruction embedding. -/
 theorem prLoopCheck_embed :
-    (primitiveRecursionProgram n pF pG).getInstr (prLoopCheckPC n pF pG) =
+    (primitiveRecursionProgram n pF pG)[prLoopCheckPC n pF pG]? =
       some (Instr.J (prCounterReg n pF pG) (prSavedYReg n pF pG) (prOutputPC n pF pG)) :=
   instr_at_loopCheck n pF pG
 
 /-- Loop prologue is embedded at the start of loop body. -/
 theorem prLoopPrologue_embed :
     ∀ i, i < (prLoopPrologue n pF pG).length →
-    (primitiveRecursionProgram n pF pG).getInstr (prLoopBodyPC n pF pG + i) =
-      (prLoopPrologue n pF pG).getInstr i := by
+    (primitiveRecursionProgram n pF pG)[prLoopBodyPC n pF pG + i]? =
+      (prLoopPrologue n pF pG)[i]? := by
   intro i hi
-  simp only [primitiveRecursionProgram, prLoopBodyPC_eq, prLoopBody, getInstr, List.getElem?_append,
+  simp only [primitiveRecursionProgram, prLoopBodyPC_eq, prLoopBody, List.getElem?_append,
     prSetupPhase_length, prBaseCasePhase_length, prLoopCheck_length, prLoopPrologue_length,
     List.length_append, shiftJumps_length, prLoopEpilogue_length] at *
   split_ifs <;> first | omega | (congr 1; omega)
@@ -84,10 +84,10 @@ theorem prLoopPrologue_embed :
 /-- Shifted pG is embedded in the loop body. -/
 theorem prPG_shiftJumps_embed :
     ∀ i, i < pG.length →
-    (primitiveRecursionProgram n pF pG).getInstr (prPGOffset n pF pG + i) =
-      (pG.shiftJumps (prPGOffset n pF pG)).getInstr i := by
+    (primitiveRecursionProgram n pF pG)[prPGOffset n pF pG + i]? =
+      (pG.shiftJumps (prPGOffset n pF pG))[i]? := by
   intro i hi
-  simp only [primitiveRecursionProgram, prPGOffset, prLoopBodyPC, prLoopCheckPC, prLoopBody, getInstr,
+  simp only [primitiveRecursionProgram, prPGOffset, prLoopBodyPC, prLoopCheckPC, prLoopBody,
     List.getElem?_append, prSetupPhase_length, prBaseCasePhase_length, prLoopCheck_length,
     prLoopPrologue_length, shiftJumps_length, List.length_append, prLoopEpilogue_length]
   split_ifs <;> try omega
@@ -96,7 +96,7 @@ theorem prPG_shiftJumps_embed :
 
 /-- Output phase is at outputPC. -/
 theorem prOutputPhase_embed :
-    (primitiveRecursionProgram n pF pG).getInstr (prOutputPC n pF pG) =
+    (primitiveRecursionProgram n pF pG)[prOutputPC n pF pG]? =
       some (Instr.T (prAccumulatorReg n pF pG) 0) :=
   instr_at_output n pF pG
 
@@ -119,7 +119,7 @@ noncomputable def prExecuteSetupPhase (inputs : Fin n → ℕ) (y : ℕ) :
   let hsl_setup := prSetupPhase_isStraightLine n pF pG
   let initState := State.fromInputs (List.ofFn (Fin.snoc inputs y))
   let hembed : ∀ i, i < (prSetupPhase n pF pG).length →
-      (primitiveRecursionProgram n pF pG).getInstr (0 + i) = (prSetupPhase n pF pG).getInstr i :=
+      (primitiveRecursionProgram n pF pG)[0 + i]? = (prSetupPhase n pF pG)[i]? :=
     fun i hi => by simp only [Nat.zero_add]; exact prSetupPhase_embed n pF pG i hi
   let setupExec := execPhaseInHost hsl_setup 0 hembed initState
   let cSetup := setupExec.phaseResult.config
@@ -206,9 +206,9 @@ noncomputable def prExecuteBaseCasePhase (hpF_sf : pF.IsStandardForm)
       prBaseCasePhaseLength]
     omega
 
-  have hT_instr : (primitiveRecursionProgram n pF pG).getInstr (prPFOffset n pF pG + pF.length) =
+  have hT_instr : (primitiveRecursionProgram n pF pG)[prPFOffset n pF pG + pF.length]? =
       some (Instr.T 0 (prAccumulatorReg n pF pG)) := by
-    simp only [primitiveRecursionProgram, getInstr, prPFOffset, prBaseCasePhase]
+    simp only [primitiveRecursionProgram, prPFOffset, prBaseCasePhase]
     let h_not_in_setup : ¬(prSetupPhaseLength n + prBaseCasePrologueLength n pF pG + pF.length <
         (prSetupPhase n pF pG).length) := by
       simp only [prSetupPhase_length, prSetupPhaseLength]; omega
@@ -408,10 +408,10 @@ noncomputable def pr_loop_iteration
         ⟨prPGOffset n pF pG + pG.length, c_pG'⟩ :=
       Relation.ReflTransGen.trans hsteps_to_prologue_end pGExec.liftedSteps
 
-    have hT_instr : (primitiveRecursionProgram n pF pG).getInstr (prPGOffset n pF pG + pG.length) =
+    have hT_instr : (primitiveRecursionProgram n pF pG)[prPGOffset n pF pG + pG.length]? =
         some (Instr.T 0 (prAccumulatorReg n pF pG)) := by
       simp only [primitiveRecursionProgram, prPGOffset, prLoopBodyPC, prLoopCheckPC, prLoopBody, prLoopEpilogue,
-        getInstr, List.getElem?_append, prSetupPhase_length, prBaseCasePhase_length, prLoopCheck_length,
+        List.getElem?_append, prSetupPhase_length, prBaseCasePhase_length, prLoopCheck_length,
         prLoopPrologue_length, shiftJumps_length, List.length_append,
         prLoopPrologueLength, prSetupPhaseLength, prBaseCasePhaseLength, prBaseCasePrologueLength, List.length]
       split_ifs <;> try omega
@@ -422,10 +422,10 @@ noncomputable def pr_loop_iteration
         (primitiveRecursionBase n pF pG + 1 + n + 2 + List.length pG) = 0 := by omega
       simp only [hidx, List.getElem?_cons_zero]
 
-    have hS_instr : (primitiveRecursionProgram n pF pG).getInstr (prPGOffset n pF pG + pG.length + 1) =
+    have hS_instr : (primitiveRecursionProgram n pF pG)[prPGOffset n pF pG + pG.length + 1]? =
         some (Instr.S (prCounterReg n pF pG)) := by
       simp only [primitiveRecursionProgram, prPGOffset, prLoopBodyPC, prLoopCheckPC, prLoopBody, prLoopEpilogue,
-        getInstr, List.getElem?_append, prSetupPhase_length, prBaseCasePhase_length, prLoopCheck_length,
+        List.getElem?_append, prSetupPhase_length, prBaseCasePhase_length, prLoopCheck_length,
         prLoopPrologue_length, shiftJumps_length, List.length_append,
         prLoopPrologueLength, prSetupPhaseLength, prBaseCasePhaseLength, prBaseCasePrologueLength, List.length]
       split_ifs <;> try omega
@@ -436,10 +436,10 @@ noncomputable def pr_loop_iteration
         (primitiveRecursionBase n pF pG + 1 + n + 2 + List.length pG) = 1 := by omega
       simp only [hidx, List.getElem?_cons_succ, List.getElem?_cons_zero]
 
-    have hJ_instr_epilogue : (primitiveRecursionProgram n pF pG).getInstr (prPGOffset n pF pG + pG.length + 2) =
+    have hJ_instr_epilogue : (primitiveRecursionProgram n pF pG)[prPGOffset n pF pG + pG.length + 2]? =
         some (Instr.J (prZeroReg n pF pG) (prZeroReg n pF pG) (prLoopCheckPC n pF pG)) := by
       simp only [primitiveRecursionProgram, prPGOffset, prLoopBodyPC, prLoopCheckPC, prLoopBody, prLoopEpilogue,
-        getInstr, List.getElem?_append, prSetupPhase_length, prBaseCasePhase_length, prLoopCheck_length,
+        List.getElem?_append, prSetupPhase_length, prBaseCasePhase_length, prLoopCheck_length,
         prLoopPrologue_length, shiftJumps_length, List.length_append,
         prLoopPrologueLength, prSetupPhaseLength, prBaseCasePhaseLength, prBaseCasePrologueLength, List.length]
       split_ifs <;> try omega
