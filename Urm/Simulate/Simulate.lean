@@ -256,7 +256,7 @@ Strategy:
    - The halting step found by rfind gives the final configuration
    - extractOutput extracts register 0, matching eval's Result
 -/
-theorem URMComputable1.toPartrec' {f : ℕ →. ℕ} (hf : URMComputable1 f) :
+theorem URMComputable1.toPartrec {f : ℕ →. ℕ} (hf : URMComputable1 f) :
     Nat.Partrec f := by
   -- Extract the program from URMComputable1
   obtain ⟨p, hp⟩ := hf

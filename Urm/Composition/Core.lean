@@ -20,6 +20,8 @@ namespace Urm
 
 namespace Program
 
+/-- Transfer computed results to input registers 0, 1, ..., arityF - 1.
+    Copies from resultStart + i to register i for i < arityF. -/
 def transferResultsToInputs (resultStart arityF : ℕ) : Program :=
   (List.range arityF).map fun i => Instr.T (resultStart + i) i
 
@@ -102,7 +104,7 @@ theorem Step.of_concat_right {c c' : Config} (hpc_lo : p1.length ≤ c.pc) (hpc_
   obtain ⟨instr, hinstr⟩ : ∃ instr, p2.getInstr (c.pc - p1.length) = some instr :=
     ⟨p2[c.pc - p1.length], by simp only [Program.getInstr]; exact List.getElem?_eq_getElem hp2_pc⟩
   have hconcat_instr : (p1.concat p2).getInstr c.pc = some (instr.shiftJumps p1.length) := by
-    rw [Program.getInstr_concat_right c.pc hpc_lo hpc_hi, Program.getInstr_shiftJumps, hinstr]; rfl
+    rw [Program.getInstr_concat_right c.pc hpc_lo, Program.getInstr_shiftJumps, hinstr]; rfl
   set pc2 := c.pc - p1.length with hpc2_def
   cases instr with
   | Z n => have hc' : c' = ⟨c.pc + 1, c.state.write n 0⟩ := by cases hstep <;> simp_all [Instr.shiftJumps]
@@ -122,7 +124,7 @@ theorem Step.of_concat_right {c c' : Config} (hpc_lo : p1.length ≤ c.pc) (hpc_
     | _ => simp_all [Instr.shiftJumps]
 
 theorem Steps.of_concat_right {s : State} {c' : Config}
-    (hsteps : Steps (p1.concat p2) ⟨p1.length, s⟩ c') (hhalted : c'.isHalted (p1.concat p2)) (_hpc' : c'.pc ≥ p1.length) :
+    (hsteps : Steps (p1.concat p2) ⟨p1.length, s⟩ c') (hhalted : c'.isHalted (p1.concat p2)) :
     ∃ c, Steps p2 ⟨0, s⟩ c ∧ c.isHalted p2 ∧ c.state = c'.state := by
   suffices h : ∀ start c', start.pc ≥ p1.length → Steps (p1.concat p2) start c' → c'.isHalted (p1.concat p2) →
       ∃ c, Steps p2 ⟨start.pc - p1.length, start.state⟩ c ∧ c.isHalted p2 ∧ c.state = c'.state by
@@ -142,7 +144,7 @@ theorem Steps.of_concat_right {s : State} {c' : Config}
       cases hstep with
       | zero _ | succ _ | trans _ | jump_ne _ _ => simp only []; omega
       | jump_eq h _ =>
-        rw [Program.getInstr_concat_right a.pc hstart ha_in_range, Program.getInstr_shiftJumps] at h
+        rw [Program.getInstr_concat_right a.pc hstart, Program.getInstr_shiftJumps] at h
         cases hp2 : p2.getInstr (a.pc - p1.length) with
         | none => simp only [hp2, Option.map_none] at h; nomatch h
         | some instr => simp only [hp2, Option.map_some] at h; cases instr with
@@ -160,10 +162,9 @@ theorem suffix_of_concat_from_zero {p1 p2 : Program} {s : State} {c : Config}
   refine ⟨c1.state, ?_, ?_⟩
   · convert hsteps_p1 using 1; ext <;> simp [hc1_pc]
   · have hsteps_p1_lifted : Steps (p1.concat p2) ⟨0, s⟩ ⟨p1.length, c1.state⟩ := by
-      convert @Steps.concat_left_prefix p1 p2 ⟨0, s⟩ c1 hsteps_p1 hhalted_p1 using 1; ext <;> simp [hc1_pc]
+      convert @Steps.concat_left_prefix p1 p2 ⟨0, s⟩ c1 hsteps_p1 using 1; ext <;> simp [hc1_pc]
     have h_suffix := Steps.deterministic_continuation hsteps_p1_lifted hsteps hhalted
-    have hc_pc : c.pc ≥ p1.length := by simp only [Config.isHalted, Program.concat_length] at hhalted; omega
-    obtain ⟨c', hsteps_p2, hhalted_p2, _⟩ := Steps.of_concat_right h_suffix hhalted hc_pc
+    obtain ⟨c', hsteps_p2, hhalted_p2, _⟩ := Steps.of_concat_right h_suffix hhalted
     exact ⟨c', hsteps_p2, hhalted_p2⟩
 
 /-- Extract just the intermediate state from a concatenated program execution.
@@ -219,12 +220,11 @@ theorem Halts.suffix_of_concat_sf {p1 p2 : Program} {inputs : List ℕ}
   · intro hP1'; rw [Steps.halts_unique hc1_spec.1 hc1_spec.2 (Classical.choose_spec hP1').1 (Classical.choose_spec hP1').2]
   · obtain ⟨cH, hH_steps, hH_halted⟩ := hH
     have h_to_c1 : Steps (p1.concat p2) (Config.init inputs) (Classical.choose hP1) :=
-      Steps.concat_left_prefix hc1_spec.1 hc1_spec.2
+      Steps.concat_left_prefix hc1_spec.1
     have h_suffix := Steps.deterministic_continuation h_to_c1 hH_steps hH_halted
     have h_suffix_start : Classical.choose hP1 = ⟨p1.length, (Classical.choose hP1).state⟩ := by ext; exact hc1_pc; rfl
     rw [h_suffix_start] at h_suffix
-    have hcH_pc : cH.pc ≥ p1.length := by simp only [Config.isHalted, Program.concat_length] at hH_halted; omega
-    obtain ⟨c, hsteps_p2, hhalted_p2, _⟩ := Steps.of_concat_right h_suffix hH_halted hcH_pc
+    obtain ⟨c, hsteps_p2, hhalted_p2, _⟩ := Steps.of_concat_right h_suffix hH_halted
     exact ⟨c, hsteps_p2, hhalted_p2⟩
 
 end Continuation

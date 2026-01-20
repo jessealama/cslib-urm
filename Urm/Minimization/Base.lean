@@ -79,7 +79,7 @@ macro "min_register_omega" : tactic =>
 @[simp] theorem savedInputsStart_gt_n (n : ℕ) (pF : Program) :
     n ≤ savedInputsStart n pF := by min_register_omega
 
-@[simp] theorem savedInput_reg_distinct (n : ℕ) (pF : Program) (i : Fin n) :
+theorem savedInput_reg_distinct (n : ℕ) (pF : Program) (i : Fin n) :
     savedInputsStart n pF + i ≠ i.val := by min_register_omega
 
 @[simp] theorem savedInputs_ne_counterReg (n : ℕ) (pF : Program) (i : Fin n) :

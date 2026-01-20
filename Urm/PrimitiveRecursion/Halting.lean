@@ -102,6 +102,7 @@ theorem prOutputPhase_embed (n : ℕ) (pF pG : Program) :
 
 /-- Result of executing the setup phase. -/
 structure PrSetupPhaseResult (n : ℕ) (pF pG : Program) (inputs : Fin n → ℕ) (y : ℕ) where
+  /-- The configuration after setup phase execution -/
   config : Config
   steps : Steps (primitiveRecursionProgram n pF pG) (Config.init (List.ofFn (Fin.snoc inputs y))) config
   pc_eq : config.pc = prBaseCasePC n
@@ -150,6 +151,7 @@ noncomputable def prExecuteSetupPhase (n : ℕ) (pF pG : Program) (inputs : Fin 
 /-- Result of executing the base case phase. -/
 structure PrBaseCasePhaseResult (n : ℕ) (pF pG : Program) (inputs : Fin n → ℕ) (y : ℕ)
     (s : State) (hpF_halts : Halts pF (List.ofFn inputs)) where
+  /-- The configuration after base case phase execution -/
   config : Config
   steps : Steps (primitiveRecursionProgram n pF pG) ⟨prBaseCasePC n, s⟩ config
   pc_eq : config.pc = prLoopCheckPC n pF pG
@@ -298,6 +300,7 @@ noncomputable def prExecuteBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : p
     Tracks whether we exited (counter = savedY) or continued (counter < savedY). -/
 structure PrLoopIterationResult (n : ℕ) (pF pG : Program) (inputs : Fin n → ℕ) (y : ℕ)
     (s : State) (k : ℕ) (accBefore : ℕ) (hpG_halts : Halts pG (List.ofFn (extendInputsForG inputs k accBefore))) where
+  /-- The configuration after loop iteration execution -/
   config : Config
   steps : Steps (primitiveRecursionProgram n pF pG) ⟨prLoopCheckPC n pF pG, s⟩ config
   /-- Either we exited to output (k = y) or we're back at loop check with counter = k+1 -/
@@ -619,6 +622,7 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
 structure PrLoopKIterationsResult (n : ℕ) (pF pG : Program) (inputs : Fin n → ℕ) (y : ℕ)
     (s : State) (k : ℕ)
     (f : (Fin n → ℕ) → Part ℕ) (g : (Fin (n + 2) → ℕ) → Part ℕ) where
+  /-- The configuration after k loop iterations -/
   config : Config
   steps : Steps (primitiveRecursionProgram n pF pG) ⟨prLoopCheckPC n pF pG, s⟩ config
   pc_eq : config.pc = prLoopCheckPC n pF pG

@@ -135,7 +135,7 @@ macro "pr_register_omega" : tactic =>
 @[simp] theorem prSavedInputsStart_ge_n (n : ℕ) (pF pG : Program) :
     n ≤ prSavedInputsStart n pF pG := by pr_register_omega
 
-@[simp] theorem prSavedInput_reg_ne_working (n : ℕ) (pF pG : Program) (i : Fin n) :
+theorem prSavedInput_reg_ne_working (n : ℕ) (pF pG : Program) (i : Fin n) :
     prSavedInputsStart n pF pG + i ≠ i.val := by pr_register_omega
 
 /-! ## Saved inputs don't overlap with high registers -/

@@ -153,10 +153,9 @@ theorem allGPhases_prefix_preserves_saved_inputs (m n base : ℕ) (pGs : Fin m �
     have hMid_halted : (⟨(allGPhases_prefix m n base pGs k').length, sMid⟩ : Config).isHalted
         (allGPhases_prefix m n base pGs k') := by simp
     have hPrefix_preserves := ih (Nat.le_of_succ_le hk) s sMid _ hMid_steps hMid_halted rfl
-    have hMid_lifted := @Steps.concat_left_prefix _ (gPhase base n (pGs k'_fin) k') _ _ hMid_steps hMid_halted
+    have hMid_lifted := @Steps.concat_left_prefix _ (gPhase base n (pGs k'_fin) k') _ _ hMid_steps
     have hSuffix := Steps.deterministic_continuation hMid_lifted hsteps hhalted
     obtain ⟨cGPhase', hGPhase'_steps, hGPhase'_halted, hGPhase'_state⟩ := Steps.of_concat_right hSuffix hhalted
-      (by simp only [Config.isHalted, Program.concat_length] at hhalted; omega)
     have hGPhase_state_eq : cGPhase.state = s' :=
       hstate_eq ▸ (Steps.halts_unique hGPhase_steps hGPhase_halted hGPhase'_steps hGPhase'_halted) ▸ hGPhase'_state
     rw [gPhase_preserves_saved_inputs base n (pGs k'_fin) k' (hpGs_sf k'_fin) (hpGs_max k'_fin)

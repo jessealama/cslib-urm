@@ -12,6 +12,8 @@ namespace Urm
 
 open Program
 
+/-- One phase of composition: clears working registers, copies saved inputs,
+    runs gᵢ, and saves the result to register `base + n + 1 + i`. -/
 def gPhase (base n : ℕ) (pG : Program) (i : ℕ) : Program :=
   (clearRegisters base).concat ((copyRegisterRange (base + 1) 0 n).concat (pG.concat [Instr.T 0 (base + n + 1 + i)]))
 
@@ -19,16 +21,19 @@ def gPhase (base n : ℕ) (pG : Program) (i : ℕ) : Program :=
 def gPhaseList (n base : ℕ) (pGs : Fin m → Program) (indices : List (Fin m)) : List Program :=
   indices.map (fun i => gPhase base n (pGs i) i.val)
 
+/-- All m phases for computing g₀, g₁, ..., gₘ₋₁ in sequence. -/
 def allGPhases (m n base : ℕ) (pGs : Fin m → Program) : Program :=
   (gPhaseList n base pGs (List.finRange m)).prod
 
+/-- First i phases (prefix) of allGPhases. -/
 def allGPhases_prefix (m n base : ℕ) (pGs : Fin m → Program) (i : ℕ) : Program :=
   (gPhaseList n base pGs ((List.finRange m).take i)).prod
 
+/-- Phases from i to m-1 (suffix) of allGPhases. -/
 def allGPhases_suffix (m n base : ℕ) (pGs : Fin m → Program) (i : ℕ) : Program :=
   (gPhaseList n base pGs ((List.finRange m).drop i)).prod
 
-theorem allGPhases_split (m n base : ℕ) (pGs : Fin m → Program) (i : ℕ) (_hi : i ≤ m) :
+theorem allGPhases_split (m n base : ℕ) (pGs : Fin m → Program) (i : ℕ) :
     allGPhases m n base pGs = (allGPhases_prefix m n base pGs i).concat (allGPhases_suffix m n base pGs i) := by
   simp only [allGPhases, allGPhases_prefix, allGPhases_suffix, gPhaseList]
   rw [show (List.finRange m).map (fun i => gPhase base n (pGs i) i.val) =
@@ -61,9 +66,12 @@ theorem allGPhases_prefix_succ {m n base : ℕ} (pGs : Fin m → Program) (i : �
   simp only [List.getElem_finRange]
   rfl
 
+/-- Final phase: clears working registers, copies computed g values to inputs, and runs pF. -/
 def finalPhase (m n base : ℕ) (pF : Program) : Program :=
   (clearRegisters base).concat ((transferResultsToInputs (base + n + 1) m).concat pF)
 
+/-- Compose an m-ary function f with n-ary functions g₀,...,gₘ₋₁.
+    Computes h(x) = f(g₀(x), g₁(x), ..., gₘ₋₁(x)). -/
 def Program.composeGeneral (m n : ℕ) (pF : Program) (pGs : Fin m → Program) : Program :=
   let base := compositionBase m n pF pGs
   (copyRegisterRange 0 (base + 1) n).concat ((allGPhases m n base pGs).concat (finalPhase m n base pF))

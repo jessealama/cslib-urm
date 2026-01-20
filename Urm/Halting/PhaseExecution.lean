@@ -102,7 +102,7 @@ Produces steps from offset to offset + phase1.length + phase2.length.
 
 Note: The second phase must start from `r1.finalState` for the chain to be valid.
 -/
-def PhaseExecutionResult.andThen
+theorem PhaseExecutionResult.andThen
     {host phase1 phase2 : Program} {offset : ℕ} {s : State}
     (r1 : PhaseExecutionResult host phase1 offset s)
     (r2 : PhaseExecutionResult host phase2 (offset + phase1.length) r1.finalState) :
@@ -114,7 +114,7 @@ def PhaseExecutionResult.andThen
 This is useful when the next phase is not straight-line (e.g., contains jumps)
 or when you need to chain with custom step sequences.
 -/
-def PhaseExecutionResult.andThenSteps
+theorem PhaseExecutionResult.andThenSteps
     {host phase : Program} {offset : ℕ} {s : State} {c : Config}
     (r : PhaseExecutionResult host phase offset s)
     (hs : Steps host ⟨offset + phase.length, r.finalState⟩ c) :
@@ -124,12 +124,12 @@ def PhaseExecutionResult.andThenSteps
 /-! ## Convenience Accessors -/
 
 /-- Access the local steps (for use with invariant lemmas). -/
-abbrev PhaseExecutionResult.localSteps {host phase : Program} {offset : ℕ} {s : State}
+theorem PhaseExecutionResult.localSteps {host phase : Program} {offset : ℕ} {s : State}
     (r : PhaseExecutionResult host phase offset s) : Steps phase ⟨0, s⟩ r.phaseResult.config :=
   r.phaseResult.steps
 
 /-- Access the local halted proof (for use with invariant lemmas). -/
-abbrev PhaseExecutionResult.localHalted {host phase : Program} {offset : ℕ} {s : State}
+theorem PhaseExecutionResult.localHalted {host phase : Program} {offset : ℕ} {s : State}
     (r : PhaseExecutionResult host phase offset s) : r.phaseResult.config.isHalted phase :=
   r.phaseResult.halted
 
@@ -257,7 +257,7 @@ noncomputable def execSubprogramInHost
 
 This is the common pattern where a straight-line prologue phase is followed
 by an embedded subprogram execution. -/
-def PhaseExecutionResult.andThenSubprogram
+theorem PhaseExecutionResult.andThenSubprogram
     {host phase sub : Program} {offset : ℕ} {s : State}
     (phaseResult : PhaseExecutionResult host phase offset s)
     (subResult : SubprogramExecResult host sub (offset + phase.length) phaseResult.finalState) :

@@ -14,11 +14,13 @@ namespace Urm
 
 /-- Bundle for a halting execution with all its properties. -/
 structure HaltingExecution (p : Program) (inputs : List ℕ) where
+  /-- The final configuration after execution -/
   config : Config
   halts : Halts p inputs
   steps : Steps p (Config.init inputs) config
   halted : config.isHalted p
 
+/-- Convert a halting proof into a full execution bundle. -/
 noncomputable def Halts.toExecution {p : Program} {inputs : List ℕ} (h : Halts p inputs) :
     HaltingExecution p inputs where
   config := Classical.choose h
@@ -35,12 +37,12 @@ theorem HaltingExecution.pc_eq_length {p : Program} {inputs : List ℕ}
 /-- Chain two programs: given p1 execution ending at c1, and p2 execution from c1.state,
 build the combined execution in p1.concat p2. -/
 theorem Steps.chain_concat {p1 p2 : Program} {s : State} {c1 c2 : Config}
-    (h1_steps : Steps p1 ⟨0, s⟩ c1) (h1_halted : c1.isHalted p1) (h1_pc : c1.pc = p1.length)
+    (h1_steps : Steps p1 ⟨0, s⟩ c1) (_h1_halted : c1.isHalted p1) (h1_pc : c1.pc = p1.length)
     (h2_steps : Steps p2 ⟨0, c1.state⟩ c2) (h2_halted : c2.isHalted p2) :
     Steps (p1.concat p2) ⟨0, s⟩ ⟨c2.pc + p1.length, c2.state⟩ ∧
     (⟨c2.pc + p1.length, c2.state⟩ : Config).isHalted (p1.concat p2) := by
-  have h1' := Steps.concat_left_prefix (p2 := p2) h1_steps h1_halted
-  have h2' := Steps.concat_right (p1 := p1) h2_steps h2_halted
+  have h1' := Steps.concat_left_prefix (p2 := p2) h1_steps
+  have h2' := Steps.concat_right (p1 := p1) h2_steps
   have hstart_eq : (⟨0 + p1.length, c1.state⟩ : Config) = ⟨c1.pc, c1.state⟩ := by simp [← h1_pc]
   rw [hstart_eq] at h2'
   exact ⟨h1'.trans h2', by simp only [Config.isHalted, Program.concat_length] at h2_halted ⊢; omega⟩
@@ -58,6 +60,7 @@ theorem Steps.chain_concat_sf {p1 p2 : Program} {s : State} {c1 c2 : Config}
 
 /-- Bundle for an execution from an agreeing state. -/
 structure AgreeingExecution (p : Program) (inputs : List ℕ) (s : State) where
+  /-- The final configuration after execution -/
   config : Config
   steps : Steps p ⟨0, s⟩ config
   halted : config.isHalted p
@@ -65,6 +68,7 @@ structure AgreeingExecution (p : Program) (inputs : List ℕ) (s : State) where
   originalHalts : Halts p inputs
   state_agrees : config.state.agreeOn (Classical.choose originalHalts).state 0 p.maxRegister
 
+/-- Execute a program from a state that agrees with the init state on relevant registers. -/
 noncomputable def Halts.executeFromAgreeingState {p : Program} {inputs : List ℕ} {s : State}
     (hHalts : Halts p inputs) (hsf : p.IsStandardForm)
     (hagree : s.agreeOn (State.fromInputs inputs) 0 p.maxRegister) :
@@ -107,6 +111,7 @@ theorem AgreeingExecution.result_matches_original {p : Program} {inputs : List �
 
 /-- Bundle single transfer execution with all properties. -/
 structure SingleTransferResult (src dst : ℕ) (s : State) where
+  /-- The state after the transfer instruction -/
   finalState : State
   steps : Steps [Instr.T src dst] ⟨0, s⟩ ⟨1, finalState⟩
   halted : (⟨1, finalState⟩ : Config).isHalted [Instr.T src dst]
@@ -121,6 +126,7 @@ noncomputable def executeSingleTransfer (src dst : ℕ) (s : State) : SingleTran
   dst_eq := State.write_read_same s dst (s.read src)
   preserved := fun r hr => State.write_read_diff s r dst (s.read src) hr
 
+/-- The final configuration after the single transfer. -/
 def SingleTransferResult.config {src dst : ℕ} {s : State} (tr : SingleTransferResult src dst s) : Config :=
   ⟨1, tr.finalState⟩
 

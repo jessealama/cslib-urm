@@ -14,8 +14,11 @@ namespace Urm
 
 open Program
 
+/-- Maximum register used by any of the programs `pGs i`. -/
 def maxGsRegister (m : ℕ) (pGs : Fin m → Program) : ℕ := Finset.univ.sup fun i => (pGs i).maxRegister
 
+/-- Base register for composition: ensures all working registers are above
+    the input/output registers and the max registers used by pF and any pGs. -/
 def compositionBase (m n : ℕ) (pF : Program) (pGs : Fin m → Program) : ℕ :=
   max (n - 1) (max (m - 1) (max pF.maxRegister (maxGsRegister m pGs)))
 

@@ -43,7 +43,7 @@ theorem comp_general_halts_imp_gi_dom
   have hGPhases_sf : gPhases.IsStandardForm := allGPhases_isStandardForm hGs_sf
   have hGPhase_i_sf : (gPhase base n (pGs i) i.val).IsStandardForm := gPhase_isStandardForm (hGs_sf i)
   have hH_eq : Program.composeGeneral m n pF pGs = saveInputs.concat (gPhases.concat final) := rfl
-  have hGPhases_split := allGPhases_split m n base pGs i.val (Nat.le_of_lt i.isLt)
+  have hGPhases_split := allGPhases_split m n base pGs i.val
   have hPrefix_i_sf : (allGPhases_prefix m n base pGs i.val).IsStandardForm :=
     allGPhases_prefix_isStandardForm hGs_sf i.val
   have hSuffix_i_sf : (allGPhases_suffix m n base pGs i.val).IsStandardForm :=

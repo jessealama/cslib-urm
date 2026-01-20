@@ -106,8 +106,7 @@ theorem getInstr_concat_left {p1 p2 : Program} (i : ℕ) (hi : i < p1.length) :
   rw [List.getElem?_append_left hi]
 
 /-- Get instruction from concatenated program in the second part (with shiftJumps). -/
-theorem getInstr_concat_right {p1 p2 : Program} (i : ℕ) (hi : p1.length ≤ i)
-    (_hi' : i < p1.length + p2.length) :
+theorem getInstr_concat_right {p1 p2 : Program} (i : ℕ) (hi : p1.length ≤ i) :
     (p1.concat p2).getInstr i = (p2.shiftJumps p1.length).getInstr (i - p1.length) := by
   simp only [Program.concat, Program.getInstr]
   rw [List.getElem?_append_right (by omega)]
@@ -155,13 +154,12 @@ theorem Step.of_concat_left {c c' : Config} (hpc : c.pc < p1.length)
 /-- Stepping in the second part of a concatenated program.
 If we can step in p2 from pc=k, we can step in p1.concat p2 from pc=k+p1.length. -/
 theorem Step.concat_right {c c' : Config}
-    (hpc : c.pc < p2.length)
+    (_hpc : c.pc < p2.length)
     (hstep : Step p2 c c') :
     Step (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ ⟨c'.pc + p1.length, c'.state⟩ := by
-  have hlen : c.pc + p1.length < p1.length + p2.length := by omega
   have hinstr_eq : (p1.concat p2).getInstr (c.pc + p1.length) =
       (p2.shiftJumps p1.length).getInstr c.pc := by
-    rw [Program.getInstr_concat_right (c.pc + p1.length) (by omega) hlen]
+    rw [Program.getInstr_concat_right (c.pc + p1.length) (by omega)]
     simp only [Nat.add_sub_cancel]
   match hstep with
   | .zero (n := n) h =>
@@ -187,8 +185,7 @@ theorem Step.concat_right {c c' : Config}
 
 /-- Multi-step in the second part of a concatenated program. -/
 theorem Steps.concat_right {c c' : Config}
-    (hsteps : Steps p2 c c')
-    (_hhalted : c'.isHalted p2) :
+    (hsteps : Steps p2 c c') :
     Steps (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ ⟨c'.pc + p1.length, c'.state⟩ := by
   induction hsteps using Relation.ReflTransGen.head_induction_on with
   | refl => exact Relation.ReflTransGen.refl
@@ -209,7 +206,7 @@ theorem Steps.concat_left_prefix_interior {c c' : Config}
 /-- Multi-step from within p1 stays in p1 until halting.
 If we execute Steps in p1 from c to a halted config c', then the same path exists in p1.concat p2. -/
 theorem Steps.concat_left_prefix {c c' : Config}
-    (hsteps : Steps p1 c c') (_hhalted : c'.isHalted p1) :
+    (hsteps : Steps p1 c c') :
     Steps (p1.concat p2) c c' :=
   Steps.concat_left_prefix_interior hsteps
 
@@ -221,7 +218,7 @@ theorem Halts.concat_left_lift (h : Halts p1 inputs) :
          c.state = (Classical.choose h).state := by
   obtain ⟨hsteps, hhalted⟩ := Classical.choose_spec h
   refine ⟨Classical.choose h, ?_, hhalted, rfl, rfl⟩
-  exact Steps.concat_left_prefix hsteps hhalted
+  exact Steps.concat_left_prefix hsteps
 
 end ConcatLemmas
 

@@ -196,7 +196,7 @@ theorem allGPhases_saves_result {m n : ℕ} [NeZero m] {pF : Program} {pGs : Fin
   let base := compositionBase m n pF pGs
   let saveInputs := copyRegisterRange 0 (base + 1) n
   obtain ⟨c, hsteps, hhalted, hstate_eq⟩ := hSaveGPhases_halted
-  have hSplit := allGPhases_split m n base pGs (i.val + 1) (Nat.lt_iff_add_one_le.mp i.isLt)
+  have hSplit := allGPhases_split m n base pGs (i.val + 1)
   have hSave_sf := saveInputs_isStandardForm base n
   have hPrefix_sf := allGPhases_prefix_isStandardForm (n := n) (base := base) hGs_sf (i.val + 1)
   have hProg_eq : saveInputs.concat (allGPhases m n base pGs) =
