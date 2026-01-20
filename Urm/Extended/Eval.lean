@@ -74,6 +74,17 @@ def writeBackReg (hostState : State) (regs : List ℕ) (bodyState : State) (resu
   | [] => hostState
   | r :: _ => hostState.write r (bodyState resultReg)
 
+/-- writeBackResult preserves registers other than regs[0]. -/
+theorem writeBackResult_preserves (hostState : State) (regs : List ℕ) (result : ℕ)
+    (r : ℕ) (hr : regs.head? ≠ some r) :
+    writeBackResult hostState regs result r = hostState r := by
+  cases regs with
+  | nil => rfl
+  | cons h t =>
+    simp only [writeBackResult, State.write, List.head?] at hr ⊢
+    have hne : r ≠ h := fun heq => hr (congrArg some heq.symm)
+    exact Function.update_of_ne hne result hostState
+
 /-! ## Basic Instruction Evaluation -/
 
 /-- Evaluate a basic (non-structured) extended instruction on state.
@@ -112,6 +123,14 @@ theorem runBlock_eq_runBlock' (hostState : State) (regs : List ℕ) (body : Flat
     runBlock hostState regs body = runBlock' hostState regs body := by
   simp only [runBlock, runBlock', Urm.eval]
   rfl
+
+/-- runBlock preserves registers other than regs[0]. -/
+theorem runBlock_preserves_outside (hostState : State) (regs : List ℕ) (body : FlatProgram)
+    (hdom : (runBlock hostState regs body).Dom)
+    (r : ℕ) (hr : regs.head? ≠ some r) :
+    (runBlock hostState regs body).get hdom r = hostState r := by
+  simp only [runBlock, Part.map_get] at hdom ⊢
+  exact writeBackResult_preserves hostState regs _ r hr
 
 /-! ## While Evaluation -/
 

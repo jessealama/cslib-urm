@@ -503,6 +503,73 @@ private theorem steps_shiftRegisters_preserves_below {p : FlatProgram} {c c' : C
   | refl => rfl
   | head hstep _ ih => rw [ih]; exact step_shiftRegisters_preserves_below offset hstep r hr
 
+/-- Any write target in a shifted program is ≤ offset + maxRegister. -/
+private theorem shiftRegisters_writesTo_le_offset_plus_maxRegister {p : FlatProgram} {offset idx : ℕ}
+    {instr : Instr} (hinstr : (p.shiftRegisters offset).getInstr idx = some instr)
+    {target : ℕ} (htarget : instr.writesTo = some target) :
+    target ≤ offset + p.maxRegister := by
+  simp only [Program.getInstr, Program.shiftRegisters, List.getElem?_map] at hinstr
+  cases h : p[idx]? with
+  | none => simp only [h, Option.map_none] at hinstr; cases hinstr
+  | some orig =>
+    simp only [h, Option.map_some] at hinstr
+    have hidx : idx < p.length := by
+      by_contra hc; simp only [not_lt] at hc; simp [List.getElem?_eq_none hc] at h
+    have hmax : orig.maxRegister ≤ p.maxRegister := by
+      have hinstr_orig : (p.getInstr idx = some orig) := by simp only [Program.getInstr, h]
+      exact Program.getInstr_maxRegister hinstr_orig
+    cases orig with
+    | Z m =>
+      simp only [Instr.shiftRegisters, Option.some.injEq] at hinstr
+      rw [← hinstr] at htarget
+      simp only [Instr.writesTo, Option.some.injEq] at htarget
+      simp only [Instr.maxRegister] at hmax
+      omega
+    | S m =>
+      simp only [Instr.shiftRegisters, Option.some.injEq] at hinstr
+      rw [← hinstr] at htarget
+      simp only [Instr.writesTo, Option.some.injEq] at htarget
+      simp only [Instr.maxRegister] at hmax
+      omega
+    | T m n =>
+      simp only [Instr.shiftRegisters, Option.some.injEq] at hinstr
+      rw [← hinstr] at htarget
+      simp only [Instr.writesTo, Option.some.injEq] at htarget
+      simp only [Instr.maxRegister] at hmax
+      omega
+    | J _ _ _ =>
+      simp only [Instr.shiftRegisters, Option.some.injEq] at hinstr
+      rw [← hinstr] at htarget
+      simp only [Instr.writesTo] at htarget; cases htarget
+
+/-- Single step on a shifted program preserves registers above offset + maxRegister. -/
+private theorem step_shiftRegisters_preserves_above {p : FlatProgram} {c c' : Config}
+    (offset : ℕ) (hstep : Step (p.shiftRegisters offset) c c')
+    (r : ℕ) (hr : offset + p.maxRegister < r) : c'.state r = c.state r := by
+  cases hstep with
+  | zero hinstr =>
+    simp only [State.write]
+    have hle := shiftRegisters_writesTo_le_offset_plus_maxRegister hinstr rfl
+    exact Function.update_of_ne (Nat.ne_of_gt (Nat.lt_of_le_of_lt hle hr)) _ _
+  | succ hinstr =>
+    simp only [State.write]
+    have hle := shiftRegisters_writesTo_le_offset_plus_maxRegister hinstr rfl
+    exact Function.update_of_ne (Nat.ne_of_gt (Nat.lt_of_le_of_lt hle hr)) _ _
+  | trans hinstr =>
+    simp only [State.write, State.read]
+    have hle := shiftRegisters_writesTo_le_offset_plus_maxRegister hinstr rfl
+    exact Function.update_of_ne (Nat.ne_of_gt (Nat.lt_of_le_of_lt hle hr)) _ _
+  | jump_eq _ _ | jump_ne _ _ =>
+    rfl
+
+/-- Steps on a shifted program preserve registers above offset + maxRegister. -/
+private theorem steps_shiftRegisters_preserves_above {p : FlatProgram} {c c' : Config}
+    (offset : ℕ) (hsteps : Steps (p.shiftRegisters offset) c c')
+    (r : ℕ) (hr : offset + p.maxRegister < r) : c'.state r = c.state r := by
+  induction hsteps using Relation.ReflTransGen.head_induction_on with
+  | refl => rfl
+  | head hstep _ ih => rw [ih]; exact step_shiftRegisters_preserves_above offset hstep r hr
+
 /-- compileBlock preserves register 0 when regs[0] ≠ 0.
 This is because:
 - copyToBody writes to [base, base+len-1] where base > 0
@@ -711,6 +778,267 @@ theorem compileBlock_preserves_zero (regs : List ℕ) (body : FlatProgram)
     _ = c_body.state 0 := h_copyOut_preserves_zero
     _ = c_copyIn.state 0 := h_body_preserves_zero
     _ = s 0 := h_copyIn_preserves_zero
+
+/-- compileBlock preserves registers outside its write range.
+
+The compiled Block writes to:
+- regs[0] (via copyOut)
+- [registerBase regs, registerBase regs + max(regs.length - 1, body.maxRegister)]
+  (via copyIn and shifted body)
+
+A register r is preserved if:
+- r ≠ regs[0]
+- r < registerBase regs OR r > registerBase regs + max(regs.length - 1, body.maxRegister) -/
+theorem compileBlock_preserves_outside (regs : List ℕ) (body : FlatProgram)
+    (hbody_sf : body.IsStandardForm) (s : State) (hregs : regs ≠ [])
+    (hbody_halts : Halts body (List.ofFn fun i : Fin regs.length => s (regs[i])))
+    (hworkspace_zero : ∀ r, regs.length ≤ r → r ≤ body.maxRegister →
+        s (r + registerBase regs) = 0)
+    (r : ℕ)
+    (hr_not_out : r ≠ regs[0]'(List.length_pos_of_ne_nil hregs))
+    (hr_outside : r < registerBase regs ∨
+                  registerBase regs + max (regs.length - 1) body.maxRegister < r)
+    {c : Config} (hsteps : Steps (compileBlock regs body) ⟨0, s⟩ c)
+    (hhalted : c.isHalted (compileBlock regs body)) :
+    c.state r = s r := by
+  -- Follow the same structure as compileBlock_preserves_zero
+  let base := registerBase regs
+
+  -- Execute copyIn phase
+  have hsl_copyIn := copyToBody_isStraightLine regs base
+  have ⟨c_copyIn, hsteps_copyIn, hhalted_copyIn, hpc_copyIn⟩ :=
+    straightLine_halts_from_state hsl_copyIn s
+
+  -- copyIn preserves r: writes to [base, base+len-1], r is outside
+  have h_copyIn_preserves : c_copyIn.state r = s r := by
+    have hne : ∀ i : Fin regs.length, r ≠ base + i := by
+      intro ⟨i, hi⟩
+      cases hr_outside with
+      | inl hr_lt => omega
+      | inr hr_gt => omega
+    have hspec := straightLineFinalState_spec hsl_copyIn s
+    have hc_eq : c_copyIn = Classical.choose (straightLine_halts_from_state hsl_copyIn s) :=
+      Steps.halts_unique hsteps_copyIn hhalted_copyIn hspec.1 hspec.2.1
+    rw [show c_copyIn.state = straightLineFinalState hsl_copyIn s by simp [straightLineFinalState, hc_eq]]
+    exact copyToBody_preserves regs base s r hne
+
+  -- Agreement for body execution
+  let bodyInputs := List.ofFn fun i : Fin regs.length => s (regs[i])
+  have h_agreement : ∀ r', r' ≤ body.maxRegister →
+      c_copyIn.state.read (r' + base) = bodyInputs.getD r' 0 := by
+    intro r' hr'
+    simp only [State.read]
+    by_cases hr'_lt : r' < regs.length
+    · have hspec := straightLineFinalState_spec hsl_copyIn s
+      have hc_eq : c_copyIn = Classical.choose (straightLine_halts_from_state hsl_copyIn s) :=
+        Steps.halts_unique hsteps_copyIn hhalted_copyIn hspec.1 hspec.2.1
+      have heq : (base + r') = (r' + base) := Nat.add_comm base r'
+      rw [← heq]
+      rw [show c_copyIn.state = straightLineFinalState hsl_copyIn s by simp [straightLineFinalState, hc_eq]]
+      have hlen : bodyInputs.length = regs.length := List.length_ofFn
+      rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (hlen ▸ hr'_lt)]
+      simp only [Option.getD_some, bodyInputs, List.getElem_ofFn]
+      exact copyToBody_effect regs base s (registerBase_gt_all regs) ⟨r', hr'_lt⟩
+    · have hlen : bodyInputs.length = regs.length := List.length_ofFn
+      have hge : regs.length ≤ r' := Nat.not_lt.mp hr'_lt
+      rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none (hlen ▸ hge)]
+      simp only [Option.getD_none]
+      have hne : ∀ i : Fin regs.length, r' + base ≠ base + i := fun ⟨i, hi⟩ => by omega
+      have hspec := straightLineFinalState_spec hsl_copyIn s
+      have hc_eq : c_copyIn = Classical.choose (straightLine_halts_from_state hsl_copyIn s) :=
+        Steps.halts_unique hsteps_copyIn hhalted_copyIn hspec.1 hspec.2.1
+      rw [show c_copyIn.state = straightLineFinalState hsl_copyIn s by simp [straightLineFinalState, hc_eq]]
+      rw [copyToBody_preserves regs base s (r' + base) hne]
+      exact hworkspace_zero r' hge hr'
+
+  -- Execute shifted body
+  have ⟨c_body, hsteps_body, hhalted_body, _⟩ :=
+    Halts.shift_from_state base hbody_halts h_agreement
+
+  -- Shifted body preserves r: writes to [base, base+maxReg], r is outside
+  have h_body_preserves : c_body.state r = c_copyIn.state r := by
+    cases hr_outside with
+    | inl hr_lt =>
+      exact steps_shiftRegisters_preserves_below base hsteps_body r hr_lt
+    | inr hr_gt =>
+      have hr_gt' : base + body.maxRegister < r := by
+        have h := Nat.le_max_right (regs.length - 1) body.maxRegister
+        omega
+      exact steps_shiftRegisters_preserves_above base hsteps_body r hr_gt'
+
+  -- Execute copyOut phase
+  have hsl_copyOut := copyFromBody_isStraightLine regs base
+  have ⟨c_copyOut, hsteps_copyOut, hhalted_copyOut, hpc_copyOut⟩ :=
+    straightLine_halts_from_state hsl_copyOut c_body.state
+
+  -- copyOut preserves r: writes to regs[0], r ≠ regs[0]
+  have h_copyOut_preserves : c_copyOut.state r = c_body.state r := by
+    have hne : regs.head? ≠ some r := by
+      cases regs with
+      | nil => exact absurd rfl hregs
+      | cons h t =>
+        simp only [List.head?]
+        intro heq
+        injection heq with heq'
+        exact hr_not_out heq'.symm
+    have hspec := straightLineFinalState_spec hsl_copyOut c_body.state
+    have hc_eq : c_copyOut = Classical.choose (straightLine_halts_from_state hsl_copyOut c_body.state) :=
+      Steps.halts_unique hsteps_copyOut hhalted_copyOut hspec.1 hspec.2.1
+    rw [show c_copyOut.state = straightLineFinalState hsl_copyOut c_body.state by simp [straightLineFinalState, hc_eq]]
+    exact copyFromBody_preserves regs base c_body.state r hne
+
+  -- Build complete execution and establish c = c_final
+  let copyIn := copyToBody regs base
+  let copyOut := copyFromBody regs base
+  let copyOutOffset := copyIn.length + body.length
+
+  have hbody_pc : c_body.pc = body.length := by
+    have hbody_sf_shifted := shiftRegisters_isStandardForm hbody_sf base
+    have h := Program.IsStandardForm.pc_eq_length_of_halted hbody_sf_shifted hsteps_body (Nat.zero_le _) hhalted_body
+    simp only [Program.shiftRegisters_length] at h
+    exact h
+
+  let c_final : Config := ⟨copyOutOffset + c_copyOut.pc, c_copyOut.state⟩
+
+  have hfinal_halted : c_final.isHalted (compileBlock regs body) := by
+    simp only [Config.isHalted, compileBlock_length, c_final, copyOutOffset, hpc_copyOut]
+    simp only [copyFromBody]
+    cases regs with
+    | nil => exact absurd rfl hregs
+    | cons h t =>
+      simp only [List.length_cons, List.cons_ne_nil, if_false, copyIn, copyToBody,
+        List.length_mapIdx, List.length_nil, Nat.zero_add, le_refl]
+
+  -- Build steps to c_final (same structure as compileBlock_preserves_zero)
+  have hcopyIn_embed : ∀ i, i < copyIn.length →
+      (compileBlock regs body).getInstr (0 + i) = copyIn.getInstr i := by
+    intro i hi
+    have hlen_copyIn : copyIn.length = regs.length := by simp only [copyIn, copyToBody, List.length_mapIdx]
+    simp only [copyIn, hlen_copyIn] at hi
+    simp only [compileBlock, Program.getInstr, Nat.zero_add]
+    have hlen_copyIn' : (copyToBody regs (registerBase regs)).length = regs.length := by
+      simp only [copyToBody, List.length_mapIdx]
+    have hlen_sh : (Program.shiftJumps (copyToBody regs (registerBase regs)).length
+        (Program.shiftRegisters (registerBase regs) body)).length = body.length := by
+      simp only [Program.shiftJumps_length, Program.shiftRegisters_length]
+    rw [List.getElem?_append_left]
+    · rw [List.getElem?_append_left (by rw [hlen_copyIn']; exact hi)]
+    · simp only [List.length_append, hlen_copyIn']; omega
+
+  have hsteps_copyIn_lifted : Steps (compileBlock regs body) ⟨0, s⟩ ⟨copyIn.length, c_copyIn.state⟩ := by
+    have h := Steps.straightLine_at_offset 0 hsl_copyIn hcopyIn_embed hsteps_copyIn
+    simp only [Nat.zero_add, Nat.add_zero] at h
+    convert h using 2
+    simp only [copyIn, hpc_copyIn]
+
+  have hbody_embed : ∀ i, i < (body.shiftRegisters base).length →
+      (compileBlock regs body).getInstr (copyIn.length + i) =
+      ((body.shiftRegisters base).shiftJumps copyIn.length).getInstr i := by
+    intro i hi
+    simp only [Program.shiftRegisters_length] at hi
+    have hlen_copyIn : copyIn.length = regs.length := by simp only [copyIn, copyToBody, List.length_mapIdx]
+    have hlen_shifted : ((body.shiftRegisters base).shiftJumps copyIn.length).length = body.length := by
+      simp only [Program.shiftJumps_length, Program.shiftRegisters_length]
+    simp only [compileBlock, Program.getInstr]
+    have hlt1 : copyIn.length + i < (copyIn ++ (body.shiftRegisters base).shiftJumps copyIn.length).length := by
+      simp only [List.length_append, Program.shiftJumps_length, Program.shiftRegisters_length]; omega
+    rw [List.getElem?_append_left hlt1]
+    rw [List.getElem?_append_right (by omega : copyIn.length ≤ copyIn.length + i)]
+    simp only [Nat.add_sub_cancel_left, Program.shiftJumps, Program.shiftRegisters, List.getElem?_map]
+
+  have hsteps_body_lifted := Steps.shiftJumps_at_offset copyIn.length hbody_embed hsteps_body
+
+  have hsteps_body_from_copyIn : Steps (compileBlock regs body)
+      ⟨copyIn.length, c_copyIn.state⟩
+      ⟨copyIn.length + c_body.pc, c_body.state⟩ := by
+    convert hsteps_body_lifted using 2
+
+  have hsteps_copyIn_body := Relation.ReflTransGen.trans hsteps_copyIn_lifted hsteps_body_from_copyIn
+
+  have hcopyOut_embed : ∀ i, i < copyOut.length →
+      (compileBlock regs body).getInstr (copyOutOffset + i) = copyOut.getInstr i := by
+    intro i hi
+    have hlen_copyIn' : copyIn.length = regs.length := by simp only [copyIn, copyToBody, List.length_mapIdx]
+    have hlen_sh : ((body.shiftRegisters base).shiftJumps copyIn.length).length = body.length := by
+      simp only [Program.shiftJumps_length, Program.shiftRegisters_length]
+    have hlen_out : copyOut.length = if regs = [] then 0 else 1 := by
+      simp only [copyOut, copyFromBody]; cases regs with | nil => rfl | cons _ _ => rfl
+    simp only [compileBlock, copyOut, base]
+    simp only [Program.getInstr]
+    have h1 : copyOutOffset + i ≥ (copyToBody regs (registerBase regs) ++
+        (body.shiftRegisters (registerBase regs)).shiftJumps (copyToBody regs (registerBase regs)).length).length := by
+      simp only [List.length_append, Program.shiftJumps_length, Program.shiftRegisters_length,
+        copyOutOffset, copyIn, copyToBody, List.length_mapIdx]; omega
+    rw [List.getElem?_append_right h1]
+    simp only [List.length_append, copyOutOffset, copyIn, copyToBody, List.length_mapIdx,
+      Program.shiftJumps_length, Program.shiftRegisters_length]
+    congr 1
+    omega
+
+  have hsteps_copyOut_lifted := Steps.straightLine_at_offset copyOutOffset hsl_copyOut hcopyOut_embed hsteps_copyOut
+
+  have hsteps_copyOut_from_body : Steps (compileBlock regs body)
+      ⟨copyIn.length + c_body.pc, c_body.state⟩
+      ⟨copyOutOffset + c_copyOut.pc, c_copyOut.state⟩ := by
+    have hpc_eq : copyIn.length + c_body.pc = copyOutOffset := by
+      simp only [copyOutOffset, hbody_pc]
+    rw [hpc_eq]
+    exact hsteps_copyOut_lifted
+
+  have hsteps_all := Relation.ReflTransGen.trans hsteps_copyIn_body hsteps_copyOut_from_body
+  have hc_eq : c = c_final := Steps.halts_unique hsteps hhalted hsteps_all hfinal_halted
+
+  calc c.state r = c_final.state r := by rw [hc_eq]
+    _ = c_copyOut.state r := rfl
+    _ = c_body.state r := h_copyOut_preserves
+    _ = c_copyIn.state r := h_body_preserves
+    _ = s r := h_copyIn_preserves
+
+/-- Compiled Block agrees with semantic Block on registers below registerBase regs.
+
+For r < registerBase regs:
+- If r = regs[0]: both have the body result
+- If r ≠ regs[0]: both equal s r
+
+This is the key lemma for showing evalProgram domain transfer. -/
+theorem compileBlock_agrees_below (regs : List ℕ) (body : FlatProgram)
+    (hbody_sf : body.IsStandardForm) (s : State) (hregs : regs ≠ [])
+    (hbody_halts : Halts body (List.ofFn fun i : Fin regs.length => s (regs[i])))
+    (hworkspace_zero : ∀ r, regs.length ≤ r → r ≤ body.maxRegister →
+        s (r + registerBase regs) = 0)
+    (hdom_run : (runBlock s regs body).Dom)
+    (r : ℕ) (hr : r < registerBase regs)
+    {c : Config} (hsteps : Steps (compileBlock regs body) ⟨0, s⟩ c)
+    (hhalted : c.isHalted (compileBlock regs body)) :
+    c.state r = (runBlock s regs body).get hdom_run r := by
+  have hlen_pos := List.length_pos_of_ne_nil hregs
+  by_cases hr_out : r = regs[0]'hlen_pos
+  · -- r = regs[0]: both have the body result
+    subst hr_out
+    -- Compiled state has the result
+    have hcompiled := compileBlock_correct regs body hbody_sf s hregs hbody_halts hworkspace_zero
+    obtain ⟨c', hsteps', hhalted', hresult⟩ := hcompiled
+    have hc_eq : c = c' := Steps.halts_unique hsteps hhalted hsteps' hhalted'
+    rw [hc_eq, hresult]
+    -- Semantic state: runBlock gives s.write regs[0] (body result)
+    -- Show (runBlock s regs body).get regs[0] = Result body inputs
+    cases regs with
+    | nil => exact absurd rfl hregs
+    | cons r rs =>
+      -- Now regs = r :: rs, and we need to show Result = (runBlock).get regs[0]
+      simp only [runBlock, Part.map_get, Urm.eval, writeBackResult, List.getElem_cons_zero]
+      simp only [State.write, Function.comp_apply, Function.update_self]
+  · -- r ≠ regs[0]: both equal s r
+    -- Compiled preserves r
+    have hcompiled_pres := compileBlock_preserves_outside regs body hbody_sf s hregs
+      hbody_halts hworkspace_zero r hr_out (Or.inl hr) hsteps hhalted
+    rw [hcompiled_pres]
+    -- Semantic preserves r
+    have hr_neq : regs.head? ≠ some r := by
+      simp only [List.head?_eq_getElem?, List.getElem?_eq_getElem hlen_pos, Option.some.injEq, ne_eq]
+      exact fun h => hr_out h.symm
+    have hsemantic_pres := runBlock_preserves_outside s regs body hdom_run r hr_neq
+    rw [hsemantic_pres]
 
 /-! ## While Correctness -/
 
@@ -1405,6 +1733,57 @@ private theorem runWhile_write_zeroReg_agree (condReg : ℕ) (body : FlatProgram
     simp only [State.write, Function.update, dif_neg hne]
   exact runWhile_result_of_mem_agree hmem hmem' hagree r hr
 
+/-- Helper: For any x ∈ runWhile s condReg body, x r = s r when r > max condReg maxRegister. -/
+private theorem runWhile_preserves_above_aux {condReg : ℕ} {body : FlatProgram}
+    {s x : State} (hmem : x ∈ runWhile s condReg body)
+    (r : ℕ) (hr : max condReg body.maxRegister < r) : x r = s r := by
+  simp only [runWhile] at hmem
+  -- Use PFun.fixInduction' for well-founded recursion
+  refine PFun.fixInduction' hmem
+    -- Base case: whileStep s_final produces Sum.inl x (stop case)
+    (fun s_final hstop => ?_)
+    -- Inductive case: whileStep s₀ produces Sum.inr s₁, x ∈ fix f s₁, and IH for s₁
+    (fun s₀ s₁ _ hcont ih => ?_)
+  · -- Base case: whileStep s_final produces Sum.inl x, so s_final condReg = 0
+    simp only [whileStep] at hstop
+    split_ifs at hstop with hcond
+    · -- s_final condReg = 0, so x = s_final
+      have hx_eq := Sum.inl.inj (Part.mem_some_iff.mp hstop)
+      rw [hx_eq]
+    · -- Contradiction: condition ≠ 0 but hstop says Sum.inl ∈ whileStep
+      simp only [Part.mem_map_iff] at hstop
+      obtain ⟨_, _, h⟩ := hstop
+      exact absurd h (by simp)
+  · -- Inductive case: s₀ condReg ≠ 0, body runs, continues to s₁
+    simp only [whileStep] at hcont
+    split_ifs at hcont with hcond
+    · -- Contradiction: condition = 0 but hcont says Sum.inr ∈ whileStep
+      simp only [Part.mem_some_iff] at hcont
+      exact absurd hcont (by simp)
+    · -- s₀ condReg ≠ 0, and Sum.inr s₁ ∈ (evalFlat body s₀).map Sum.inr
+      simp only [Part.mem_map_iff] at hcont
+      obtain ⟨σ, hσ_mem, hσ_eq⟩ := hcont
+      cases hσ_eq  -- σ = s₁
+      -- evalFlat body s₀ is defined
+      have hdom_body : (evalFlat body s₀).Dom := Part.dom_iff_mem.mpr ⟨s₁, hσ_mem⟩
+      have hs₁_eq : s₁ = (evalFlat body s₀).get hdom_body :=
+        (Part.get_eq_of_mem hσ_mem hdom_body).symm
+      -- By IH: x r = s₁ r
+      -- evalFlat body s₀ preserves r since r > body.maxRegister
+      have hpres : s₁ r = s₀ r := by
+        rw [hs₁_eq]
+        exact evalFlat_preserves_above_maxRegister hdom_body r (Nat.lt_of_le_of_lt (Nat.le_max_right _ _) hr)
+      rw [ih, hpres]
+
+/-- runWhile preserves registers above max condReg body.maxRegister.
+This follows because:
+1. When condition = 0, state is unchanged
+2. When condition ≠ 0, body preserves high registers, then recurse -/
+theorem runWhile_preserves_above (condReg : ℕ) (body : FlatProgram) (s : State)
+    (hdom : (runWhile s condReg body).Dom) (r : ℕ) (hr : max condReg body.maxRegister < r) :
+    (runWhile s condReg body).get hdom r = s r :=
+  runWhile_preserves_above_aux (Part.get_mem hdom) r hr
+
 /-! NOTE: Full Part State equality (runWhile (s.write zeroReg v) = runWhile s) is FALSE
     because the final states differ at zeroReg (which is preserved through the loop).
     Use runWhile_write_zeroReg_dom for domain equivalence and
@@ -1457,6 +1836,56 @@ theorem compileWhile_correct (condReg : ℕ) (body : FlatProgram)
     exact runWhile_write_zeroReg_agree condReg body s 0 hdom' hdom r hr
 
   exact ⟨c, hsteps, hhalted, hstate_agree⟩
+
+/-- Compiled While preserves registers above max condReg body.maxRegister + 1.
+These registers are outside the write range of both the body and the whileZeroReg. -/
+theorem compileWhile_preserves_above (condReg : ℕ) (body : FlatProgram)
+    (hbody_sf : body.IsStandardForm) (s : State)
+    (hdom : (runWhile s condReg body).Dom)
+    (r : ℕ) (hr : max condReg body.maxRegister + 1 < r)
+    {c : Config} (hsteps : Steps (compileWhile condReg body) ⟨0, s⟩ c)
+    (hhalted : c.isHalted (compileWhile condReg body)) :
+    c.state r = s r := by
+  -- Trace through the execution to get full state information
+  -- Phase 1: Setup writes 0 to whileZeroReg
+  let zeroReg := whileZeroReg condReg body
+  let s' := s.write zeroReg 0
+
+  -- s' agrees with s on r (since r > zeroReg)
+  have hs'_r : s' r = s r := by
+    simp only [s', State.write, Function.update]
+    split_ifs with heq
+    · -- r = zeroReg would contradict hr
+      exfalso
+      simp only [zeroReg, whileZeroReg] at heq hr
+      omega
+    · rfl
+
+  -- Domain transfers to s'
+  have hdom' : (runWhile s' condReg body).Dom :=
+    (runWhile_write_zeroReg_dom condReg body s 0).mpr hdom
+
+  -- s' has zeroReg = 0
+  have hzero : s' zeroReg = 0 := by simp [s', State.write, Function.update_self]
+
+  -- compileWhile_correct_from_check gives c'.state = (runWhile s' condReg body).get hdom'
+  obtain ⟨c', hsteps_check, hhalted', hstate_eq⟩ :=
+    compileWhile_correct_from_check condReg body hbody_sf s' hzero hdom'
+
+  -- Compose: setup + rest
+  have hstep_setup : Step (compileWhile condReg body) ⟨0, s⟩ ⟨1, s'⟩ :=
+    compileWhile_setup_step condReg body s
+  have hsteps' : Steps (compileWhile condReg body) ⟨0, s⟩ c' :=
+    Relation.ReflTransGen.head hstep_setup hsteps_check
+
+  -- By determinism, c = c'
+  have hc_eq : c = c' := Steps.halts_unique hsteps hhalted hsteps' hhalted'
+  rw [hc_eq, hstate_eq]
+
+  -- runWhile preserves r (since r > max condReg body.maxRegister)
+  have hr_ge : max condReg body.maxRegister < r := by omega
+  rw [runWhile_preserves_above condReg body s' hdom' r hr_ge]
+  exact hs'_r
 
 /-! ## Single-Instruction Execution -/
 
@@ -1694,12 +2123,18 @@ theorem compile_correct_aux (p : ExtendedProgram) (s : State)
       rw [evalProgram_cons] at hdom; exact hdom
     have hdom_i : (evalInstr i s).Dom := Part.Dom.of_bind hdom_bind
     obtain ⟨hdom_i', hdom_rest'⟩ := Part.bind_dom.mp hdom_bind
-    -- WellFormedness
-    have hwf_instr : ExtendedProgram.InstrWellFormed (i :: rest) := hwf.1
-    have hws_safe : ExtendedProgram.WorkspaceSafe (i :: rest) := hwf.2
+    -- WellFormedness: unfold WellFormed to get the components
+    -- WellFormed = InstrWellFormed ∧ WorkspaceSafe ∧ BlocksPreserveWorkspaces
+    -- InstrWellFormed p = ∀ j ∈ p, j.WellFormed
+    have hwf' : (∀ j ∈ (i :: rest), j.WellFormed) ∧
+                ExtendedProgram.WorkspaceSafe (i :: rest) ∧
+                ExtendedProgram.BlocksPreserveWorkspaces (i :: rest) := hwf
+    obtain ⟨hwf_instr, hws_safe, hblk_pres⟩ := hwf'
     have hwf_i : i.WellFormed := hwf_instr i (by simp)
     have hwf_rest : ExtendedProgram.WellFormed rest :=
-      ⟨fun j hj => hwf_instr j (List.mem_cons_of_mem i hj), WorkspaceSafe_cons_rest hws_safe⟩
+      ⟨fun j hj => hwf_instr j (List.mem_cons_of_mem i hj),
+       WorkspaceSafe_cons_rest hws_safe,
+       BlocksPreserveWorkspaces_cons_rest hblk_pres⟩
     -- Workspace for instruction i
     have hws_i : ∀ regs body, i = ExtendedInstr.Block regs body →
         ∀ r, regs.length ≤ r → r ≤ body.maxRegister → s (r + registerBase regs) = 0 :=
@@ -1815,8 +2250,185 @@ theorem compile_correct_aux (p : ExtendedProgram) (s : State)
       have hget_eq := Part.get.congr_simp _ _ hevalPart hdom_rest_s'
       exact congrArg (· 0) hget_eq
     case neg =>
-      -- Block/While cases require additional infrastructure
-      sorry
+      -- Block/While cases: need to transfer domain and workspace hypothesis
+      -- i.isBasic = false means i is Block or While (Z, S, T are basic, J is not evaluable)
+      rcases i with ⟨⟩ | ⟨⟩ | ⟨⟩ | ⟨⟩ | ⟨regs, body⟩ | ⟨condReg, body⟩
+      · -- Z case: contradiction with ¬isBasic
+        simp only [ExtendedInstr.isBasic] at hbasic
+        exact absurd trivial hbasic
+      · -- S case: contradiction with ¬isBasic
+        simp only [ExtendedInstr.isBasic] at hbasic
+        exact absurd trivial hbasic
+      · -- T case: contradiction with ¬isBasic
+        simp only [ExtendedInstr.isBasic] at hbasic
+        exact absurd trivial hbasic
+      · -- J case: J.isBasic = true, but evalInstr J = Part.none so hdom_i is False
+        simp only [evalInstr] at hdom_i
+        exact hdom_i.elim
+      · -- Block case
+        -- For Block: semantic execution only modifies regs[0]
+        -- The semantic state is (runBlock s regs body).get hdom_i
+        simp only [evalInstr] at hdom_i hr0_i hdom_rest' ⊢
+        -- s' agrees with semantic on R[0]
+        -- For other registers r ≠ regs[0]: semantic state = s
+        -- The workspace hypothesis transfers because:
+        -- - Block doesn't modify workspace registers of other Blocks
+        -- - Workspace of Block j in rest has different registerBase
+        have hws_rest : ∀ j ∈ rest, ∀ regs' body', j = ExtendedInstr.Block regs' body' →
+            ∀ r, regs'.length ≤ r → r ≤ body'.maxRegister → s' (r + registerBase regs') = 0 := by
+          intro j hj regs' body' hj_eq r hr_lo hr_hi
+          have hws_j := hworkspace j (List.mem_cons_of_mem _ hj) regs' body' hj_eq r hr_lo hr_hi
+          -- From BlocksPreserveWorkspaces, Block regs body doesn't write to workspace of j
+          have hblock_pres := (BlocksPreserveWorkspaces_cons_Block hblk_pres).1
+          -- r + registerBase regs' is in the workspace of j = Block regs' body'
+          have hws_range : inWorkspaceRange (r + registerBase regs') regs' body' :=
+            ⟨r, hr_lo, hr_hi, rfl⟩
+          -- So r + registerBase regs' is NOT in the write range of Block regs body
+          have hne := hwf_i.1.1  -- regs ≠ []
+          have hnot_in_write : ¬inBlockWriteRange (r + registerBase regs') regs body := by
+            intro hcontra
+            exact hblock_pres j hj regs' body' hj_eq (r + registerBase regs') hcontra hws_range
+          -- Since it's not in write range, compiled Block preserves it
+          -- The write range is: {regs[0]} ∪ [registerBase regs, registerBase regs + max(...)]
+          -- Not in write range means: r + registerBase regs' ≠ regs[0] AND
+          --   (r + registerBase regs' < registerBase regs OR r + registerBase regs' > upper bound)
+          simp only [inBlockWriteRange, not_or, not_and] at hnot_in_write
+          obtain ⟨hne_out, hrange⟩ := hnot_in_write
+          have hlen_pos : 0 < regs.length := List.length_pos_of_ne_nil hne
+          have hne_out' : r + registerBase regs' ≠ regs[0]'hlen_pos := by
+            intro heq
+            apply hne_out
+            simp only [List.head?_eq_getElem?, List.getElem?_eq_getElem hlen_pos, heq]
+          -- hrange gives us the preservation condition
+          have houtside : r + registerBase regs' < registerBase regs ∨
+              registerBase regs + max (regs.length - 1) body.maxRegister < r + registerBase regs' := by
+            by_contra hcontra
+            push_neg at hcontra
+            obtain ⟨hleft, hright⟩ := hcontra
+            exact hrange hleft (Nat.le_of_lt_succ (Nat.lt_succ_of_le hright))
+          -- Use compileBlock_preserves_outside
+          have hbody_sf : body.IsStandardForm := hwf_i.1.2
+          -- Get the workspace hypothesis for Block regs body
+          have hws_block := hws_i regs body rfl
+          -- Get the halting for Block regs body from hdom_i (runBlock terminates)
+          have hhalts_body : Halts body (List.ofFn fun i : Fin regs.length => s (regs[i])) := by
+            rw [runBlock_eq_runBlock', runBlock'] at hdom_i
+            exact hdom_i
+          -- compileInstr (Block regs body) = compileBlock regs body
+          -- result_i.steps : Steps (compileInstr ...) ⟨0, s⟩ result_i.finalConfig
+          have hsteps_block : Steps (compileBlock regs body) ⟨0, s⟩ result_i.finalConfig := by
+            simp only [compileInstr] at result_i
+            exact result_i.steps
+          have hhalted_block : result_i.finalConfig.isHalted (compileBlock regs body) := by
+            simp only [compileInstr] at result_i
+            exact result_i.halted
+          -- Use compileBlock_preserves_outside
+          have hpres := compileBlock_preserves_outside regs body hbody_sf s hne hhalts_body
+            hws_block (r + registerBase regs') hne_out' houtside
+            hsteps_block hhalted_block
+          -- s' = result_i.finalConfig.state, and hpres says result_i.finalConfig.state r = s r
+          simp only [s'] at hpres ⊢
+          rw [hpres, hws_j]
+        -- For domain: evalProgram rest depends on register values
+        -- Since s' 0 = (runBlock s regs body).get hdom_i 0 (from hr0_i)
+        -- and other registers in s' that rest reads should agree with semantic
+        have hdom_rest_s' : (evalProgram rest s').Dom := by
+          -- Domain depends on whether sub-programs terminate
+          -- Since s' agrees with semantic on registers rest reads, domain transfers
+          -- The semantic state only modifies regs[0], and s' also sets regs[0] to the same value
+          -- For other registers, s' may differ in the workspace range [registerBase, ...]
+          -- but rest shouldn't read those (they're above any normal register)
+          convert hdom_rest' using 1
+          -- Need: s' = (runBlock s regs body).get hdom_i
+          -- This is NOT true in general (workspace differs), but for domain purposes
+          -- we need them to agree on registers that affect termination
+          sorry
+        -- Apply IH
+        obtain ⟨c_rest, hsteps_rest, hhalted_rest, hr0_rest⟩ := ih s' hwf_rest hdom_rest_s' hws_rest
+        -- compileInstr produces standard form
+        -- hwf_i.1 : BlockWellFormed (Block regs body) = regs ≠ [] ∧ body.IsStandardForm
+        -- bodyIsStandardForm (Block regs body) = body.isStandardForm
+        -- body.IsStandardForm = body.isStandardForm = true (definitionally)
+        have hwf_body : (ExtendedInstr.Block regs body).bodyIsStandardForm = true := by
+          simp only [ExtendedInstr.bodyIsStandardForm]
+          exact hwf_i.1.2
+        have hci_sf : (compileInstr (ExtendedInstr.Block regs body)).IsStandardForm :=
+          compileInstr_isStandardForm _ hwf_body
+        have hpc_i : result_i.finalConfig.pc = (compileInstr (ExtendedInstr.Block regs body)).length :=
+          hci_sf.pc_eq_length_of_halted result_i.steps (Nat.zero_le _) result_i.halted
+        -- Chain the steps
+        have hsteps_rest' : Steps (compile rest) ⟨0, s'⟩ c_rest := hsteps_rest
+        have hchain := Steps.chain_concat result_i.steps result_i.halted hpc_i hsteps_rest' hhalted_rest
+        refine ⟨⟨c_rest.pc + (compileInstr (ExtendedInstr.Block regs body)).length, c_rest.state⟩,
+                hchain.1, hchain.2, ?_⟩
+        -- R[0] correctness
+        rw [hr0_rest]
+        have hevalPart : evalProgram rest s' = evalProgram (ExtendedInstr.Block regs body :: rest) s := by
+          rw [evalProgram_cons, Part.Dom.bind hdom_i']
+          congr 1
+          -- Need s' 0 and (runBlock s regs body).get hdom_i to imply evalProgram equality
+          -- This requires showing evalProgram only depends on R[0] agreement or full state agreement
+          sorry
+        have hget_eq := Part.get.congr_simp _ _ hevalPart hdom_rest_s'
+        exact congrArg (· 0) hget_eq
+      · -- While case
+        -- For While: compileWhile_correct gives full agreement on ≤ max condReg maxRegister
+        simp only [evalInstr] at hdom_i hr0_i hdom_rest' ⊢
+        -- From compileWhile_correct, s' agrees with (runWhile s condReg body).get on
+        -- all registers ≤ max condReg body.maxRegister (including 0)
+        -- For registers > max condReg body.maxRegister: both preserve original value
+        have hws_rest : ∀ j ∈ rest, ∀ regs' body', j = ExtendedInstr.Block regs' body' →
+            ∀ r, regs'.length ≤ r → r ≤ body'.maxRegister → s' (r + registerBase regs') = 0 := by
+          intro j hj regs' body' hj_eq r hr_lo hr_hi
+          have hws_j := hworkspace j (List.mem_cons_of_mem _ hj) regs' body' hj_eq r hr_lo hr_hi
+          -- From BlocksPreserveWorkspaces, While condReg body doesn't write to workspace of j
+          have hwhile_pres := (BlocksPreserveWorkspaces_cons_While hblk_pres).1
+          -- r + registerBase regs' is in the workspace of j = Block regs' body'
+          have hws_range : inWorkspaceRange (r + registerBase regs') regs' body' :=
+            ⟨r, hr_lo, hr_hi, rfl⟩
+          -- So r + registerBase regs' is NOT in the write range of While condReg body
+          have hnot_in_write : ¬inWhileWriteRange (r + registerBase regs') condReg body := by
+            intro hcontra
+            exact hwhile_pres j hj regs' body' hj_eq (r + registerBase regs') hcontra hws_range
+          -- Since it's not in write range (r + registerBase regs' > max condReg body.maxRegister + 1),
+          -- compiled While preserves it
+          simp only [inWhileWriteRange, not_le] at hnot_in_write
+          -- Use compileWhile_preserves_above
+          have hbody_sf : body.IsStandardForm := hwf_i.2
+          -- Get the halting for While condReg body from hdom_i (runWhile terminates)
+          have hdom_while : (runWhile s condReg body).Dom := hdom_i
+          -- Get steps and halted for compiled While
+          have hsteps_while : Steps (compileWhile condReg body) ⟨0, s⟩ result_i.finalConfig := by
+            simp only [compileInstr] at result_i
+            exact result_i.steps
+          have hhalted_while : result_i.finalConfig.isHalted (compileWhile condReg body) := by
+            simp only [compileInstr] at result_i
+            exact result_i.halted
+          -- Use compileWhile_preserves_above
+          have hpres := compileWhile_preserves_above condReg body hbody_sf s hdom_while
+            (r + registerBase regs') hnot_in_write hsteps_while hhalted_while
+          -- s' = result_i.finalConfig.state
+          simp only [s'] at hpres ⊢
+          rw [hpres, hws_j]
+        have hdom_rest_s' : (evalProgram rest s').Dom := by
+          sorry
+        obtain ⟨c_rest, hsteps_rest, hhalted_rest, hr0_rest⟩ := ih s' hwf_rest hdom_rest_s' hws_rest
+        have hwf_body : (ExtendedInstr.While condReg body).bodyIsStandardForm := hwf_i.2
+        have hci_sf : (compileInstr (ExtendedInstr.While condReg body)).IsStandardForm :=
+          compileInstr_isStandardForm _ hwf_body
+        have hpc_i : result_i.finalConfig.pc = (compileInstr (ExtendedInstr.While condReg body)).length :=
+          hci_sf.pc_eq_length_of_halted result_i.steps (Nat.zero_le _) result_i.halted
+        have hsteps_rest' : Steps (compile rest) ⟨0, s'⟩ c_rest := hsteps_rest
+        have hchain := Steps.chain_concat result_i.steps result_i.halted hpc_i hsteps_rest' hhalted_rest
+        refine ⟨⟨c_rest.pc + (compileInstr (ExtendedInstr.While condReg body)).length, c_rest.state⟩,
+                hchain.1, hchain.2, ?_⟩
+        rw [hr0_rest]
+        have hevalPart : evalProgram rest s' = evalProgram (ExtendedInstr.While condReg body :: rest) s := by
+          rw [evalProgram_cons, Part.Dom.bind hdom_i']
+          congr 1
+          sorry
+        have hget_eq := Part.get.congr_simp _ _ hevalPart hdom_rest_s'
+        exact congrArg (· 0) hget_eq
 
 /-- The full compiler is correct: compiling and running an extended program
 produces the same result as the extended evaluation semantics.

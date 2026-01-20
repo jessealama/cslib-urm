@@ -275,6 +275,43 @@ def isWorkspaceOf (n : ℕ) : ExtendedProgram → Prop
       inWorkspaceRange n regs body ∨ isWorkspaceOf n rest
   | _ :: rest => isWorkspaceOf n rest
 
+/-- Check if a register is in the write range of a compiled Block.
+The write range includes the output register regs[0] and the workspace used during
+compilation: [registerBase regs, registerBase regs + max(regs.length - 1, body.maxRegister)]. -/
+def inBlockWriteRange (n : ℕ) (regs : List ℕ) (body : FlatProgram) : Prop :=
+  (regs.head? = some n) ∨
+  (registerBase regs ≤ n ∧ n ≤ registerBase regs + max (regs.length - 1) body.maxRegister)
+
+/-- Check if a register is in the write range of a compiled While.
+The write range is [0, max(condReg, body.maxRegister) + 1] since:
+- While runs body repeatedly, modifying registers up to body.maxRegister
+- The compiled While uses a "zero register" at max(condReg, body.maxRegister) + 1 -/
+def inWhileWriteRange (n : ℕ) (condReg : ℕ) (body : FlatProgram) : Prop :=
+  n ≤ max condReg body.maxRegister + 1
+
+/-- A Block instruction preserves subsequent Blocks' workspaces if its write range
+doesn't overlap with their workspace ranges. -/
+def BlockPreservesSubsequentWorkspaces (regs : List ℕ) (body : FlatProgram)
+    (rest : ExtendedProgram) : Prop :=
+  ∀ j ∈ rest, ∀ regs' body', j = ExtendedInstr.Block regs' body' →
+    ∀ n, inBlockWriteRange n regs body → ¬inWorkspaceRange n regs' body'
+
+/-- A While instruction preserves subsequent Blocks' workspaces if its write range
+doesn't overlap with their workspace ranges. -/
+def WhilePreservesSubsequentWorkspaces (condReg : ℕ) (body : FlatProgram)
+    (rest : ExtendedProgram) : Prop :=
+  ∀ j ∈ rest, ∀ regs' body', j = ExtendedInstr.Block regs' body' →
+    ∀ n, inWhileWriteRange n condReg body → ¬inWorkspaceRange n regs' body'
+
+/-- Blocks and Whiles preserve subsequent Blocks' workspaces throughout the program. -/
+def ExtendedProgram.BlocksPreserveWorkspaces : ExtendedProgram → Prop
+  | [] => True
+  | ExtendedInstr.Block regs body :: rest =>
+      BlockPreservesSubsequentWorkspaces regs body rest ∧ BlocksPreserveWorkspaces rest
+  | ExtendedInstr.While condReg body :: rest =>
+      WhilePreservesSubsequentWorkspaces condReg body rest ∧ BlocksPreserveWorkspaces rest
+  | _ :: rest => BlocksPreserveWorkspaces rest
+
 /-- A program is workspace-safe: S and T don't write to workspace of subsequent Blocks. -/
 def ExtendedProgram.WorkspaceSafe : ExtendedProgram → Prop
   | [] => True
@@ -282,10 +319,11 @@ def ExtendedProgram.WorkspaceSafe : ExtendedProgram → Prop
   | ExtendedInstr.T _ n :: rest => ¬isWorkspaceOf n rest ∧ WorkspaceSafe rest
   | _ :: rest => WorkspaceSafe rest
 
-/-- An extended program is well-formed if all its instructions are well-formed
-    and it is workspace-safe. -/
+/-- An extended program is well-formed if all its instructions are well-formed,
+    workspace-safe (S/T don't write to subsequent Block workspaces), and
+    Blocks preserve subsequent Block workspaces. -/
 def ExtendedProgram.WellFormed (p : ExtendedProgram) : Prop :=
-  p.InstrWellFormed ∧ p.WorkspaceSafe
+  p.InstrWellFormed ∧ p.WorkspaceSafe ∧ p.BlocksPreserveWorkspaces
 
 /-! ## Workspace Safety Helper Lemmas -/
 
@@ -331,6 +369,37 @@ theorem isWorkspaceOf_of_mem_Block {j : ExtendedInstr} {rest : ExtendedProgram}
       | Z _ | S _ | T _ _ | J _ _ _ | While _ _ =>
         simp only [isWorkspaceOf]
         exact ih htail
+
+/-! ## BlocksPreserveWorkspaces Helper Lemmas -/
+
+theorem BlocksPreserveWorkspaces_nil : ExtendedProgram.BlocksPreserveWorkspaces [] := trivial
+
+theorem BlocksPreserveWorkspaces_cons_Block {regs : List ℕ} {body : FlatProgram}
+    {rest : ExtendedProgram}
+    (h : ExtendedProgram.BlocksPreserveWorkspaces (ExtendedInstr.Block regs body :: rest)) :
+    BlockPreservesSubsequentWorkspaces regs body rest ∧
+    ExtendedProgram.BlocksPreserveWorkspaces rest :=
+  h
+
+theorem BlocksPreserveWorkspaces_cons_While {condReg : ℕ} {body : FlatProgram}
+    {rest : ExtendedProgram}
+    (h : ExtendedProgram.BlocksPreserveWorkspaces (ExtendedInstr.While condReg body :: rest)) :
+    WhilePreservesSubsequentWorkspaces condReg body rest ∧
+    ExtendedProgram.BlocksPreserveWorkspaces rest :=
+  h
+
+theorem BlocksPreserveWorkspaces_cons_rest {i : ExtendedInstr} {rest : ExtendedProgram}
+    (h : ExtendedProgram.BlocksPreserveWorkspaces (i :: rest)) :
+    ExtendedProgram.BlocksPreserveWorkspaces rest := by
+  cases i with
+  | Block _ _ => exact h.2
+  | While _ _ => exact h.2
+  | Z _ | S _ | T _ _ | J _ _ _ => exact h
+
+/-- Extract the BlocksPreserveWorkspaces component from WellFormed. -/
+theorem WellFormed_BlocksPreserveWorkspaces {p : ExtendedProgram}
+    (h : ExtendedProgram.WellFormed p) : ExtendedProgram.BlocksPreserveWorkspaces p :=
+  h.2.2
 
 end Extended
 
