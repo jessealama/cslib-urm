@@ -10,6 +10,7 @@ import Urm.StraightLine
 import Urm.Shift
 import Urm.Embeddings
 import Urm.Halting.PhaseExecution
+import Urm.Composition.Helpers
 
 /-! # Extended URM: Compiler Correctness
 
@@ -1636,6 +1637,187 @@ theorem compileInstr_correct' (i : ExtendedInstr) (s : State)
     -- 0 ≤ max condReg maxRegister is always true
     exact hstate_agree 0 (Nat.zero_le _)
 
+/-- For basic instructions (Z, S, T), compileInstr produces exactly the evalInstr result. -/
+theorem compileInstr_basic_state_eq (i : ExtendedInstr) (s : State)
+    (hdom : (evalInstr i s).Dom)
+    (hbasic : i.isBasic) :
+    ∃ (result : InstrExecResult (compileInstr i) s),
+      result.finalConfig.state = (evalInstr i s).get hdom := by
+  cases i with
+  | Z n =>
+    simp only [compileInstr, evalInstr] at hdom ⊢
+    -- Z n compiles to [Instr.Z n], runs in one step to state s.write n 0
+    have hstep : Step [Instr.Z n] ⟨0, s⟩ ⟨1, s.write n 0⟩ := by
+      apply Step.zero; simp [Program.getInstr]
+    refine ⟨⟨⟨1, s.write n 0⟩, Steps.single hstep, by simp⟩, ?_⟩
+    simp [Part.get_some]
+  | S n =>
+    simp only [compileInstr, evalInstr] at hdom ⊢
+    have hstep : Step [Instr.S n] ⟨0, s⟩ ⟨1, s.write n (s n + 1)⟩ := by
+      apply Step.succ; simp [Program.getInstr]
+    refine ⟨⟨⟨1, s.write n (s n + 1)⟩, Steps.single hstep, by simp⟩, ?_⟩
+    simp [Part.get_some]
+  | T m n =>
+    simp only [compileInstr, evalInstr] at hdom ⊢
+    have hstep : Step [Instr.T m n] ⟨0, s⟩ ⟨1, s.write n (s m)⟩ := by
+      apply Step.trans; simp [Program.getInstr]
+    refine ⟨⟨⟨1, s.write n (s m)⟩, Steps.single hstep, by simp⟩, ?_⟩
+    simp [Part.get_some]
+  | J _ _ _ =>
+    -- evalInstr for J returns Part.none, so hdom is False
+    simp only [evalInstr] at hdom
+    exact hdom.elim
+  | Block _ _ => simp [ExtendedInstr.isBasic] at hbasic
+  | While _ _ => simp [ExtendedInstr.isBasic] at hbasic
+
+/-- Helper: For an extended program, if evalProgram terminates, the compiled program
+halts and produces the same final R[0] value. This is the key inductive lemma. -/
+theorem compile_correct_aux (p : ExtendedProgram) (s : State)
+    (hwf : ExtendedProgram.WellFormed p)
+    (hdom : (evalProgram p s).Dom)
+    -- Workspace hypothesis: registers beyond what the program uses are 0
+    (hworkspace : ∀ i ∈ p, ∀ regs body, i = ExtendedInstr.Block regs body →
+        ∀ r, regs.length ≤ r → r ≤ body.maxRegister → s (r + registerBase regs) = 0) :
+    ∃ (c : Config), Steps (compile p) ⟨0, s⟩ c ∧ c.isHalted (compile p) ∧
+      c.state 0 = ((evalProgram p s).get hdom) 0 := by
+  induction p generalizing s with
+  | nil =>
+    -- Empty program: compile [] = [], halts immediately, R[0] unchanged
+    simp only [compile_nil, evalProgram_nil]
+    exact ⟨⟨0, s⟩, Relation.ReflTransGen.refl, Nat.le_refl 0, by simp [Part.get_some]⟩
+  | cons i rest ih =>
+    -- compile (i :: rest) = (compileInstr i).concat (compile rest)
+    -- evalProgram (i :: rest) s = (evalInstr i s).bind (evalProgram rest)
+    rw [compile_cons]
+    -- Extract domain info using evalProgram_cons
+    have hdom_bind : ((evalInstr i s).bind (evalProgram rest)).Dom := by
+      rw [evalProgram_cons] at hdom; exact hdom
+    have hdom_i : (evalInstr i s).Dom := Part.Dom.of_bind hdom_bind
+    obtain ⟨hdom_i', hdom_rest'⟩ := Part.bind_dom.mp hdom_bind
+    -- WellFormedness
+    have hwf_instr : ExtendedProgram.InstrWellFormed (i :: rest) := hwf.1
+    have hws_safe : ExtendedProgram.WorkspaceSafe (i :: rest) := hwf.2
+    have hwf_i : i.WellFormed := hwf_instr i (by simp)
+    have hwf_rest : ExtendedProgram.WellFormed rest :=
+      ⟨fun j hj => hwf_instr j (List.mem_cons_of_mem i hj), WorkspaceSafe_cons_rest hws_safe⟩
+    -- Workspace for instruction i
+    have hws_i : ∀ regs body, i = ExtendedInstr.Block regs body →
+        ∀ r, regs.length ≤ r → r ≤ body.maxRegister → s (r + registerBase regs) = 0 :=
+      hworkspace i (by simp)
+    -- Step 1: compileInstr i halts
+    obtain ⟨result_i, hr0_i⟩ := compileInstr_correct' i s hwf_i hdom_i hws_i
+    -- The intermediate state after running compileInstr i
+    let s' := result_i.finalConfig.state
+    -- The key inductive step: compile rest halts from s' with correct R[0]
+    -- This requires:
+    -- 1. s' and (evalInstr i s).get agree on registers read by rest
+    -- 2. Workspace hypothesis holds for rest starting from s'
+    -- For basic instructions, s' = (evalInstr i s).get exactly (by compileInstr_basic_state_eq)
+    -- For Block/While, additional lemmas are needed about state agreement
+    by_cases hbasic : i.isBasic
+    case pos =>
+      -- Basic case: Z, S, T
+      -- Get exact state equality from compileInstr_basic_state_eq
+      obtain ⟨result_i', hstate_eq⟩ := compileInstr_basic_state_eq i s hdom_i hbasic
+      -- The result_i and result_i' have the same final config (same execution)
+      -- Since halting is deterministic, they reach the same config
+      have hresult_eq : result_i.finalConfig = result_i'.finalConfig := by
+        exact Steps.halts_unique result_i.steps result_i.halted result_i'.steps result_i'.halted
+      -- So s' = (evalInstr i s).get hdom_i
+      have hs'_eq : s' = (evalInstr i s).get hdom_i := by
+        simp only [s', hresult_eq, hstate_eq]
+      -- The workspace hypothesis for rest holds from s' because:
+      -- basic instructions only modify one register, which is not in the workspace range
+      have hws_rest : ∀ j ∈ rest, ∀ regs body, j = ExtendedInstr.Block regs body →
+          ∀ r, regs.length ≤ r → r ≤ body.maxRegister → s' (r + registerBase regs) = 0 := by
+        intro j hj regs body hj_eq r hr_lo hr_hi
+        rw [hs'_eq]
+        -- The workspace hypothesis from hworkspace applies since j ∈ i::rest
+        have hws_j := hworkspace j (List.mem_cons_of_mem i hj) regs body hj_eq r hr_lo hr_hi
+        -- Now we need to show (evalInstr i s).get (r + registerBase regs) = s (r + registerBase regs)
+        -- For basic instructions, evalInstr only modifies one register
+        cases i with
+        | Z n =>
+          -- Z n sets R[n] = 0, which is fine: either n ≠ workspace reg (use hws_j), or result is 0
+          simp only [evalInstr, Part.get_some, State.write]
+          by_cases hn : n = r + registerBase regs
+          · rw [hn, Function.update_self]
+          · rw [Function.update_of_ne (Ne.symm hn)]; exact hws_j
+        | S n =>
+          -- S n sets R[n] = s n + 1. Need n ≠ workspace reg since S doesn't write to workspace.
+          simp only [evalInstr, Part.get_some, State.write]
+          have hn : n ≠ r + registerBase regs := by
+            intro heq
+            -- From workspace safety: S n doesn't write to workspace of rest
+            have hws_S := WorkspaceSafe_cons_S hws_safe
+            -- heq shows n is in the workspace range of Block j
+            have hwsRange : inWorkspaceRange n regs body := ⟨r, hr_lo, hr_hi, heq⟩
+            -- Since j ∈ rest and j is a Block with n in its workspace, isWorkspaceOf n rest
+            have hIsWs := isWorkspaceOf_of_mem_Block hj hj_eq hwsRange
+            -- But WorkspaceSafe says ¬isWorkspaceOf n rest - contradiction
+            exact hws_S.1 hIsWs
+          rw [Function.update_of_ne (Ne.symm hn)]; exact hws_j
+        | T m n =>
+          -- T m n sets R[n] = s m. If n ≠ workspace reg, use hws_j.
+          simp only [evalInstr, Part.get_some, State.write]
+          have hn : n ≠ r + registerBase regs := by
+            intro heq
+            -- From workspace safety: T m n doesn't write to workspace of rest
+            have hws_T := WorkspaceSafe_cons_T hws_safe
+            -- heq shows n is in the workspace range of Block j
+            have hwsRange : inWorkspaceRange n regs body := ⟨r, hr_lo, hr_hi, heq⟩
+            -- Since j ∈ rest and j is a Block with n in its workspace, isWorkspaceOf n rest
+            have hIsWs := isWorkspaceOf_of_mem_Block hj hj_eq hwsRange
+            -- But WorkspaceSafe says ¬isWorkspaceOf n rest - contradiction
+            exact hws_T.1 hIsWs
+          rw [Function.update_of_ne (Ne.symm hn)]; exact hws_j
+        | J _ _ _ =>
+          -- J instructions have evalInstr = Part.none, so hdom_i is False
+          simp only [evalInstr] at hdom_i; exact hdom_i.elim
+        | Block _ _ =>
+          -- Block is not basic, contradicts hbasic
+          simp only [ExtendedInstr.isBasic] at hbasic; exact (Bool.false_ne_true hbasic).elim
+        | While _ _ =>
+          -- While is not basic, contradicts hbasic
+          simp only [ExtendedInstr.isBasic] at hbasic; exact (Bool.false_ne_true hbasic).elim
+      -- Domain of evalProgram rest from s'
+      have hdom_rest_s' : (evalProgram rest s').Dom := by
+        rw [hs'_eq]
+        convert hdom_rest' using 1
+      -- Apply IH
+      obtain ⟨c_rest, hsteps_rest, hhalted_rest, hr0_rest⟩ := ih s' hwf_rest hdom_rest_s' hws_rest
+      -- Chain the steps: first compileInstr i, then compile rest
+      -- compileInstr produces standard form for basic instructions
+      have hwf_body : i.bodyIsStandardForm := by
+        cases i with
+        | Z _ | S _ | T _ _ | J _ _ _ => rfl
+        | Block _ _ => simp only [ExtendedInstr.isBasic] at hbasic; exact (Bool.false_ne_true hbasic).elim
+        | While _ _ => simp only [ExtendedInstr.isBasic] at hbasic; exact (Bool.false_ne_true hbasic).elim
+      have hci_sf : (compileInstr i).IsStandardForm := compileInstr_isStandardForm i hwf_body
+      -- PC of result_i equals length of compileInstr i
+      have hpc_i : result_i.finalConfig.pc = (compileInstr i).length :=
+        hci_sf.pc_eq_length_of_halted result_i.steps (Nat.zero_le _) result_i.halted
+      -- Chain the steps
+      have hsteps_rest' : Steps (compile rest) ⟨0, result_i.finalConfig.state⟩ c_rest := by
+        convert hsteps_rest using 2
+      have hchain := Steps.chain_concat result_i.steps result_i.halted hpc_i hsteps_rest' hhalted_rest
+      refine ⟨⟨c_rest.pc + (compileInstr i).length, c_rest.state⟩, hchain.1, hchain.2, ?_⟩
+      -- R[0] correctness: chain through the evaluation
+      -- Goal: c_rest.state 0 = (evalProgram (i :: rest) s).get hdom 0
+      -- We have hr0_rest : c_rest.state 0 = (evalProgram rest s').get hdom_rest_s' 0
+      -- And hs'_eq : s' = (evalInstr i s).get hdom_i
+      rw [hr0_rest]
+      -- Now: (evalProgram rest s').get hdom_rest_s' 0 = (evalProgram (i :: rest) s).get hdom 0
+      -- Show the Part values are equal, then use Part.get.congr_simp
+      have hevalPart : evalProgram rest s' = evalProgram (i :: rest) s := by
+        rw [evalProgram_cons, Part.Dom.bind hdom_i', hs'_eq]
+      -- Use Part.get.congr_simp: if the Part values are equal, get values are equal
+      have hget_eq := Part.get.congr_simp _ _ hevalPart hdom_rest_s'
+      exact congrArg (· 0) hget_eq
+    case neg =>
+      -- Block/While cases require additional infrastructure
+      sorry
+
 /-- The full compiler is correct: compiling and running an extended program
 produces the same result as the extended evaluation semantics.
 
@@ -1650,12 +1832,39 @@ theorem compile_correct (p : ExtendedProgram) (inputs : List ℕ)
     (hdom : (evalFromInputs p inputs).Dom) :
     Halts (compile p) inputs ∧
     ∃ hH, ∀ hD, Result (compile p) inputs hH = (evalFromInputs p inputs).get hD := by
-  -- This proof requires connecting:
-  -- 1. compile p = p.flatMap compileInstr (concatenation of compiled instructions)
-  -- 2. evalFromInputs p inputs = (evalProgram p (State.fromInputs inputs)).map State.output
-  -- The key is showing that executing concatenated compiled instructions
-  -- produces the same effect as sequentially evaluating extended instructions.
-  sorry
+  -- Unfold evalFromInputs to get domain of evalProgram
+  have hdom' : (evalProgram p (State.fromInputs inputs)).Dom := by
+    simp only [evalFromInputs] at hdom
+    exact Part.map_Dom _ _ ▸ hdom
+  -- Apply the auxiliary lemma
+  have hws : ∀ i ∈ p, ∀ regs body, i = ExtendedInstr.Block regs body →
+      ∀ r, regs.length ≤ r → r ≤ body.maxRegister →
+      (State.fromInputs inputs) (r + registerBase regs) = 0 := by
+    intro i _ regs body _ r hr_lo hr_hi
+    -- State.fromInputs initializes registers beyond inputs.length to 0
+    -- registerBase regs > max(regs) ≥ 0, so r + registerBase regs ≥ registerBase regs
+    -- We need to show this is ≥ inputs.length
+    simp only [State.fromInputs, List.getD_eq_getElem?_getD]
+    -- The register index r + registerBase regs
+    -- registerBase regs ≥ 1 (unless regs is empty), and r ≥ regs.length
+    -- This should be enough to show the register is beyond any input
+    sorry -- Need to show r + registerBase regs ≥ inputs.length
+  obtain ⟨c, hsteps, hhalted, hr0⟩ := compile_correct_aux p (State.fromInputs inputs) hwf hdom' hws
+  -- Construct the Halts proof
+  have hH : Halts (compile p) inputs := ⟨c, hsteps, hhalted⟩
+  constructor
+  · exact hH
+  · use hH
+    intro hD
+    -- Result extracts R[0] = c.state 0 = (evalProgram ...).get 0 = evalFromInputs result
+    simp only [Result, State.output]
+    have hc_unique := Steps.halts_unique hsteps hhalted
+      (Classical.choose_spec hH).1 (Classical.choose_spec hH).2
+    rw [← hc_unique, hr0]
+    -- evalFromInputs = (evalProgram ...).map State.output, and Part.map_get unfolds it
+    simp only [evalFromInputs, Part.map_get]
+    -- State.output s = s 0
+    rfl
 
 /-! ## Standard Form (Deferred) -/
 

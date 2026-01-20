@@ -220,9 +220,117 @@ def ExtendedInstr.WhileWellFormed : ExtendedInstr → Prop
 def ExtendedInstr.WellFormed (i : ExtendedInstr) : Prop :=
   i.BlockWellFormed ∧ i.WhileWellFormed
 
-/-- An extended program is well-formed if all its instructions are well-formed. -/
-def ExtendedProgram.WellFormed (p : ExtendedProgram) : Prop :=
+/-- An extended program has well-formed instructions if all its instructions are well-formed. -/
+def ExtendedProgram.InstrWellFormed (p : ExtendedProgram) : Prop :=
   ∀ i ∈ p, i.WellFormed
+
+/-! ## Register Offset Calculation -/
+
+/-- Calculate the base offset needed to avoid conflicts with a list of host registers.
+Returns max(regs) + 1 if regs is non-empty, otherwise 0. -/
+def registerBase (regs : List ℕ) : ℕ :=
+  match regs with
+  | [] => 0
+  | rs => rs.foldl max 0 + 1
+
+theorem registerBase_gt_all (regs : List ℕ) (r : ℕ) (hr : r ∈ regs) :
+    registerBase regs > r := by
+  cases regs with
+  | nil => contradiction
+  | cons h t =>
+    simp only [registerBase]
+    have hle : r ≤ List.foldl max 0 (h :: t) := by
+      have : ∀ (init : ℕ) (l : List ℕ), init ≤ l.foldl max init := fun init l => by
+        induction l generalizing init with
+        | nil => exact Nat.le_refl _
+        | cons x xs ih => exact Nat.le_trans (Nat.le_max_left _ _) (ih _)
+      have hmono : ∀ (a b : ℕ) (l : List ℕ), a ≤ b → l.foldl max a ≤ l.foldl max b := fun a b l hab => by
+        induction l generalizing a b with
+        | nil => exact hab
+        | cons x xs ih => simp only [List.foldl_cons]; exact ih _ _ (max_le_max_right x hab)
+      have hmem_le : ∀ (init : ℕ) (l : List ℕ) (x : ℕ), x ∈ l → x ≤ l.foldl max init := fun init l x hx => by
+        induction l generalizing init with
+        | nil => contradiction
+        | cons y ys ih =>
+          simp only [List.mem_cons] at hx
+          simp only [List.foldl_cons]
+          rcases hx with rfl | hx'
+          · exact Nat.le_trans (Nat.le_max_right _ _) (this _ _)
+          · exact ih _ hx'
+      exact hmem_le 0 (h :: t) r hr
+    omega
+
+/-! ## Workspace Safety -/
+
+/-- Check if a register is in the workspace range for a Block.
+The workspace of Block regs body consists of registers r + registerBase regs
+where regs.length ≤ r ≤ body.maxRegister. -/
+def inWorkspaceRange (n : ℕ) (regs : List ℕ) (body : FlatProgram) : Prop :=
+  ∃ r, regs.length ≤ r ∧ r ≤ body.maxRegister ∧ n = r + registerBase regs
+
+/-- Check if a register is a workspace register for any Block in the program. -/
+def isWorkspaceOf (n : ℕ) : ExtendedProgram → Prop
+  | [] => False
+  | ExtendedInstr.Block regs body :: rest =>
+      inWorkspaceRange n regs body ∨ isWorkspaceOf n rest
+  | _ :: rest => isWorkspaceOf n rest
+
+/-- A program is workspace-safe: S and T don't write to workspace of subsequent Blocks. -/
+def ExtendedProgram.WorkspaceSafe : ExtendedProgram → Prop
+  | [] => True
+  | ExtendedInstr.S n :: rest => ¬isWorkspaceOf n rest ∧ WorkspaceSafe rest
+  | ExtendedInstr.T _ n :: rest => ¬isWorkspaceOf n rest ∧ WorkspaceSafe rest
+  | _ :: rest => WorkspaceSafe rest
+
+/-- An extended program is well-formed if all its instructions are well-formed
+    and it is workspace-safe. -/
+def ExtendedProgram.WellFormed (p : ExtendedProgram) : Prop :=
+  p.InstrWellFormed ∧ p.WorkspaceSafe
+
+/-! ## Workspace Safety Helper Lemmas -/
+
+theorem WorkspaceSafe_nil : ExtendedProgram.WorkspaceSafe [] := trivial
+
+theorem WorkspaceSafe_cons_S {n : ℕ} {rest : ExtendedProgram}
+    (h : ExtendedProgram.WorkspaceSafe (ExtendedInstr.S n :: rest)) :
+    ¬isWorkspaceOf n rest ∧ ExtendedProgram.WorkspaceSafe rest :=
+  h
+
+theorem WorkspaceSafe_cons_T {m n : ℕ} {rest : ExtendedProgram}
+    (h : ExtendedProgram.WorkspaceSafe (ExtendedInstr.T m n :: rest)) :
+    ¬isWorkspaceOf n rest ∧ ExtendedProgram.WorkspaceSafe rest :=
+  h
+
+theorem WorkspaceSafe_cons_rest {i : ExtendedInstr} {rest : ExtendedProgram}
+    (h : ExtendedProgram.WorkspaceSafe (i :: rest)) :
+    ExtendedProgram.WorkspaceSafe rest := by
+  cases i with
+  | S n => exact h.2
+  | T m n => exact h.2
+  | Z _ | J _ _ _ | Block _ _ | While _ _ => exact h
+
+theorem isWorkspaceOf_of_mem_Block {j : ExtendedInstr} {rest : ExtendedProgram}
+    {regs : List ℕ} {body : FlatProgram} {n : ℕ}
+    (hj : j ∈ rest) (hj_eq : j = ExtendedInstr.Block regs body)
+    (hws : inWorkspaceRange n regs body) :
+    isWorkspaceOf n rest := by
+  induction rest with
+  | nil => simp only [List.mem_nil_iff] at hj
+  | cons head tail ih =>
+    simp only [List.mem_cons] at hj
+    cases hj with
+    | inl heq =>
+      subst heq hj_eq
+      simp only [isWorkspaceOf]
+      left; exact hws
+    | inr htail =>
+      cases head with
+      | Block regs' body' =>
+        simp only [isWorkspaceOf]
+        right; exact ih htail
+      | Z _ | S _ | T _ _ | J _ _ _ | While _ _ =>
+        simp only [isWorkspaceOf]
+        exact ih htail
 
 end Extended
 

@@ -63,42 +63,6 @@ namespace Extended
 
 open Urm (Program Instr State Config)
 
-/-! ## Register Offset Calculation -/
-
-/-- Calculate the base offset needed to avoid conflicts with a list of host registers.
-Returns max(regs) + 1 if regs is non-empty, otherwise 0. -/
-def registerBase (regs : List ℕ) : ℕ :=
-  match regs with
-  | [] => 0
-  | rs => rs.foldl max 0 + 1
-
-theorem registerBase_gt_all (regs : List ℕ) (r : ℕ) (hr : r ∈ regs) :
-    registerBase regs > r := by
-  cases regs with
-  | nil => contradiction
-  | cons h t =>
-    simp only [registerBase]
-    have hle : r ≤ List.foldl max 0 (h :: t) := by
-      have : ∀ (init : ℕ) (l : List ℕ), init ≤ l.foldl max init := fun init l => by
-        induction l generalizing init with
-        | nil => exact Nat.le_refl _
-        | cons x xs ih => exact Nat.le_trans (Nat.le_max_left _ _) (ih _)
-      have hmono : ∀ (a b : ℕ) (l : List ℕ), a ≤ b → l.foldl max a ≤ l.foldl max b := fun a b l hab => by
-        induction l generalizing a b with
-        | nil => exact hab
-        | cons x xs ih => simp only [List.foldl_cons]; exact ih _ _ (max_le_max_right x hab)
-      have hmem_le : ∀ (init : ℕ) (l : List ℕ) (x : ℕ), x ∈ l → x ≤ l.foldl max init := fun init l x hx => by
-        induction l generalizing init with
-        | nil => contradiction
-        | cons y ys ih =>
-          simp only [List.mem_cons] at hx
-          simp only [List.foldl_cons]
-          rcases hx with rfl | hx'
-          · exact Nat.le_trans (Nat.le_max_right _ _) (this _ _)
-          · exact ih _ hx'
-      exact hmem_le 0 (h :: t) r hr
-    omega
-
 /-! ## Compilation Helpers -/
 
 /-- Copy registers from host to body's input positions.
@@ -192,38 +156,60 @@ def compileInstr (i : ExtendedInstr) : FlatProgram :=
 
 /-- Compile an extended program to base URM.
 
-The compilation accumulates offset as it processes instructions,
-adjusting jump targets in J instructions accordingly.
+Each instruction is compiled via `compileInstr`, and the results are
+concatenated using `Program.concat` (which shifts jump targets by the
+accumulated offset). This ensures that Block and While constructs,
+which have internal jumps, work correctly when multiple such constructs
+are sequenced.
 
-Note: This only produces correct results for programs where J targets
-are within the same "flat" segment (basic instructions only). -/
+Note: J instructions at the ExtendedProgram level are problematic since
+their targets refer to instruction indices, not PC values. Use J only
+inside Block/While bodies (flat programs). -/
 def compile (p : ExtendedProgram) : FlatProgram :=
-  p.flatMap compileInstr
+  p.foldl (fun acc i => acc.concat (compileInstr i)) []
 
-/-- Alternative compilation with explicit offset tracking.
-This version adjusts J targets based on accumulated offset. -/
-def compileWithOffset (p : ExtendedProgram) : FlatProgram × ℕ :=
-  p.foldl (fun ⟨acc, offset⟩ i =>
-    let compiled := compileInstr i
-    (acc ++ compiled, offset + compiled.length)
-  ) ([], 0)
+/-! ## Compile Helper Lemmas -/
 
-theorem compile_eq_fst_compileWithOffset (p : ExtendedProgram) :
-    compile p = (compileWithOffset p).1 := by
-  simp only [compile, compileWithOffset]
-  -- The key insight: foldl (acc ++ compiled, ...) accumulates in first component
-  -- This equals flatMap by the structure of the accumulator
-  have h : ∀ (acc : FlatProgram) (offset : ℕ) (q : ExtendedProgram),
-      (q.foldl (fun ⟨a, o⟩ i => (a ++ compileInstr i, o + (compileInstr i).length)) (acc, offset)).1
-      = acc ++ q.flatMap compileInstr := by
-    intro acc offset q
-    induction q generalizing acc offset with
-    | nil => simp
-    | cons h t ih =>
-      simp only [List.foldl_cons, List.flatMap_cons]
-      rw [ih]
-      simp only [List.append_assoc]
-  simp only [h, List.nil_append]
+/-- Compile of empty program is empty. -/
+theorem compile_nil : compile ([] : ExtendedProgram) = [] := rfl
+
+/-- Compile of singleton. -/
+theorem compile_singleton (i : ExtendedInstr) : compile [i] = compileInstr i := by
+  simp only [compile, List.foldl_cons, List.foldl_nil, Program.concat_nil_left]
+
+/-- Helper: foldl with concat distributes the initial accumulator. -/
+private theorem foldl_concat_distrib (acc : FlatProgram) (q : ExtendedProgram) :
+    q.foldl (fun a j => a.concat (compileInstr j)) acc =
+    acc.concat (q.foldl (fun a j => a.concat (compileInstr j)) []) := by
+  induction q generalizing acc with
+  | nil => simp [Program.concat_nil_right]
+  | cons h t ih =>
+    simp only [List.foldl_cons]
+    rw [ih, ih (Program.concat [] (compileInstr h))]
+    simp only [Program.concat_nil_left, Program.concat_assoc]
+
+/-- Compile of cons: compile head, then concat with compiled tail. -/
+theorem compile_cons (i : ExtendedInstr) (is : ExtendedProgram) :
+    compile (i :: is) = (compileInstr i).concat (compile is) := by
+  simp only [compile, List.foldl_cons]
+  rw [foldl_concat_distrib]
+  simp only [Program.concat_nil_left]
+
+/-- Alternative: compile distributes over append. -/
+theorem compile_append (p q : ExtendedProgram) :
+    compile (p ++ q) = (compile p).concat (compile q) := by
+  induction p with
+  | nil => simp [compile_nil, Program.concat_nil_left]
+  | cons h t ih =>
+    simp only [List.cons_append, compile_cons, ih, Program.concat_assoc]
+
+/-- Length of compile in terms of instruction lengths. -/
+theorem compile_length (p : ExtendedProgram) :
+    (compile p).length = (p.map (fun i => (compileInstr i).length)).sum := by
+  induction p with
+  | nil => rfl
+  | cons h t ih =>
+    simp only [compile_cons, Program.concat_length, List.map_cons, List.sum_cons, ih]
 
 /-! ## Length Properties -/
 
@@ -423,51 +409,89 @@ theorem compileInstr_isStandardForm (i : ExtendedInstr)
       exact this x hx
     exact compileWhile_isStandardForm condReg body h
 
-/-- Helper: sublist implies length ≤ -/
-private theorem length_le_of_mem_flatMap {α β : Type*} (f : α → List β) {a : α} {l : List α}
-    (ha : a ∈ l) : (f a).length ≤ (l.flatMap f).length := by
-  induction l with
-  | nil => contradiction
-  | cons h t ih =>
-    simp only [List.flatMap_cons, List.length_append]
-    simp only [List.mem_cons] at ha
-    rcases ha with rfl | ha'
-    · omega
-    · have := ih ha'
-      omega
+/-- Concatenation preserves standard form. -/
+theorem concat_isStandardForm {p1 p2 : Program}
+    (h1 : p1.IsStandardForm) (h2 : p2.IsStandardForm) :
+    (p1.concat p2).IsStandardForm := by
+  unfold Program.IsStandardForm Program.isStandardForm at h1 h2 ⊢
+  rw [List.all_eq_true] at h1 h2 ⊢
+  intro instr hinstr
+  simp only [Program.concat] at hinstr
+  rw [List.mem_append] at hinstr
+  rcases hinstr with hinLeft | hinRight
+  · -- Instruction is in p1
+    have hbound := h1 instr hinLeft
+    apply Instr.hasBoundedJump_mono hbound
+    simp only [Program.concat_length]; omega
+  · -- Instruction is in p2.shiftJumps p1.length
+    simp only [Program.shiftJumps, List.mem_map] at hinRight
+    obtain ⟨origInstr, horigMem, rfl⟩ := hinRight
+    have horigBound := h2 origInstr horigMem
+    have hshifted := Instr.hasBoundedJump_shiftJumps (len := p2.length) (offset := p1.length) horigBound
+    apply Instr.hasBoundedJump_mono hshifted
+    simp only [Program.concat_length]
+    omega
 
 /-- Compiled program is standard form if all bodies are standard form. -/
 theorem compile_isStandardForm (p : ExtendedProgram)
     (h : ∀ i ∈ p, i.bodyIsStandardForm = true) :
     (compile p).IsStandardForm := by
-  simp only [compile]
-  unfold Program.IsStandardForm Program.isStandardForm
-  rw [List.all_eq_true]
-  intro instr hinstr
-  -- instr is in compile p = p.flatMap compileInstr
-  simp only [List.mem_flatMap] at hinstr
-  obtain ⟨extInstr, hextInstr, hinstrInCompiled⟩ := hinstr
-  -- extInstr is in p, and instr is in compileInstr extInstr
-  have hbody := h extInstr hextInstr
-  have hsfCompiled := compileInstr_isStandardForm extInstr hbody
-  unfold Program.IsStandardForm Program.isStandardForm at hsfCompiled
-  rw [List.all_eq_true] at hsfCompiled
-  have hbound := hsfCompiled instr hinstrInCompiled
-  -- Upgrade the bound from compileInstr length to total program length
-  apply Instr.hasBoundedJump_mono hbound
-  exact length_le_of_mem_flatMap compileInstr hextInstr
+  induction p with
+  | nil => simp [compile_nil, Program.IsStandardForm, Program.isStandardForm]
+  | cons hd tl ih =>
+    rw [compile_cons]
+    have h_hd := h hd (by simp)
+    have h_tl : ∀ i ∈ tl, i.bodyIsStandardForm = true := fun i hi => h i (List.mem_cons_of_mem hd hi)
+    exact concat_isStandardForm (compileInstr_isStandardForm hd h_hd) (ih h_tl)
 
 /-! ## Embedding Properties -/
 
-/-- Embedding flat programs: ofFlatProgram >>> compile = id -/
-theorem compile_ofFlatProgram (p : FlatProgram) :
-    compile (ExtendedProgram.ofFlatProgram p) = p := by
-  simp only [compile, ExtendedProgram.ofFlatProgram, List.flatMap_map]
+/-- shiftJumps is identity for straight-line programs (no J instructions). -/
+theorem shiftJumps_isStraightLine (p : Program) (h : p.isStraightLine = true) (offset : ℕ) :
+    p.shiftJumps offset = p := by
+  simp only [Program.shiftJumps]
   induction p with
   | nil => rfl
-  | cons h t ih =>
-    simp only [List.flatMap_cons, ih]
-    cases h <;> rfl
+  | cons hd tl ih =>
+    simp only [Program.isStraightLine, List.all_cons, Bool.and_eq_true] at h
+    obtain ⟨h_hd, h_tl⟩ := h
+    simp only [List.map_cons, ih h_tl]
+    cases hd with
+    | Z n => rfl
+    | S n => rfl
+    | T m n => rfl
+    | J m n q => simp [Instr.isNonJumping] at h_hd
+
+/-- concat on straight-line programs is the same as ++ -/
+theorem concat_isStraightLine (p1 p2 : Program) (h2 : p2.isStraightLine = true) :
+    p1.concat p2 = p1 ++ p2 := by
+  simp only [Program.concat, shiftJumps_isStraightLine p2 h2]
+
+/-- Embedding straight-line flat programs: ofFlatProgram >>> compile = id.
+
+Note: This holds for straight-line programs (no J instructions). For programs
+with J instructions, the compile function shifts jump targets, which would
+give incorrect results. -/
+theorem compile_ofFlatProgram_isStraightLine (p : FlatProgram) (hsl : p.isStraightLine = true) :
+    compile (ExtendedProgram.ofFlatProgram p) = p := by
+  induction p with
+  | nil => rfl
+  | cons hd tl ih =>
+    simp only [Program.isStraightLine, List.all_cons, Bool.and_eq_true] at hsl
+    obtain ⟨h_hd, h_tl⟩ := hsl
+    simp only [ExtendedProgram.ofFlatProgram, List.map_cons, compile_cons]
+    -- compileInstr of a base instruction is a singleton
+    have h_compiled : compileInstr (ExtendedInstr.ofInstr hd) = [hd] := by
+      cases hd <;> rfl
+    rw [h_compiled]
+    -- For straight-line rest, compile gives back the program
+    have ih' := ih h_tl
+    simp only [ExtendedProgram.ofFlatProgram] at ih'
+    rw [ih']
+    -- concat [hd] tl = [hd] ++ tl.shiftJumps 1 = [hd] ++ tl (since tl is straight-line)
+    simp only [Program.concat, List.singleton_append]
+    congr 1
+    exact shiftJumps_isStraightLine tl h_tl 1
 
 end Extended
 
