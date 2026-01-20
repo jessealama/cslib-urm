@@ -125,7 +125,7 @@ theorem comp_general_halts_imp_gi_dom
 theorem comp_general_halts_imp_f_dom
     {m n : ℕ} [NeZero m] {pF : Program} {pGs : Fin m → Program}
     {f : (Fin m → ℕ) → Part ℕ} {gs : Fin m → (Fin n → ℕ) → Part ℕ}
-    (_ : pF.IsStandardForm) (hGs_sf : ∀ i, (pGs i).IsStandardForm)
+    (hGs_sf : ∀ i, (pGs i).IsStandardForm)
     (hF_spec : ∀ inputs : Fin m → ℕ,
       (Halts pF (List.ofFn inputs) ↔ (f inputs).Dom) ∧
       ∀ (hHalts : Halts pF (List.ofFn inputs)) (hDom : (f inputs).Dom),
@@ -235,7 +235,7 @@ theorem comp_general_dom_imp_halts
   have hSave_config_eq : cSave = ⟨saveInputs.length, sSave⟩ := Config.ext hSave_pc' hcSave_state
   have hSave_steps' : Steps saveInputs ⟨0, State.fromInputs (List.ofFn inputs)⟩ ⟨saveInputs.length, sSave⟩ :=
     hSave_config_eq ▸ hSave_steps
-  have ⟨hSaveGPhases_steps, hSaveGPhases_halted⟩ := Steps.chain_concat hSave_steps' hSave_halted' rfl hGPhases_steps hGPhases_halted
+  have ⟨hSaveGPhases_steps, hSaveGPhases_halted⟩ := Steps.chain_concat hSave_steps' rfl hGPhases_steps hGPhases_halted
   have hGPhases_pc : cGPhases.pc = gPhases.length :=
     hGPhases_sf.pc_eq_length_of_halted hGPhases_steps (Nat.zero_le _) hGPhases_halted
   let sGPhases := cGPhases.state
@@ -254,7 +254,7 @@ theorem comp_general_dom_imp_halts
   have hSaveGPhases_steps' : Steps (saveInputs.concat gPhases) ⟨0, State.fromInputs (List.ofFn inputs)⟩
       ⟨(saveInputs.concat gPhases).length, sGPhases⟩ := hpc_eq ▸ hSaveGPhases_steps
   have hSaveGPhases_halted' : (⟨(saveInputs.concat gPhases).length, sGPhases⟩ : Config).isHalted (saveInputs.concat gPhases) := by simp
-  have ⟨hTotal_steps, hTotal_halted⟩ := Steps.chain_concat hSaveGPhases_steps' hSaveGPhases_halted' rfl hFinal_steps hFinal_halted
+  have ⟨hTotal_steps, hTotal_halted⟩ := Steps.chain_concat hSaveGPhases_steps' rfl hFinal_steps hFinal_halted
   rw [hH_eq, ← concat_assoc]; exact ⟨_, hTotal_steps, hTotal_halted⟩
 
 /-- The result of the composition equals the composed function value. -/
@@ -317,7 +317,7 @@ theorem comp_general_result
   have hSave_config_eq : cSave = ⟨saveInputs.length, sSave⟩ := Config.ext hSave_pc' hcSave_state
   have hSave_steps' : Steps saveInputs ⟨0, State.fromInputs (List.ofFn inputs)⟩ ⟨saveInputs.length, sSave⟩ :=
     hSave_config_eq ▸ hSave_steps
-  have ⟨hSaveGPhases_steps, hSaveGPhases_halted⟩ := Steps.chain_concat hSave_steps' hSave_halted' rfl hGPhases_steps hGPhases_halted
+  have ⟨hSaveGPhases_steps, hSaveGPhases_halted⟩ := Steps.chain_concat hSave_steps' rfl hGPhases_steps hGPhases_halted
   have hGPhases_pc : cGPhases.pc = gPhases.length :=
     hGPhases_sf.pc_eq_length_of_halted hGPhases_steps (Nat.zero_le _) hGPhases_halted
   let sGPhases := cGPhases.state
@@ -365,12 +365,11 @@ theorem comp_general_result
       ⟨(transferResultsToInputs (base + n + 1) m).length, sTransfer⟩ := hTransfer_config_eq ▸ hTransfer_steps'
   have hTransfer_halted : (⟨(transferResultsToInputs (base + n + 1) m).length, sTransfer⟩ : Config).isHalted
       (transferResultsToInputs (base + n + 1) m) := by simp
-  have ⟨hTransferF_steps, hTransferF_halted⟩ := Steps.chain_concat hTransfer_steps hTransfer_halted rfl epF.steps epF.halted
-  have ⟨hClearTransferF_steps, hClearTransferF_halted⟩ := Steps.chain_concat hClear_steps hClear_halted hClear_pc hTransferF_steps hTransferF_halted
+  have ⟨hTransferF_steps, hTransferF_halted⟩ := Steps.chain_concat hTransfer_steps rfl epF.steps epF.halted
+  have ⟨hClearTransferF_steps, hClearTransferF_halted⟩ := Steps.chain_concat hClear_steps hClear_pc hTransferF_steps hTransferF_halted
   have hSaveGPhases_steps' : Steps (saveInputs.concat gPhases) ⟨0, State.fromInputs (List.ofFn inputs)⟩
       ⟨(saveInputs.concat gPhases).length, sGPhases⟩ := hpc_eq ▸ hSaveGPhases_steps
-  have hSaveGPhases_halted' : (⟨(saveInputs.concat gPhases).length, sGPhases⟩ : Config).isHalted (saveInputs.concat gPhases) := by simp
-  have ⟨hTotal_steps, hTotal_halted⟩ := Steps.chain_concat hSaveGPhases_steps' hSaveGPhases_halted' rfl hClearTransferF_steps hClearTransferF_halted
+  have ⟨hTotal_steps, hTotal_halted⟩ := Steps.chain_concat hSaveGPhases_steps' rfl hClearTransferF_steps hClearTransferF_halted
   rw [hH_eq, ← concat_assoc] at hH_steps hH_halted
   let cH_built : Config := ⟨(saveInputs.concat gPhases).length + final.length + epF.config.pc - pF.length, epF.config.state⟩
   have hcH_built_halted : cH_built.isHalted ((saveInputs.concat gPhases).concat final) := by

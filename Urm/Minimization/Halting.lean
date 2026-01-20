@@ -737,9 +737,9 @@ noncomputable def executeSetupPhase (n : ℕ) (pF : Program) (inputs : Fin n →
       simp only [loopStartPC, setupPhase_length, Nat.zero_add]
     exact hpc ▸ setupExec.liftedSteps
   let hSetup_counter : cSetup.state.read (counterReg n pF) = 0 :=
-    setupPhase_counter_zero n pF inputs initState rfl cSetup setupExec.localSteps setupExec.localHalted
+    setupPhase_counter_zero n pF initState cSetup setupExec.localSteps setupExec.localHalted
   let hSetup_zero : cSetup.state.read (zeroReg n pF) = 0 :=
-    setupPhase_zeroReg_zero n pF inputs initState rfl cSetup setupExec.localSteps setupExec.localHalted
+    setupPhase_zeroReg_zero n pF initState cSetup setupExec.localSteps setupExec.localHalted
   let hSetup_saved : ∀ i : Fin n, cSetup.state.read (savedInputsStart n pF + i) = inputs i :=
     fun i => setupPhase_saves_inputs n pF inputs initState rfl cSetup setupExec.localSteps setupExec.localHalted i
 

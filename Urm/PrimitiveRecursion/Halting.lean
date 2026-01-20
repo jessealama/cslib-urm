@@ -134,9 +134,9 @@ noncomputable def prExecuteSetupPhase (n : ℕ) (pF pG : Program) (inputs : Fin 
   let hSavedY : cSetup.state.read (prSavedYReg n pF pG) = y :=
     prSetupPhase_saves_y n pF pG inputs y initState rfl cSetup setupExec.localSteps setupExec.localHalted
   let hCounter : cSetup.state.read (prCounterReg n pF pG) = 0 :=
-    prSetupPhase_counter_zero n pF pG inputs y initState rfl cSetup setupExec.localSteps setupExec.localHalted
+    prSetupPhase_counter_zero n pF pG initState cSetup setupExec.localSteps setupExec.localHalted
   let hZero : cSetup.state.read (prZeroReg n pF pG) = 0 :=
-    prSetupPhase_zero_zero n pF pG inputs y initState rfl cSetup setupExec.localSteps setupExec.localHalted
+    prSetupPhase_zero_zero n pF pG initState cSetup setupExec.localSteps setupExec.localHalted
 
   { config := ⟨prBaseCasePC n, cSetup.state⟩
     steps := hSetup_steps_lifted
@@ -323,7 +323,7 @@ structure PrLoopIterationResult (n : ℕ) (pF pG : Program) (inputs : Fin n → 
 
 /-- Execute a single loop iteration. -/
 noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
-    (_hpF_sf : pF.IsStandardForm) (hpG_sf : pG.IsStandardForm)
+    (hpG_sf : pG.IsStandardForm)
     (inputs : Fin n → ℕ) (y : ℕ) (s : State) (k : ℕ) (accBefore : ℕ)
     (hk_le_y : k ≤ y)
     (hs_counter : s.read (prCounterReg n pF pG) = k)
@@ -384,7 +384,7 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
     have hR_after_prologue : ∀ i : Fin n, c_prologue.state.read i = inputs i := by
       intro i
       rw [prLoopPrologue_restores_inputs n pF pG s c_prologue
-        prologueExec.localSteps prologueExec.localHalted i (fun _ => rfl), hs_saved i]
+        prologueExec.localSteps prologueExec.localHalted i, hs_saved i]
 
     have hRn_after_prologue : c_prologue.state.read n = k := by
       rw [prLoopPrologue_sets_Rn n pF pG s c_prologue
@@ -635,10 +635,8 @@ structure PrLoopKIterationsResult (n : ℕ) (pF pG : Program) (inputs : Fin n �
 
 /-- Execute k loop iterations. -/
 noncomputable def pr_loop_k_iterations (n : ℕ) (pF pG : Program)
-    (hpF_sf : pF.IsStandardForm) (hpG_sf : pG.IsStandardForm)
+    (hpG_sf : pG.IsStandardForm)
     (f : (Fin n → ℕ) → Part ℕ) (g : (Fin (n + 2) → ℕ) → Part ℕ)
-    (_hpF_spec : ∀ args, (Halts pF (List.ofFn args) ↔ (f args).Dom) ∧
-      ∀ hH hD, Result pF (List.ofFn args) hH = (f args).get hD)
     (hpG_spec : ∀ args, (Halts pG (List.ofFn args) ↔ (g args).Dom) ∧
       ∀ hH hD, Result pG (List.ofFn args) hH = (g args).get hD)
     (inputs : Fin n → ℕ) (y : ℕ) (s : State) (k : ℕ)
@@ -685,7 +683,7 @@ noncomputable def pr_loop_k_iterations (n : ℕ) (pF pG : Program)
       rw [(hpG_spec (extendInputsForG inputs m ((Pr f g (Fin.snoc inputs m)).get hPr_dom_m))).1]
       exact hg_dom
 
-    let one_iter := pr_loop_iteration n pF pG hpF_sf hpG_sf inputs y s_m m
+    let one_iter := pr_loop_iteration n pF pG hpG_sf inputs y s_m m
       (s_m.read (prAccumulatorReg n pF pG)) hm_le_y hcounter_m hsavedY_m
       rfl hzero_m hsaved_m hpG_halts_m
 
@@ -769,7 +767,7 @@ theorem primitiveRecursionProgram_halts (n : ℕ) (pF pG : Program)
     rw [hResult_eq]
     simp only [Pr_zero_spec]
 
-  let loopResult := pr_loop_k_iterations n pF pG hpF_sf hpG_sf f g hpF_spec hpG_spec
+  let loopResult := pr_loop_k_iterations n pF pG hpG_sf f g hpG_spec
     inputs y baseCase.config.state y (Nat.le_refl y)
     (by rw [baseCase.counter_preserved, setup.counter_eq])
     (by rw [baseCase.savedY_preserved, setup.savedY_eq])
@@ -937,7 +935,7 @@ theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
       let hResult_eq := (hpF_spec inputs).2 hpF_halts hf_dom
       rw [hResult_eq]
       simp only [Pr_zero_spec]
-    let loopResult_k := pr_loop_k_iterations n pF pG hpF_sf hpG_sf f g hpF_spec hpG_spec
+    let loopResult_k := pr_loop_k_iterations n pF pG hpG_sf f g hpG_spec
       inputs y baseCase.config.state k (Nat.le_of_lt hk)
       (by rw [baseCase.counter_preserved, setup.counter_eq])
       (by rw [baseCase.savedY_preserved, setup.savedY_eq])
@@ -990,7 +988,7 @@ theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
     let hR_after_prologue_inputs : ∀ i : Fin n, c_prologue.state.read i = inputs i := by
       intro i
       rw [prLoopPrologue_restores_inputs n pF pG loopResult_k.config.state c_prologue
-        prologueExec.localSteps prologueExec.localHalted i (fun _ => rfl),
+        prologueExec.localSteps prologueExec.localHalted i,
         loopResult_k.savedInputs_eq i]
     let hRn_after_prologue : c_prologue.state.read n = k := by
       rw [prLoopPrologue_sets_Rn n pF pG loopResult_k.config.state c_prologue

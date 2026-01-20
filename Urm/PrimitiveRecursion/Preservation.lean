@@ -170,8 +170,8 @@ theorem prSetupPhase_saves_y (n : ℕ) (pF pG : Program) (inputs : Fin n → ℕ
   rw [heq, htransfer, hs_before_val, hy_val]
 
 /-- After setup phase, counter is 0. -/
-theorem prSetupPhase_counter_zero (n : ℕ) (pF pG : Program) (inputs : Fin n → ℕ) (y : ℕ)
-    (s : State) (_hs : s = State.fromInputs (List.ofFn (Fin.snoc inputs y)))
+theorem prSetupPhase_counter_zero (n : ℕ) (pF pG : Program)
+    (s : State)
     (c' : Config) (hsteps : Steps (prSetupPhase n pF pG) ⟨0, s⟩ c')
     (hhalted : c'.isHalted (prSetupPhase n pF pG)) :
     c'.state.read (prCounterReg n pF pG) = 0 := by
@@ -194,8 +194,8 @@ theorem prSetupPhase_counter_zero (n : ℕ) (pF pG : Program) (inputs : Fin n �
   exact straightLine_zeros_register hsl s (prCounterReg n pF pG) (n + 1) hk hwrite hnowrite
 
 /-- After setup phase, zero register is 0. -/
-theorem prSetupPhase_zero_zero (n : ℕ) (pF pG : Program) (inputs : Fin n → ℕ) (y : ℕ)
-    (s : State) (_hs : s = State.fromInputs (List.ofFn (Fin.snoc inputs y)))
+theorem prSetupPhase_zero_zero (n : ℕ) (pF pG : Program)
+    (s : State)
     (c' : Config) (hsteps : Steps (prSetupPhase n pF pG) ⟨0, s⟩ c')
     (hhalted : c'.isHalted (prSetupPhase n pF pG)) :
     c'.state.read (prZeroReg n pF pG) = 0 := by
@@ -348,8 +348,7 @@ theorem prBaseCasePrologue_clears_above_n (n : ℕ) (pF pG : Program) (s : State
 theorem prLoopPrologue_restores_inputs (n : ℕ) (pF pG : Program)
     (s : State) (c' : Config)
     (hsteps : Steps (prLoopPrologue n pF pG) ⟨0, s⟩ c')
-    (hhalted : c'.isHalted (prLoopPrologue n pF pG)) (i : Fin n)
-    (_hs_saved : ∀ j : Fin n, s.read (prSavedInputsStart n pF pG + j) = (fun j => s.read (prSavedInputsStart n pF pG + j)) j) :
+    (hhalted : c'.isHalted (prLoopPrologue n pF pG)) (i : Fin n) :
     c'.state.read i = s.read (prSavedInputsStart n pF pG + i) := by
   have hsl := prLoopPrologue_isStraightLine n pF pG
   have hk : (primitiveRecursionBase n pF pG + 1) + ↑i < (prLoopPrologue n pF pG).length := by

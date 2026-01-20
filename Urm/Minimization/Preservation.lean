@@ -94,8 +94,8 @@ theorem setupPhase_saves_inputs (n : ℕ) (pF : Program) (inputs : Fin n → ℕ
   rw [heq, htransfer, hs_before_val, hinput_val]
 
 /-- After setup phase, counter is 0. -/
-theorem setupPhase_counter_zero (n : ℕ) (pF : Program) (inputs : Fin n → ℕ)
-    (s : State) (_hs : s = State.fromInputs (List.ofFn inputs))
+theorem setupPhase_counter_zero (n : ℕ) (pF : Program)
+    (s : State)
     (c' : Config) (hsteps : Steps (setupPhase n pF) ⟨0, s⟩ c')
     (hhalted : c'.isHalted (setupPhase n pF)) :
     c'.state.read (counterReg n pF) = 0 := by
@@ -118,8 +118,8 @@ theorem setupPhase_counter_zero (n : ℕ) (pF : Program) (inputs : Fin n → ℕ
   exact straightLine_zeros_register hsl s (counterReg n pF) n hk hwrite hnowrite
 
 /-- After setup phase, zero register is 0. -/
-theorem setupPhase_zeroReg_zero (n : ℕ) (pF : Program) (inputs : Fin n → ℕ)
-    (s : State) (_hs : s = State.fromInputs (List.ofFn inputs))
+theorem setupPhase_zeroReg_zero (n : ℕ) (pF : Program)
+    (s : State)
     (c' : Config) (hsteps : Steps (setupPhase n pF) ⟨0, s⟩ c')
     (hhalted : c'.isHalted (setupPhase n pF)) :
     c'.state.read (zeroReg n pF) = 0 := by

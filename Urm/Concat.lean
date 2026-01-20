@@ -154,7 +154,6 @@ theorem Step.of_concat_left {c c' : Config} (hpc : c.pc < p1.length)
 /-- Stepping in the second part of a concatenated program.
 If we can step in p2 from pc=k, we can step in p1.concat p2 from pc=k+p1.length. -/
 theorem Step.concat_right {c c' : Config}
-    (_hpc : c.pc < p2.length)
     (hstep : Step p2 c c') :
     Step (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ ⟨c'.pc + p1.length, c'.state⟩ := by
   have hinstr_eq : (p1.concat p2).getInstr (c.pc + p1.length) =
@@ -190,7 +189,7 @@ theorem Steps.concat_right {c c' : Config}
   induction hsteps using Relation.ReflTransGen.head_induction_on with
   | refl => exact Relation.ReflTransGen.refl
   | @head a b hstep hrest ih =>
-    have hstep' := Step.concat_right (p1 := p1) (Step.pc_lt_length hstep) hstep
+    have hstep' := Step.concat_right (p1 := p1) hstep
     exact Relation.ReflTransGen.head hstep' ih
 
 /-- Multi-step from within p1 (interior version, no halting required).

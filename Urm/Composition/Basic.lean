@@ -25,7 +25,7 @@ theorem URMComputableSF.comp_general {m n : ℕ} [NeZero m] {f : (Fin m → ℕ)
       fun i => comp_general_halts_imp_gi_dom hF_sf hGs_sf hF_spec hGs_spec inputs hHalts i
     have hSeq_dom : (Part.sequence (fun i => gs i inputs)).Dom := Part.sequence_dom.mpr hGs_dom
     rw [Part.bind_dom]; refine ⟨hSeq_dom, ?_⟩
-    have hf_dom := comp_general_halts_imp_f_dom hF_sf hGs_sf hF_spec hGs_spec inputs hHalts hGs_dom
+    have hf_dom := comp_general_halts_imp_f_dom hGs_sf hF_spec hGs_spec inputs hHalts hGs_dom
     have harg_eq : (Part.sequence (fun i => gs i inputs)).get hSeq_dom =
         (fun i => (gs i inputs).get (hGs_dom i)) := funext fun i => Part.sequence_get hSeq_dom i
     rw [harg_eq]; exact hf_dom

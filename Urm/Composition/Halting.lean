@@ -261,10 +261,10 @@ theorem allGPhases_saves_result {m n : ℕ} [NeZero m] {pF : Program} {pGs : Fin
     sSavePrefixI hSaved_i cGPhase_i hGPhase_i_steps hGPhase_i_halted
   have hSuffix_preserves := allGPhases_suffix_preserves_earlier_results hGs_sf hpGs_max hn_le_base
     (i.val + 1) i.val (by omega) sSavePrefix cSuffix hSuffix_steps hSuffix_halted
-  have hGPhaseChain := Steps.chain_concat hSavePrefixI_steps (by simp) rfl hGPhase_i_steps hGPhase_i_halted
+  have hGPhaseChain := Steps.chain_concat hSavePrefixI_steps rfl hGPhase_i_steps hGPhase_i_halted
   have hsSavePrefix_eq_cGPhase : sSavePrefix = cGPhase_i.state :=
     congrArg Config.state (Steps.halts_unique hSavePrefix_steps (by simp) hGPhaseChain.1 hGPhaseChain.2)
-  have hSuffixChain := Steps.chain_concat hSavePrefix_steps hSavePrefixI_halted rfl hSuffix_steps hSuffix_halted
+  have hSuffixChain := Steps.chain_concat hSavePrefix_steps rfl hSuffix_steps hSuffix_halted
   have hc_eq_cSuffix : c.state = cSuffix.state := by
     rw [hSavePrefix_eq] at hsteps hhalted
     simp only [Steps.halts_unique hsteps hhalted hSuffixChain.1 hSuffixChain.2]

@@ -37,7 +37,7 @@ theorem HaltingExecution.pc_eq_length {p : Program} {inputs : List ℕ}
 /-- Chain two programs: given p1 execution ending at c1, and p2 execution from c1.state,
 build the combined execution in p1.concat p2. -/
 theorem Steps.chain_concat {p1 p2 : Program} {s : State} {c1 c2 : Config}
-    (h1_steps : Steps p1 ⟨0, s⟩ c1) (_h1_halted : c1.isHalted p1) (h1_pc : c1.pc = p1.length)
+    (h1_steps : Steps p1 ⟨0, s⟩ c1) (h1_pc : c1.pc = p1.length)
     (h2_steps : Steps p2 ⟨0, c1.state⟩ c2) (h2_halted : c2.isHalted p2) :
     Steps (p1.concat p2) ⟨0, s⟩ ⟨c2.pc + p1.length, c2.state⟩ ∧
     (⟨c2.pc + p1.length, c2.state⟩ : Config).isHalted (p1.concat p2) := by
@@ -54,7 +54,7 @@ theorem Steps.chain_concat_sf {p1 p2 : Program} {s : State} {c1 c2 : Config}
     (h2_steps : Steps p2 ⟨0, c1.state⟩ c2) (h2_halted : c2.isHalted p2) :
     Steps (p1.concat p2) ⟨0, s⟩ ⟨c2.pc + p1.length, c2.state⟩ ∧
     (⟨c2.pc + p1.length, c2.state⟩ : Config).isHalted (p1.concat p2) :=
-  chain_concat h1_steps h1_halted (h1_sf.pc_eq_length_of_halted h1_steps (Nat.zero_le _) h1_halted) h2_steps h2_halted
+  chain_concat h1_steps (h1_sf.pc_eq_length_of_halted h1_steps (Nat.zero_le _) h1_halted) h2_steps h2_halted
 
 /-! ## Agreeing State Execution -/
 

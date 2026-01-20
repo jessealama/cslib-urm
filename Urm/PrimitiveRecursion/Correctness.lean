@@ -46,7 +46,7 @@ theorem primitiveRecursionProgram_result (n : ℕ) (pF pG : Program)
     let hResult_eq := (hpF_spec inputs).2 hpF_halts hf_dom
     rw [hResult_eq]
     simp only [Pr_zero_spec]
-  let loopResult := pr_loop_k_iterations n pF pG hpF_sf hpG_sf f g hpF_spec hpG_spec
+  let loopResult := pr_loop_k_iterations n pF pG hpG_sf f g hpG_spec
     inputs y baseCase.config.state y (Nat.le_refl y)
     (by rw [baseCase.counter_preserved, setup.counter_eq])
     (by rw [baseCase.savedY_preserved, setup.savedY_eq])
