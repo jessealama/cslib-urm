@@ -27,10 +27,12 @@ namespace Urm
 
 open Program
 
+variable (n : ℕ) (pF pG : Program)
+
 /-! ## Embedding lemmas -/
 
 /-- Setup phase is embedded at the start of the program. -/
-theorem prSetupPhase_embed (n : ℕ) (pF pG : Program) :
+theorem prSetupPhase_embed :
     ∀ i, i < (prSetupPhase n pF pG).length →
     (primitiveRecursionProgram n pF pG).getInstr i = (prSetupPhase n pF pG).getInstr i := by
   intro i hi
@@ -39,7 +41,7 @@ theorem prSetupPhase_embed (n : ℕ) (pF pG : Program) :
   split_ifs <;> first | rfl | omega
 
 /-- Base case prologue is embedded after setup phase. -/
-theorem prBaseCasePrologue_embed (n : ℕ) (pF pG : Program) :
+theorem prBaseCasePrologue_embed :
     ∀ i, i < (prBaseCasePrologue n pF pG).length →
     (primitiveRecursionProgram n pF pG).getInstr (prBaseCasePC n + i) =
       (prBaseCasePrologue n pF pG).getInstr i := by
@@ -50,7 +52,7 @@ theorem prBaseCasePrologue_embed (n : ℕ) (pF pG : Program) :
   split_ifs <;> first | omega | (congr 1; omega)
 
 /-- Shifted pF is embedded in the base case phase. -/
-theorem prPF_shiftJumps_embed (n : ℕ) (pF pG : Program) :
+theorem prPF_shiftJumps_embed :
     ∀ i, i < pF.length →
     (primitiveRecursionProgram n pF pG).getInstr (prPFOffset n pF pG + i) =
       (pF.shiftJumps (prPFOffset n pF pG)).getInstr i := by
@@ -63,13 +65,13 @@ theorem prPF_shiftJumps_embed (n : ℕ) (pF pG : Program) :
   congr 2; omega
 
 /-- Loop check instruction embedding. -/
-theorem prLoopCheck_embed (n : ℕ) (pF pG : Program) :
+theorem prLoopCheck_embed :
     (primitiveRecursionProgram n pF pG).getInstr (prLoopCheckPC n pF pG) =
       some (Instr.J (prCounterReg n pF pG) (prSavedYReg n pF pG) (prOutputPC n pF pG)) :=
   instr_at_loopCheck n pF pG
 
 /-- Loop prologue is embedded at the start of loop body. -/
-theorem prLoopPrologue_embed (n : ℕ) (pF pG : Program) :
+theorem prLoopPrologue_embed :
     ∀ i, i < (prLoopPrologue n pF pG).length →
     (primitiveRecursionProgram n pF pG).getInstr (prLoopBodyPC n pF pG + i) =
       (prLoopPrologue n pF pG).getInstr i := by
@@ -80,7 +82,7 @@ theorem prLoopPrologue_embed (n : ℕ) (pF pG : Program) :
   split_ifs <;> first | omega | (congr 1; omega)
 
 /-- Shifted pG is embedded in the loop body. -/
-theorem prPG_shiftJumps_embed (n : ℕ) (pF pG : Program) :
+theorem prPG_shiftJumps_embed :
     ∀ i, i < pG.length →
     (primitiveRecursionProgram n pF pG).getInstr (prPGOffset n pF pG + i) =
       (pG.shiftJumps (prPGOffset n pF pG)).getInstr i := by
@@ -93,7 +95,7 @@ theorem prPG_shiftJumps_embed (n : ℕ) (pF pG : Program) :
   congr 2; omega
 
 /-- Output phase is at outputPC. -/
-theorem prOutputPhase_embed (n : ℕ) (pF pG : Program) :
+theorem prOutputPhase_embed :
     (primitiveRecursionProgram n pF pG).getInstr (prOutputPC n pF pG) =
       some (Instr.T (prAccumulatorReg n pF pG) 0) :=
   instr_at_output n pF pG
@@ -101,7 +103,7 @@ theorem prOutputPhase_embed (n : ℕ) (pF pG : Program) :
 /-! ## Setup Phase Execution -/
 
 /-- Result of executing the setup phase. -/
-structure PrSetupPhaseResult (n : ℕ) (pF pG : Program) (inputs : Fin n → ℕ) (y : ℕ) where
+structure PrSetupPhaseResult (inputs : Fin n → ℕ) (y : ℕ) where
   /-- The configuration after setup phase execution -/
   config : Config
   steps : Steps (primitiveRecursionProgram n pF pG) (Config.init (List.ofFn (Fin.snoc inputs y))) config
@@ -112,7 +114,7 @@ structure PrSetupPhaseResult (n : ℕ) (pF pG : Program) (inputs : Fin n → ℕ
   zero_eq : config.state.read (prZeroReg n pF pG) = 0
 
 /-- Execute the setup phase. -/
-noncomputable def prExecuteSetupPhase (n : ℕ) (pF pG : Program) (inputs : Fin n → ℕ) (y : ℕ) :
+noncomputable def prExecuteSetupPhase (inputs : Fin n → ℕ) (y : ℕ) :
     PrSetupPhaseResult n pF pG inputs y :=
   let hsl_setup := prSetupPhase_isStraightLine n pF pG
   let initState := State.fromInputs (List.ofFn (Fin.snoc inputs y))
@@ -149,7 +151,7 @@ noncomputable def prExecuteSetupPhase (n : ℕ) (pF pG : Program) (inputs : Fin 
 /-! ## Base Case Phase Execution -/
 
 /-- Result of executing the base case phase. -/
-structure PrBaseCasePhaseResult (n : ℕ) (pF pG : Program) (inputs : Fin n → ℕ) (y : ℕ)
+structure PrBaseCasePhaseResult (inputs : Fin n → ℕ) (y : ℕ)
     (s : State) (hpF_halts : Halts pF (List.ofFn inputs)) where
   /-- The configuration after base case phase execution -/
   config : Config
@@ -163,7 +165,7 @@ structure PrBaseCasePhaseResult (n : ℕ) (pF pG : Program) (inputs : Fin n → 
   zero_preserved : config.state.read (prZeroReg n pF pG) = s.read (prZeroReg n pF pG)
 
 /-- Execute the base case phase. -/
-noncomputable def prExecuteBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : pF.IsStandardForm)
+noncomputable def prExecuteBaseCasePhase (hpF_sf : pF.IsStandardForm)
     (inputs : Fin n → ℕ) (y : ℕ) (s : State)
     (hs_saved : ∀ i : Fin n, s.read (prSavedInputsStart n pF pG + i) = inputs i)
     (hpF_halts : Halts pF (List.ofFn inputs)) :
@@ -298,7 +300,7 @@ noncomputable def prExecuteBaseCasePhase (n : ℕ) (pF pG : Program) (hpF_sf : p
 
 /-- Result of a single loop iteration from loopCheckPC.
     Tracks whether we exited (counter = savedY) or continued (counter < savedY). -/
-structure PrLoopIterationResult (n : ℕ) (pF pG : Program) (inputs : Fin n → ℕ) (y : ℕ)
+structure PrLoopIterationResult (inputs : Fin n → ℕ) (y : ℕ)
     (s : State) (k : ℕ) (accBefore : ℕ) (hpG_halts : Halts pG (List.ofFn (extendInputsForG inputs k accBefore))) where
   /-- The configuration after loop iteration execution -/
   config : Config
@@ -322,7 +324,7 @@ structure PrLoopIterationResult (n : ℕ) (pF pG : Program) (inputs : Fin n → 
   zero_preserved : config.state.read (prZeroReg n pF pG) = s.read (prZeroReg n pF pG)
 
 /-- Execute a single loop iteration. -/
-noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
+noncomputable def pr_loop_iteration
     (hpG_sf : pG.IsStandardForm)
     (inputs : Fin n → ℕ) (y : ℕ) (s : State) (k : ℕ) (accBefore : ℕ)
     (hk_le_y : k ≤ y)
@@ -619,7 +621,7 @@ noncomputable def pr_loop_iteration (n : ℕ) (pF pG : Program)
 /-! ## K Iterations -/
 
 /-- Result of k loop iterations. -/
-structure PrLoopKIterationsResult (n : ℕ) (pF pG : Program) (inputs : Fin n → ℕ) (y : ℕ)
+structure PrLoopKIterationsResult (inputs : Fin n → ℕ) (y : ℕ)
     (s : State) (k : ℕ)
     (f : (Fin n → ℕ) → Part ℕ) (g : (Fin (n + 2) → ℕ) → Part ℕ) where
   /-- The configuration after k loop iterations -/
@@ -634,7 +636,7 @@ structure PrLoopKIterationsResult (n : ℕ) (pF pG : Program) (inputs : Fin n �
     config.state.read (prAccumulatorReg n pF pG) = (Pr f g (Fin.snoc inputs k)).get hPr_dom_k
 
 /-- Execute k loop iterations. -/
-noncomputable def pr_loop_k_iterations (n : ℕ) (pF pG : Program)
+noncomputable def pr_loop_k_iterations
     (hpG_sf : pG.IsStandardForm)
     (f : (Fin n → ℕ) → Part ℕ) (g : (Fin (n + 2) → ℕ) → Part ℕ)
     (hpG_spec : ∀ args, (Halts pG (List.ofFn args) ↔ (g args).Dom) ∧
@@ -725,7 +727,7 @@ noncomputable def pr_loop_k_iterations (n : ℕ) (pF pG : Program)
 /-! ## Output Phase -/
 
 /-- Output phase halts and copies accumulator to R[0]. -/
-theorem prOutputPhase_halts (n : ℕ) (pF pG : Program) (s : State) :
+theorem prOutputPhase_halts (s : State) :
     ∃ c, Steps (primitiveRecursionProgram n pF pG) ⟨prOutputPC n pF pG, s⟩ c ∧
          c.isHalted (primitiveRecursionProgram n pF pG) ∧
          c.state.read 0 = s.read (prAccumulatorReg n pF pG) := by
@@ -742,7 +744,7 @@ theorem prOutputPhase_halts (n : ℕ) (pF pG : Program) (s : State) :
 /-! ## Main Halting Theorems -/
 
 /-- If Pr is defined, the primitive recursion program halts. -/
-theorem primitiveRecursionProgram_halts (n : ℕ) (pF pG : Program)
+theorem primitiveRecursionProgram_halts
     (hpF_sf : pF.IsStandardForm) (hpG_sf : pG.IsStandardForm)
     (f : (Fin n → ℕ) → Part ℕ) (g : (Fin (n + 2) → ℕ) → Part ℕ)
     (hpF_spec : ∀ args, (Halts pF (List.ofFn args) ↔ (f args).Dom) ∧
@@ -808,7 +810,7 @@ theorem primitiveRecursionProgram_halts (n : ℕ) (pF pG : Program)
 /-- Helper: Extract pF halting from main program execution passing through pF region.
     If we start at prPFOffset + k and reach a config with pc ≥ prPFOffset + pF.length,
     then pF halts from ⟨k, state⟩. Uses strong induction on step count. -/
-theorem pF_halts_of_pr_exits_pF_region (n : ℕ) (pF pG : Program)
+theorem pF_halts_of_pr_exits_pF_region
     (hpF_sf : pF.IsStandardForm) (k : ℕ) (state : State) (c : Config)
     (hk_le : k ≤ pF.length)
     (hsteps : Steps (primitiveRecursionProgram n pF pG) ⟨prPFOffset n pF pG + k, state⟩ c)
@@ -817,7 +819,7 @@ theorem pF_halts_of_pr_exits_pF_region (n : ℕ) (pF pG : Program)
   halts_of_exits_embedded_region (prPF_shiftJumps_embed n pF pG) hpF_sf k state c hk_le hsteps hpc_ge
 
 /-- Helper: Extract pG halting from main program execution passing through pG region. -/
-theorem pG_halts_of_pr_exits_pG_region (n : ℕ) (pF pG : Program)
+theorem pG_halts_of_pr_exits_pG_region
     (hpG_sf : pG.IsStandardForm) (k : ℕ) (state : State) (c : Config)
     (hk_le : k ≤ pG.length)
     (hsteps : Steps (primitiveRecursionProgram n pF pG) ⟨prPGOffset n pF pG + k, state⟩ c)
@@ -826,7 +828,7 @@ theorem pG_halts_of_pr_exits_pG_region (n : ℕ) (pF pG : Program)
   halts_of_exits_embedded_region (prPG_shiftJumps_embed n pF pG) hpG_sf k state c hk_le hsteps hpc_ge
 
 /-- If the primitive recursion program halts, Pr is defined. -/
-theorem primitiveRecursionProgram_halts_imp_dom (n : ℕ) (pF pG : Program)
+theorem primitiveRecursionProgram_halts_imp_dom
     (hpF_sf : pF.IsStandardForm) (hpG_sf : pG.IsStandardForm)
     (f : (Fin n → ℕ) → Part ℕ) (g : (Fin (n + 2) → ℕ) → Part ℕ)
     (hpF_spec : ∀ args, (Halts pF (List.ofFn args) ↔ (f args).Dom) ∧
