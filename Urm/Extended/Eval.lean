@@ -198,30 +198,43 @@ theorem evalProgram_singleton (i : ExtendedInstr) (s : State) :
     evalProgram [i] s = evalInstr i s := by
   simp only [evalProgram, List.foldl_cons, List.foldl_nil, Part.bind_some]
 
-/-- evalProgram of cons: evaluate head, then evaluate tail on result.
-The proof uses the fact that foldl with bind distributes properly. -/
+/-- Helper: foldl with bind distributes the initial Part through the fold. -/
+private theorem foldl_bind_distrib (init : Part State) (p : ExtendedProgram) :
+    p.foldl (fun acc i => acc.bind (evalInstr i)) init =
+    init.bind (fun s => p.foldl (fun acc i => acc.bind (evalInstr i)) (Part.some s)) := by
+  induction p generalizing init with
+  | nil =>
+    simp only [List.foldl_nil]
+    -- Need: init = init.bind (fun s => Part.some s)
+    exact Part.bind_some_right init |>.symm
+  | cons h t ih =>
+    simp only [List.foldl_cons]
+    -- LHS: t.foldl ... (init.bind (evalInstr h))
+    -- Apply ih to get: (init.bind (evalInstr h)).bind (fun s1 => t.foldl ... (Part.some s1))
+    rw [ih (init.bind (evalInstr h))]
+    -- RHS: init.bind (fun s0 => t.foldl ... ((Part.some s0).bind (evalInstr h)))
+    --     = init.bind (fun s0 => t.foldl ... (evalInstr h s0))
+    simp only [Part.bind_some]
+    -- Now LHS and RHS match up to associativity of bind
+    -- LHS: (init.bind (evalInstr h)).bind (fun s1 => t.foldl ... (Part.some s1))
+    -- RHS: init.bind (fun s0 => (evalInstr h s0).bind (fun s1 => t.foldl ... (Part.some s1)))
+    -- Use bind associativity
+    conv_lhs => rw [Part.bind_assoc]
+    -- Now both sides are: init.bind (fun s0 => ...)
+    -- LHS: init.bind (fun x => (evalInstr h x).bind (fun s => t.foldl ... (Part.some s)))
+    -- RHS: init.bind (fun s => t.foldl ... (evalInstr h s))
+    -- These are equal because ih (evalInstr h s0) says:
+    --   t.foldl ... (evalInstr h s0) = (evalInstr h s0).bind (fun s => t.foldl ... (Part.some s))
+    congr 1
+    funext s0
+    exact (ih (evalInstr h s0)).symm
+
+/-- evalProgram of cons: evaluate head, then evaluate tail on result. -/
 theorem evalProgram_cons (i : ExtendedInstr) (is : ExtendedProgram) (s : State) :
     evalProgram (i :: is) s = (evalInstr i s).bind (evalProgram is) := by
   simp only [evalProgram, List.foldl_cons, Part.bind_some]
-  induction is generalizing s with
-  | nil =>
-    simp only [List.foldl_nil]
-    -- evalInstr i s = (evalInstr i s).bind (fun x => Part.some x)
-    ext x
-    constructor
-    · intro hx
-      refine Part.mem_bind_iff.mpr ⟨x, hx, ?_⟩
-      exact Part.mem_some _
-    · intro hx
-      have ⟨s', hs', hx'⟩ := Part.mem_bind_iff.mp hx
-      -- hx' : x ∈ evalProgram [] s' = Part.some s'
-      have heq : x = s' := Part.mem_unique hx' (Part.mem_some _)
-      exact heq ▸ hs'
-  | cons h t ih =>
-    simp only [List.foldl_cons]
-    -- This case requires showing (a.bind f).bind g = a.bind (fun x => (f x).bind g)
-    -- which is Part.bind_assoc, but we need to manipulate the foldl
-    sorry
+  rw [foldl_bind_distrib]
+  rfl
 
 /-- If evalInstr returns some, it's defined. -/
 theorem evalInstr_dom_of_some {i : ExtendedInstr} {s s' : State}
