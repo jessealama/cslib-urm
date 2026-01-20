@@ -179,7 +179,6 @@ theorem allGPhases_suffix_preserves_earlier_results {m n base : ℕ} {pGs : Fin 
 termination_by m - start
 decreasing_by simp_wf; omega
 
-set_option maxHeartbeats 400000 in
 theorem allGPhases_saves_result {m n : ℕ} [NeZero m] {pF : Program} {pGs : Fin m → Program}
     {gs : Fin m → (Fin n → ℕ) → Part ℕ} (hGs_sf : ∀ i, (pGs i).IsStandardForm)
     (hGs_spec : ∀ i, ∀ inputs : Fin n → ℕ, (Halts (pGs i) (List.ofFn inputs) ↔ (gs i inputs).Dom) ∧

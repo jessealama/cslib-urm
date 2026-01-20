@@ -18,7 +18,6 @@ open Program
 def compFunction (m n : ℕ) (f : (Fin m → ℕ) → Part ℕ) (gs : Fin m → (Fin n → ℕ) → Part ℕ)
     (x : Fin n → ℕ) : Part ℕ := (Part.sequence (fun i => gs i x)).bind f
 
-set_option maxHeartbeats 400000 in
 /-- If the composition halts, then each gᵢ is defined on the inputs. -/
 theorem comp_general_halts_imp_gi_dom
     {m n : ℕ} [NeZero m] {pF : Program} {pGs : Fin m → Program}
@@ -184,7 +183,6 @@ theorem comp_general_halts_imp_f_dom
           clearRegisters_zeros' base _ _ hr_le_base]
   exact (hF_spec _).1.mp (Halts.of_agreeing_state hF_steps hF_halted hagreeF)
 
-set_option maxHeartbeats 800000 in
 /-- If the composed function is defined, then the program halts. -/
 theorem comp_general_dom_imp_halts
     {m n : ℕ} [NeZero m] {pF : Program} {pGs : Fin m → Program}

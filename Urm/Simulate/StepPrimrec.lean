@@ -357,7 +357,7 @@ theorem updateNthEncoded_primrec₃ : Primrec fun p : ℕ × ℕ × ℕ =>
   intro p
   exact (updateNthEncoded_eq_rebuild p.1 p.2.1 p.2.2).symm
 
-set_option maxHeartbeats 2000000
+set_option maxHeartbeats 2000000 in
 /-- For fixed progCode and bound, the step function is primitive recursive. -/
 theorem encodedStep_primrec_fixed (progCode bound : ℕ) :
     Nat.Primrec (fun configCode => encodedStep progCode bound configCode) := by
