@@ -216,9 +216,20 @@ def ExtendedInstr.WhileWellFormed : ExtendedInstr → Prop
   | While _ body => body.IsStandardForm
   | _ => True
 
-/-- An extended instruction is well-formed. -/
+/-- A J instruction is well-formed relative to program length if target is bounded.
+    q ≤ progLen means J can jump to any instruction index or to halt (index = progLen). -/
+def ExtendedInstr.JWellFormedAt (progLen : ℕ) : ExtendedInstr → Prop
+  | J _ _ q => q ≤ progLen
+  | _ => True
+
+/-- An extended instruction is well-formed (without program context).
+    Note: J well-formedness requires program context and is checked separately. -/
 def ExtendedInstr.WellFormed (i : ExtendedInstr) : Prop :=
   i.BlockWellFormed ∧ i.WhileWellFormed
+
+/-- All J targets in program are bounded by program length. -/
+def ExtendedProgram.JWellFormed (p : ExtendedProgram) : Prop :=
+  ∀ i ∈ p, i.JWellFormedAt p.length
 
 /-- An extended program has well-formed instructions if all its instructions are well-formed. -/
 def ExtendedProgram.InstrWellFormed (p : ExtendedProgram) : Prop :=
@@ -319,11 +330,13 @@ def ExtendedProgram.WorkspaceSafe : ExtendedProgram → Prop
   | ExtendedInstr.T _ n :: rest => ¬isWorkspaceOf n rest ∧ WorkspaceSafe rest
   | _ :: rest => WorkspaceSafe rest
 
-/-- An extended program is well-formed if all its instructions are well-formed,
-    workspace-safe (S/T don't write to subsequent Block workspaces), and
-    Blocks preserve subsequent Block workspaces. -/
+/-- An extended program is well-formed if:
+    1. All instructions are well-formed (Block/While bodies are standard form)
+    2. All J targets are bounded (≤ program length)
+    3. Workspace-safe (S/T don't write to subsequent Block workspaces)
+    4. Blocks preserve subsequent Block workspaces -/
 def ExtendedProgram.WellFormed (p : ExtendedProgram) : Prop :=
-  p.InstrWellFormed ∧ p.WorkspaceSafe ∧ p.BlocksPreserveWorkspaces
+  p.InstrWellFormed ∧ p.JWellFormed ∧ p.WorkspaceSafe ∧ p.BlocksPreserveWorkspaces
 
 /-! ## Workspace Safety Helper Lemmas -/
 
@@ -396,10 +409,20 @@ theorem BlocksPreserveWorkspaces_cons_rest {i : ExtendedInstr} {rest : ExtendedP
   | While _ _ => exact h.2
   | Z _ | S _ | T _ _ | J _ _ _ => exact h
 
+/-- Extract the JWellFormed component from WellFormed. -/
+theorem WellFormed_JWellFormed {p : ExtendedProgram}
+    (h : ExtendedProgram.WellFormed p) : ExtendedProgram.JWellFormed p :=
+  h.2.1
+
+/-- Extract the WorkspaceSafe component from WellFormed. -/
+theorem WellFormed_WorkspaceSafe {p : ExtendedProgram}
+    (h : ExtendedProgram.WellFormed p) : ExtendedProgram.WorkspaceSafe p :=
+  h.2.2.1
+
 /-- Extract the BlocksPreserveWorkspaces component from WellFormed. -/
 theorem WellFormed_BlocksPreserveWorkspaces {p : ExtendedProgram}
     (h : ExtendedProgram.WellFormed p) : ExtendedProgram.BlocksPreserveWorkspaces p :=
-  h.2.2
+  h.2.2.2
 
 end Extended
 
