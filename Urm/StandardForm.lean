@@ -93,6 +93,21 @@ theorem Instr.hasBoundedJump_shiftJumps {instr : Instr} {len offset : ℕ}
   | Z _ | S _ | T _ _ => simp [shiftJumps, hasBoundedJump]
   | J _ _ q => simp only [shiftJumps, hasBoundedJump, decide_eq_true_eq] at h ⊢; omega
 
+/-- If p is standard form, then p.shiftJumps offset has bounded jumps for any bound ≥ offset + p.length.
+This is the generic theorem for proving shifted subprograms have bounded jumps. -/
+theorem Program.IsStandardForm.shiftJumps_hasBoundedJumps {p : Program} (hsf : p.IsStandardForm)
+    (offset bound : ℕ) (hbound : offset + p.length ≤ bound) :
+    ∀ instr ∈ p.shiftJumps offset, instr.hasBoundedJump bound = true := by
+  intro instr hinstr
+  simp only [Program.shiftJumps, List.mem_map] at hinstr
+  obtain ⟨instr', hinstr'_mem, hinstr'_eq⟩ := hinstr
+  subst hinstr'_eq
+  have hbounded : instr'.hasBoundedJump p.length = true := by
+    unfold IsStandardForm isStandardForm at hsf
+    exact List.all_eq_true.mp hsf instr' hinstr'_mem
+  have hshifted := Instr.hasBoundedJump_shiftJumps (len := p.length) (offset := offset) hbounded
+  exact Instr.hasBoundedJump_mono hshifted hbound
+
 /-- Straight-line programs are in standard form. -/
 theorem straightLine_isStandardForm {p : Program} (hsl : p.isStraightLine = true) :
     p.IsStandardForm := by

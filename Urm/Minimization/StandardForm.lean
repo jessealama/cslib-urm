@@ -75,18 +75,8 @@ theorem loopEpilogue_hasBoundedJumps (n : ℕ) (pF : Program) :
 /-- Helper: if pF is standard form, then pF shifted has bounded jumps for the embedded position. -/
 theorem shiftedPF_hasBoundedJumps (n : ℕ) (pF : Program) (hF : pF.IsStandardForm) :
     ∀ instr ∈ pF.shiftJumps (pFOffset n pF),
-      instr.hasBoundedJump (outputPC n pF + 1) = true := by
-  intro instr hinstr
-  simp only [Program.shiftJumps, List.mem_map] at hinstr
-  obtain ⟨instr', hinstr'_mem, hinstr'_eq⟩ := hinstr
-  subst hinstr'_eq
-  have hbound : instr'.hasBoundedJump pF.length = true := by
-    unfold Program.IsStandardForm Program.isStandardForm at hF
-    exact List.all_eq_true.mp hF instr' hinstr'_mem
-  have hshifted := Instr.hasBoundedJump_shiftJumps (len := pF.length) (offset := pFOffset n pF) hbound
-  apply Instr.hasBoundedJump_mono hshifted
-  simp only [outputPC]
-  omega
+      instr.hasBoundedJump (outputPC n pF + 1) = true :=
+  hF.shiftJumps_hasBoundedJumps (pFOffset n pF) (outputPC n pF + 1) (by simp only [outputPC]; omega)
 
 /-- The minimization program is in standard form when pF is. -/
 theorem minimizeProgram_isStandardForm (n : ℕ) (pF : Program) (hF : pF.IsStandardForm) :
