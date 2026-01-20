@@ -26,10 +26,13 @@ namespace Urm
 
 open Program
 
+section
+variable (n : ℕ) (pF : Program)
+
 /-! ## Minimization-Specific Embedding Lemmas -/
 
 /-- loopPrologue is embedded in minimizeProgram at offset loopStartPC n. -/
-theorem loopPrologue_embed (n : ℕ) (pF : Program) :
+theorem loopPrologue_embed :
     ∀ i, i < (loopPrologue n pF).length →
     (minimizeProgram n pF).getInstr (loopStartPC n + i) = (loopPrologue n pF).getInstr i := by
   intro i hi
@@ -39,7 +42,7 @@ theorem loopPrologue_embed (n : ℕ) (pF : Program) :
   split_ifs <;> first | omega | (congr 1; omega)
 
 /-- pF.shiftJumps is embedded in minimizeProgram at offset pFOffset n pF. -/
-theorem pF_shiftJumps_embed (n : ℕ) (pF : Program) :
+theorem pF_shiftJumps_embed :
     ∀ i, i < pF.length →
     (minimizeProgram n pF).getInstr (pFOffset n pF + i) = (pF.shiftJumps (pFOffset n pF)).getInstr i := by
   intro i hi
@@ -53,7 +56,7 @@ theorem pF_shiftJumps_embed (n : ℕ) (pF : Program) :
 
 /-- One complete loop iteration: from loopStart with counter = k,
     execute loop body once, either exit (if f returns 0) or return to loopStart with counter = k+1. -/
-structure LoopIterationResult (n : ℕ) (pF : Program) (inputs : Fin n → ℕ) (s : State) (k : ℕ) where
+structure LoopIterationResult (inputs : Fin n → ℕ) (s : State) (k : ℕ) where
   /-- Final configuration after one iteration -/
   config : Config
   /-- Steps taken during this iteration -/
@@ -75,7 +78,7 @@ structure LoopIterationResult (n : ℕ) (pF : Program) (inputs : Fin n → ℕ) 
   pF_result_eq : pF_result = Result pF (List.ofFn (extendInputs inputs k)) hf_halts
 
 /-- Execute one loop iteration when starting at loopStart. -/
-noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandardForm)
+noncomputable def loop_iteration (hpF_sf : pF.IsStandardForm)
     (inputs : Fin n → ℕ) (s : State) (k : ℕ)
     (hs_counter : s.read (counterReg n pF) = k)
     (hs_zero : s.read (zeroReg n pF) = 0)
@@ -261,7 +264,7 @@ noncomputable def loop_iteration (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandar
 
 /-- The pF_result from loop_iteration equals the Result of running pF.
     This connects the internal construction to the abstract Result function. -/
-theorem loop_iteration_pF_result_eq_Result (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandardForm)
+theorem loop_iteration_pF_result_eq_Result (hpF_sf : pF.IsStandardForm)
     (inputs : Fin n → ℕ) (s : State) (k : ℕ)
     (hs_counter : s.read (counterReg n pF) = k)
     (hs_zero : s.read (zeroReg n pF) = 0)
@@ -275,7 +278,7 @@ theorem loop_iteration_pF_result_eq_Result (n : ℕ) (pF : Program) (hpF_sf : pF
 
 /-- When loop_iteration returns with continue (non-zero result), zeroReg is preserved.
     This follows from the zero_preserved field of LoopIterationResult. -/
-theorem loop_iteration_preserves_zeroReg (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandardForm)
+theorem loop_iteration_preserves_zeroReg (hpF_sf : pF.IsStandardForm)
     (inputs : Fin n → ℕ) (s : State) (k : ℕ)
     (hs_counter : s.read (counterReg n pF) = k)
     (hs_zero : s.read (zeroReg n pF) = 0)
@@ -288,7 +291,7 @@ theorem loop_iteration_preserves_zeroReg (n : ℕ) (pF : Program) (hpF_sf : pF.I
 
 /-- When loop_iteration returns with continue (non-zero result), savedInputs are preserved.
     This follows from the saved_preserved field of LoopIterationResult. -/
-theorem loop_iteration_preserves_savedInputs (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandardForm)
+theorem loop_iteration_preserves_savedInputs (hpF_sf : pF.IsStandardForm)
     (inputs : Fin n → ℕ) (s : State) (k : ℕ)
     (hs_counter : s.read (counterReg n pF) = k)
     (hs_zero : s.read (zeroReg n pF) = 0)
@@ -303,7 +306,7 @@ theorem loop_iteration_preserves_savedInputs (n : ℕ) (pF : Program) (hpF_sf : 
 /-! ## Main Halting Theorem -/
 
 /-- Result of executing k loop iterations: config at loopStart with counter = k and invariants preserved -/
-structure LoopKIterationsResult (n : ℕ) (pF : Program) (inputs : Fin n → ℕ) (s : State) (k : ℕ) where
+structure LoopKIterationsResult (inputs : Fin n → ℕ) (s : State) (k : ℕ) where
   /-- Final configuration -/
   config : Config
   /-- Steps from initial state to final config -/
@@ -318,7 +321,7 @@ structure LoopKIterationsResult (n : ℕ) (pF : Program) (inputs : Fin n → ℕ
   saved_preserved : ∀ i : Fin n, config.state.read (savedInputsStart n pF + i) = inputs i
 
 /-- Strong version of loop_k_iterations that bundles all invariants. -/
-noncomputable def loop_k_iterations_strong (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandardForm)
+noncomputable def loop_k_iterations_strong (hpF_sf : pF.IsStandardForm)
     (inputs : Fin n → ℕ) (s : State) (k : ℕ)
     (hs_counter : s.read (counterReg n pF) = 0)
     (hs_zero : s.read (zeroReg n pF) = 0)
@@ -371,7 +374,7 @@ noncomputable def loop_k_iterations_strong (n : ℕ) (pF : Program) (hpF_sf : pF
 
 /-- Result of loop execution that reaches outputPC (used for converse halting proof).
     Generalized to start from any counter value. -/
-structure LoopExitResultGen (n : ℕ) (pF : Program) (inputs : Fin n → ℕ) (s : State) (startCounter : ℕ) where
+structure LoopExitResultGen (inputs : Fin n → ℕ) (s : State) (startCounter : ℕ) where
   /-- Number of complete iterations before exit (counter value at exit) -/
   k : ℕ
   /-- k ≥ startCounter since we're continuing from startCounter -/
@@ -394,7 +397,7 @@ structure LoopExitResultGen (n : ℕ) (pF : Program) (inputs : Fin n → ℕ) (s
 
 /-- Helper: if minimizeProgram halts from loopStartPC, pF must halt on current counter value.
     This is because execution must pass through pF to reach the epilogue. -/
-theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandardForm)
+theorem pF_halts_from_minimizeProgram_halts (hpF_sf : pF.IsStandardForm)
     (inputs : Fin n → ℕ) (s : State) (counter : ℕ)
     (hs_counter : s.read (counterReg n pF) = counter)
     (hs_saved : ∀ i : Fin n, s.read (savedInputsStart n pF + i) = inputs i)
@@ -476,7 +479,7 @@ theorem pF_halts_from_minimizeProgram_halts (n : ℕ) (pF : Program) (hpF_sf : p
 
 /-- Auxiliary function for loop_halts_exit_gen that takes step count explicitly.
     This allows for clean strong induction on step count. -/
-noncomputable def loop_halts_exit_gen_aux (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandardForm)
+noncomputable def loop_halts_exit_gen_aux (hpF_sf : pF.IsStandardForm)
     (inputs : Fin n → ℕ) (numSteps : ℕ) (s : State) (startCounter : ℕ) (cFinal : Config)
     (hs_counter : s.read (counterReg n pF) = startCounter)
     (hs_zero : s.read (zeroReg n pF) = 0)
@@ -559,7 +562,7 @@ noncomputable def loop_halts_exit_gen_aux (n : ℕ) (pF : Program) (hpF_sf : pF.
       have hiter_config_eq : iter.config = ⟨loopStartPC n, iter.config.state⟩ := by
         ext; exact hpc_loop; rfl
 
-      let recResult := loop_halts_exit_gen_aux n pF hpF_sf inputs m iter.config.state (startCounter + 1) cFinal
+      let recResult := loop_halts_exit_gen_aux hpF_sf inputs m iter.config.state (startCounter + 1) cFinal
           hcounter_incr hzero_new hsaved_new hstepsN_m hhalted
       have hcombined_steps : Steps (minimizeProgram n pF) ⟨loopStartPC n, s⟩ recResult.config := by
         have h1 : Steps (minimizeProgram n pF) ⟨loopStartPC n, s⟩ iter.config := iter.steps
@@ -590,7 +593,7 @@ decreasing_by all_goals exact hm_spec.1
 
 /-- If loop eventually reaches outputPC (halts from loopStartPC), extract the exit result.
     Generalized version that works for any starting counter value. -/
-noncomputable def loop_halts_exit_gen (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandardForm)
+noncomputable def loop_halts_exit_gen (hpF_sf : pF.IsStandardForm)
     (inputs : Fin n → ℕ) (s : State) (startCounter : ℕ)
     (hs_counter : s.read (counterReg n pF) = startCounter)
     (hs_zero : s.read (zeroReg n pF) = 0)
@@ -608,7 +611,7 @@ noncomputable def loop_halts_exit_gen (n : ℕ) (pF : Program) (hpF_sf : pF.IsSt
       hs_counter hs_zero hs_saved hstepsN hhalted_final
 
 /-- Specialized version for counter starting at 0 -/
-structure LoopExitResult (n : ℕ) (pF : Program) (inputs : Fin n → ℕ) (s : State) where
+structure LoopExitResult (inputs : Fin n → ℕ) (s : State) where
   /-- Number of complete iterations before exit (counter value at exit) -/
   k : ℕ
   /-- Final config at outputPC -/
@@ -627,7 +630,7 @@ structure LoopExitResult (n : ℕ) (pF : Program) (inputs : Fin n → ℕ) (s : 
   pF_zero_at_k : Result pF (List.ofFn (extendInputs inputs k)) (pF_halts k (Nat.le_refl k)) = 0
 
 /-- Convert generalized result to specialized result -/
-noncomputable def LoopExitResult.ofGen (n : ℕ) (pF : Program) (inputs : Fin n → ℕ) (s : State)
+noncomputable def LoopExitResult.ofGen (inputs : Fin n → ℕ) (s : State)
     (res : LoopExitResultGen n pF inputs s 0) : LoopExitResult n pF inputs s := {
   k := res.k
   config := res.config
@@ -640,7 +643,7 @@ noncomputable def LoopExitResult.ofGen (n : ℕ) (pF : Program) (inputs : Fin n 
 }
 
 /-- If loop eventually reaches outputPC (halts from loopStartPC with counter=0), extract the exit result. -/
-noncomputable def loop_halts_exit (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandardForm)
+noncomputable def loop_halts_exit (hpF_sf : pF.IsStandardForm)
     (inputs : Fin n → ℕ) (s : State)
     (hs_counter : s.read (counterReg n pF) = 0)
     (hs_zero : s.read (zeroReg n pF) = 0)
@@ -652,7 +655,7 @@ noncomputable def loop_halts_exit (n : ℕ) (pF : Program) (hpF_sf : pF.IsStanda
 
 /-- After k loop iterations starting from loopStart, we reach loopStart with counter = k
     (if f hasn't returned 0 on any earlier iteration). -/
-theorem loop_k_iterations (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandardForm)
+theorem loop_k_iterations (hpF_sf : pF.IsStandardForm)
     (inputs : Fin n → ℕ) (s : State) (k : ℕ)
     (hs_counter : s.read (counterReg n pF) = 0)
     (hs_zero : s.read (zeroReg n pF) = 0)
@@ -667,7 +670,7 @@ theorem loop_k_iterations (n : ℕ) (pF : Program) (hpF_sf : pF.IsStandardForm)
   exact ⟨res.config, res.steps, res.pc_eq, res.counter_eq⟩
 
 /-- setupPhase instructions are embedded at the start of minimizeProgram. -/
-theorem setupPhase_embed (n : ℕ) (pF : Program) :
+theorem setupPhase_embed :
     ∀ i, i < (setupPhase n pF).length →
     (minimizeProgram n pF).getInstr (0 + i) = (setupPhase n pF).getInstr i := by
   intro i hi
@@ -676,7 +679,7 @@ theorem setupPhase_embed (n : ℕ) (pF : Program) :
   split_ifs <;> first | rfl | omega
 
 /-- outputPhase instruction is at outputPC in minimizeProgram. -/
-theorem outputPhase_instr (n : ℕ) (pF : Program) :
+theorem outputPhase_instr :
     (minimizeProgram n pF).getInstr (outputPC n pF) = some (Instr.T (counterReg n pF) 0) := by
   simp only [minimizeProgram, outputPC, pFOffset, getInstr, setupPhaseLength, loopPrologueLength]
   simp only [List.getElem?_append, List.length_append, setupPhase_length, loopPrologue_length,
@@ -694,7 +697,7 @@ theorem outputPhase_instr (n : ℕ) (pF : Program) :
   simp only [hidx, outputPhase, List.getElem?_cons_zero]
 
 /-- Execute output phase: single T instruction from outputPC halts the program. -/
-theorem outputPhase_halts (n : ℕ) (pF : Program) (s : State) :
+theorem outputPhase_halts (s : State) :
     ∃ c, Steps (minimizeProgram n pF) ⟨outputPC n pF, s⟩ c ∧
          c.isHalted (minimizeProgram n pF) ∧
          c.state.read 0 = s.read (counterReg n pF) := by
@@ -709,7 +712,7 @@ theorem outputPhase_halts (n : ℕ) (pF : Program) (s : State) :
   exact ⟨⟨outputPC n pF + 1, s'⟩, Relation.ReflTransGen.single hstep, hhalted, hread⟩
 
 /-- Result of executing the setup phase: state at loopStartPC with invariants. -/
-structure SetupPhaseResult (n : ℕ) (pF : Program) (inputs : Fin n → ℕ) where
+structure SetupPhaseResult (inputs : Fin n → ℕ) where
   /-- State after setup phase -/
   state : State
   /-- Steps from initial config to loopStartPC -/
@@ -725,7 +728,7 @@ structure SetupPhaseResult (n : ℕ) (pF : Program) (inputs : Fin n → ℕ) whe
 /-- Execute setup phase and establish invariants.
     This factors out the common setup code used by minimizeProgram_halts,
     minimizeProgram_halts_imp_dom, and minimizeProgram_result. -/
-noncomputable def executeSetupPhase (n : ℕ) (pF : Program) (inputs : Fin n → ℕ) :
+noncomputable def executeSetupPhase (inputs : Fin n → ℕ) :
     SetupPhaseResult n pF inputs :=
   let hsl_setup := setupPhase_isStraightLine n pF
   let initState := State.fromInputs (List.ofFn inputs)
@@ -748,8 +751,7 @@ noncomputable def executeSetupPhase (n : ℕ) (pF : Program) (inputs : Fin n →
 /-! ## Main Halting Theorems -/
 
 /-- If μ f is defined, then minimizeProgram halts. -/
-theorem minimizeProgram_halts (n : ℕ) (pF : Program)
-    (hpF_sf : pF.IsStandardForm)
+theorem minimizeProgram_halts (hpF_sf : pF.IsStandardForm)
     (f : (Fin (n + 1) → ℕ) → Part ℕ)
     (hpF_spec : ∀ args, (Halts pF (List.ofFn args) ↔ (f args).Dom) ∧
         ∀ hH hD, Result pF (List.ofFn args) hH = (f args).get hD)
@@ -811,8 +813,7 @@ theorem minimizeProgram_halts (n : ℕ) (pF : Program)
 /-! ## Converse: Halts → Dom -/
 
 /-- If minimizeProgram halts, then μ f is defined. -/
-theorem minimizeProgram_halts_imp_dom (n : ℕ) (pF : Program)
-    (hpF_sf : pF.IsStandardForm)
+theorem minimizeProgram_halts_imp_dom (hpF_sf : pF.IsStandardForm)
     (f : (Fin (n + 1) → ℕ) → Part ℕ)
     (hpF_spec : ∀ args, (Halts pF (List.ofFn args) ↔ (f args).Dom) ∧
         ∀ hH hD, Result pF (List.ofFn args) hH = (f args).get hD)
@@ -847,5 +848,7 @@ theorem minimizeProgram_halts_imp_dom (n : ℕ) (pF : Program)
     have hpF_halts_y' := exitResult.pF_halts y' (Nat.le_of_lt hy')
     rw [← (hpF_spec (extendInputs inputs y')).1]
     exact hpF_halts_y'
+
+end
 
 end Urm
