@@ -192,4 +192,34 @@ theorem halts_of_exits_embedded_region
               hrest_steps'.toSteps hpc_ge hrest_steps'
           exact ⟨c_sub, Relation.ReflTransGen.head hsub_step hsub_steps, hsub_pc⟩
 
+/-! ## Halts Equivalence for Agreeing States -/
+
+/-- Halts equivalence when states agree on program's register range.
+
+If a state `c₂.state` agrees with the initial state on the program's register range,
+then the program halts from the original inputs iff it halts from `c₂`.
+This abstracts the common pattern in halting implication proofs. -/
+theorem halts_iff_of_agreeing_state
+    {p : Program} {inputs : List ℕ} {c₂ : Config}
+    (hpc : (Config.init inputs).pc = c₂.pc)
+    (hagree : (Config.init inputs).state.agreeOn c₂.state 0 p.maxRegister) :
+    Halts p inputs ↔ ∃ c, Steps p c₂ c ∧ c.isHalted p := by
+  have hagree_symm : c₂.state.agreeOn (Config.init inputs).state 0 p.maxRegister :=
+    State.agreeOn_symm hagree
+  constructor
+  · intro ⟨c, hsteps, hhalted⟩
+    let hagree_result := Steps.agreeOn hsteps hpc hagree
+    let c' := Classical.choose hagree_result
+    let hspec := Classical.choose_spec hagree_result
+    let hsteps' : Steps p c₂ c' := hspec.1
+    let hpc' : c.pc = c'.pc := hspec.2.1
+    exact ⟨c', hsteps', by simp only [Config.isHalted] at hhalted ⊢; omega⟩
+  · intro ⟨c, hsteps, hhalted⟩
+    let hagree_result := Steps.agreeOn hsteps hpc.symm hagree_symm
+    let c' := Classical.choose hagree_result
+    let hspec := Classical.choose_spec hagree_result
+    let hsteps' : Steps p (Config.init inputs) c' := hspec.1
+    let hpc' : c.pc = c'.pc := hspec.2.1
+    exact ⟨c', hsteps', by simp only [Config.isHalted] at hhalted ⊢; omega⟩
+
 end Urm

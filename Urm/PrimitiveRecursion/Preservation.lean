@@ -5,6 +5,7 @@ Authors: Jesse Alama
 -/
 
 import Urm.PrimitiveRecursion.StandardForm
+import Urm.Shift
 
 
 
@@ -578,5 +579,120 @@ theorem prLoopPrologue_preserves_high_register (n : ℕ) (pF pG : Program)
   · rw [hT2]; simp only [Instr.writesTo, ne_eq, Option.some.injEq]
     have := primitiveRecursionBase_ge_n_succ n pF pG; omega
   · exact hfalse.elim
+
+/-- Loop prologue zeros registers in range (n+1, primitiveRecursionBase]. -/
+theorem prLoopPrologue_clears_pG_range (n : ℕ) (pF pG : Program)
+    (s : State) (c' : Config)
+    (hsteps : Steps (prLoopPrologue n pF pG) ⟨0, s⟩ c')
+    (hhalted : c'.isHalted (prLoopPrologue n pF pG))
+    (r : ℕ) (hr_gt : n + 1 < r) (hr_le : r ≤ primitiveRecursionBase n pF pG) :
+    c'.state.read r = 0 := by
+  have hsl := prLoopPrologue_isStraightLine n pF pG
+  have hk : r < (prLoopPrologue n pF pG).length := by
+    simp only [prLoopPrologue, List.length_append, clearRegisters_length,
+      copyRegisterRange_length, List.length]; omega
+  have h_in_clear : r < (clearRegisters (primitiveRecursionBase n pF pG)).length := by
+    simp only [clearRegisters_length]; exact Nat.lt_succ_of_le hr_le
+  have h_in_ext2 : r < (clearRegisters (primitiveRecursionBase n pF pG) ++
+      copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length := by len_append_omega
+  have hwrite : (prLoopPrologue n pF pG)[r] = Instr.Z r := by
+    simp only [prLoopPrologue]
+    rw [List.getElem_append_left h_in_ext2, List.getElem_append_left h_in_clear]
+    simp only [Program.clearRegisters, List.getElem_map, List.getElem_range]
+  have hnowrite : ∀ j (hj : j < (prLoopPrologue n pF pG).length), r < j →
+      ((prLoopPrologue n pF pG)[j]).writesTo ≠ some r := by
+    intro j hj hjr
+    simp only [prLoopPrologue, List.length_append, clearRegisters_length,
+      copyRegisterRange_length, List.length] at hj
+    simp only [prLoopPrologue]
+    by_cases hj_clear2 : j < (clearRegisters (primitiveRecursionBase n pF pG) ++
+        copyRegisterRange (prSavedInputsStart n pF pG) 0 n).length
+    · rw [List.getElem_append_left hj_clear2]
+      by_cases hj_in_clear : j < (clearRegisters (primitiveRecursionBase n pF pG)).length
+      · rw [List.getElem_append_left hj_in_clear]
+        simp only [Program.clearRegisters, List.getElem_map, List.getElem_range,
+          Instr.writesTo, ne_eq, Option.some.injEq]; omega
+      · rw [List.getElem_append_right (Nat.not_lt.mp hj_in_clear)]
+        simp only [clearRegisters_length, Program.copyRegisterRange, List.getElem_map,
+          List.getElem_range, Nat.zero_add, Instr.writesTo, ne_eq, Option.some.injEq]
+        simp only [List.length_append, clearRegisters_length, copyRegisterRange_length] at hj_clear2
+        simp only [clearRegisters_length] at hj_in_clear; omega
+    · rw [List.getElem_append_right (Nat.not_lt.mp hj_clear2)]
+      simp only [List.length_append, clearRegisters_length, copyRegisterRange_length] at hj_clear2
+      simp only [List.length_append, clearRegisters_length, copyRegisterRange_length]
+      have hidx : j - (primitiveRecursionBase n pF pG + 1 + n) < 2 := by omega
+      by_cases hidx0 : j - (primitiveRecursionBase n pF pG + 1 + n) = 0
+      · simp only [hidx0, List.getElem_cons_zero, Instr.writesTo, ne_eq, Option.some.injEq]; omega
+      · have hidx1 : j - (primitiveRecursionBase n pF pG + 1 + n) = 1 := by omega
+        simp only [hidx1, List.getElem_cons_succ, List.getElem_cons_zero, Instr.writesTo,
+          ne_eq, Option.some.injEq]; omega
+  have ⟨hsteps', hhalted', _⟩ := straightLineFinalState_spec hsl s
+  rw [Steps.halts_unique hsteps hhalted hsteps' hhalted']
+  exact straightLine_zeros_register hsl s r r hk hwrite hnowrite
+
+/-- State agreement helper: After loop prologue, state agrees with extendInputsForG initial state
+    on pG's register range. This abstracts the common pattern used in pr_loop_iteration and
+    primitiveRecursionProgram_halts_imp_dom. -/
+theorem prLoopPrologue_state_agreeOn_pG_init (n : ℕ) (pF pG : Program)
+    (s : State) (c' : Config)
+    (hsteps : Steps (prLoopPrologue n pF pG) ⟨0, s⟩ c')
+    (hhalted : c'.isHalted (prLoopPrologue n pF pG))
+    (inputs : Fin n → ℕ) (k : ℕ) (acc : ℕ)
+    (hR_inputs : ∀ i : Fin n, c'.state.read i = inputs i)
+    (hRn : c'.state.read n = k)
+    (hRn1 : c'.state.read (n + 1) = acc) :
+    c'.state.agreeOn
+      (Config.init (List.ofFn (extendInputsForG inputs k acc))).state
+      0 pG.maxRegister := by
+  intro r _ hr_hi
+  let initStateG := (Config.init (List.ofFn (extendInputsForG inputs k acc))).state
+  by_cases hr_lt_n : r < n
+  · -- Case 1: r < n (input registers)
+    have hleft : c'.state.read r = inputs ⟨r, hr_lt_n⟩ := hR_inputs ⟨r, hr_lt_n⟩
+    have hlen : r < (n + 2) := by omega
+    have hright : initStateG.read r = inputs ⟨r, hr_lt_n⟩ := by
+      unfold initStateG Config.init State.fromInputs State.read
+      simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn]
+      simp only [hlen, ↓reduceDIte]
+      exact extendInputsForG_castSucc_castSucc inputs k acc ⟨r, hr_lt_n⟩
+    rw [hleft, hright]
+  · by_cases hr_eq_n : r = n
+    · -- Case 2: r = n (counter register position)
+      subst hr_eq_n
+      have hleft : c'.state.read r = k := hRn
+      have hr : r < r + 2 := by omega
+      have heq : (⟨r, hr⟩ : Fin (r + 2)) = Fin.castSucc (Fin.last r) := by
+        ext; simp [Fin.castSucc, Fin.last]
+      have hright : initStateG.read r = k := by
+        unfold initStateG Config.init State.fromInputs State.read
+        simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn]
+        simp only [hr, ↓reduceDIte]
+        rw [heq]
+        exact extendInputsForG_castSucc_last inputs k acc
+      rw [hleft, hright]
+    · by_cases hr_eq_n1 : r = n + 1
+      · -- Case 3: r = n + 1 (accumulator register position)
+        subst hr_eq_n1
+        have hleft : c'.state.read (n + 1) = acc := hRn1
+        have hlt : n + 1 < n + 2 := Nat.lt_succ_self _
+        have hright : initStateG.read (n + 1) = acc := by
+          unfold initStateG Config.init State.fromInputs State.read
+          simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn]
+          simp only [hlt, ↓reduceDIte, Option.getD_some]
+          exact extendInputsForG_last inputs k acc
+        rw [hleft, hright]
+      · -- Case 4: r > n + 1 (high registers, cleared to 0)
+        have hr_gt_n1 : n + 1 < r := by omega
+        have hr_le_pG_max : r ≤ pG.maxRegister := hr_hi
+        have hpG_le_base : pG.maxRegister ≤ primitiveRecursionBase n pF pG :=
+          primitiveRecursionBase_ge_pG n pF pG
+        have hr_le_base : r ≤ primitiveRecursionBase n pF pG := Nat.le_trans hr_le_pG_max hpG_le_base
+        have hleft : c'.state.read r = 0 :=
+          prLoopPrologue_clears_pG_range n pF pG s c' hsteps hhalted r hr_gt_n1 hr_le_base
+        have hr_ge : ¬ r < n + 2 := by omega
+        have hright : initStateG.read r = 0 := by
+          unfold initStateG Config.init State.fromInputs State.read
+          simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn, hr_ge, dite_false, Option.getD_none]
+        rw [hleft, hright]
 
 end Urm
