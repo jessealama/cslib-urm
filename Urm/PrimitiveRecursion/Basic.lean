@@ -58,3 +58,6 @@ theorem URMComputable.primRec {n : ℕ}
   exact URMComputableSF.toComputable (URMComputableSF.primRec hf.toSF hg.toSF)
 
 end Urm
+
+-- Export the main primitive recursion theorems and functions for easy access
+export Urm (URMComputableSF.primRec URMComputable.primRec Pr PrFunction)

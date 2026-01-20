@@ -49,3 +49,6 @@ theorem URMComputable.comp_general {m n : ℕ} [NeZero m] {f : (Fin m → ℕ) �
   exact URMComputableSF.comp_general hf_sf hgs_sf
 
 end Urm
+
+-- Export the main composition theorems for easy access
+export Urm (URMComputableSF.comp_general URMComputable.comp_general)

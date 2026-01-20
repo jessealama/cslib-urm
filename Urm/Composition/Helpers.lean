@@ -13,7 +13,7 @@ namespace Urm
 /-! ## HaltingExecution Structure -/
 
 /-- Bundle for a halting execution with all its properties. -/
-structure HaltingExecution (p : Program) (inputs : List ℕ) where
+private structure HaltingExecution (p : Program) (inputs : List ℕ) where
   /-- The final configuration after execution -/
   config : Config
   halts : Halts p inputs
@@ -21,14 +21,14 @@ structure HaltingExecution (p : Program) (inputs : List ℕ) where
   halted : config.isHalted p
 
 /-- Convert a halting proof into a full execution bundle. -/
-noncomputable def Halts.toExecution {p : Program} {inputs : List ℕ} (h : Halts p inputs) :
+private noncomputable def Halts.toExecution {p : Program} {inputs : List ℕ} (h : Halts p inputs) :
     HaltingExecution p inputs where
   config := Classical.choose h
   halts := h
   steps := (Classical.choose_spec h).1
   halted := (Classical.choose_spec h).2
 
-theorem HaltingExecution.pc_eq_length {p : Program} {inputs : List ℕ}
+private theorem HaltingExecution.pc_eq_length {p : Program} {inputs : List ℕ}
     (e : HaltingExecution p inputs) (hsf : p.IsStandardForm) : e.config.pc = p.length :=
   hsf.halts_at_length inputs e.config e.steps e.halted
 

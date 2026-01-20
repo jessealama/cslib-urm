@@ -49,3 +49,6 @@ theorem URMComputable.min {n : ℕ} {f : (Fin (n + 1) → ℕ) → Part ℕ}
   exact URMComputableSF.min hf_sf
 
 end Urm
+
+-- Export the main minimization theorems for easy access
+export Urm (URMComputableSF.min URMComputable.min)
