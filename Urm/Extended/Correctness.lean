@@ -2106,7 +2106,9 @@ theorem compile_correct_aux (p : ExtendedProgram) (s : State)
     (hdom : (evalProgram p s).Dom)
     -- Workspace hypothesis: registers beyond what the program uses are 0
     (hworkspace : ∀ i ∈ p, ∀ regs body, i = ExtendedInstr.Block regs body →
-        ∀ r, regs.length ≤ r → r ≤ body.maxRegister → s (r + registerBase regs) = 0) :
+        ∀ r, regs.length ≤ r → r ≤ body.maxRegister → s (r + registerBase regs) = 0)
+    -- WorkspaceReadSafe: subsequent instructions don't read from workspace registers
+    (hwsRead : ExtendedProgram.WorkspaceReadSafe p) :
     ∃ (c : Config), Steps (compile p) ⟨0, s⟩ c ∧ c.isHalted (compile p) ∧
       c.state 0 = ((evalProgram p s).get hdom) 0 := by
   induction p generalizing s with
@@ -2135,6 +2137,7 @@ theorem compile_correct_aux (p : ExtendedProgram) (s : State)
       ⟨fun j hj => hwf_instr j (List.mem_cons_of_mem i hj),
        WorkspaceSafe_cons_rest hws_safe,
        BlocksPreserveWorkspaces_cons_rest hblk_pres⟩
+    have hwsRead_rest : ExtendedProgram.WorkspaceReadSafe rest := WorkspaceReadSafe_cons_rest hwsRead
     -- Workspace for instruction i
     have hws_i : ∀ regs body, i = ExtendedInstr.Block regs body →
         ∀ r, regs.length ≤ r → r ≤ body.maxRegister → s (r + registerBase regs) = 0 :=
@@ -2220,7 +2223,7 @@ theorem compile_correct_aux (p : ExtendedProgram) (s : State)
         rw [hs'_eq]
         convert hdom_rest' using 1
       -- Apply IH
-      obtain ⟨c_rest, hsteps_rest, hhalted_rest, hr0_rest⟩ := ih s' hwf_rest hdom_rest_s' hws_rest
+      obtain ⟨c_rest, hsteps_rest, hhalted_rest, hr0_rest⟩ := ih s' hwf_rest hdom_rest_s' hws_rest hwsRead_rest
       -- Chain the steps: first compileInstr i, then compile rest
       -- compileInstr produces standard form for basic instructions
       have hwf_body : i.bodyIsStandardForm := by
@@ -2332,19 +2335,34 @@ theorem compile_correct_aux (p : ExtendedProgram) (s : State)
         -- For domain: evalProgram rest depends on register values
         -- Since s' 0 = (runBlock s regs body).get hdom_i 0 (from hr0_i)
         -- and other registers in s' that rest reads should agree with semantic
+        -- From WorkspaceReadSafe, get rest.maxRegisterUsed < registerBase regs
+        have hwsRead_Block := WorkspaceReadSafe_cons_Block hwsRead
+        have hrest_bound : ExtendedProgram.maxRegisterUsed rest < registerBase regs := hwsRead_Block.1
+        -- The semantic state after Block (use hdom_i which was transformed by simp)
+        let semantic := (runBlock s regs body).get hdom_i
+        -- Get agreement between s' and semantic on registers < registerBase regs
+        have hbody_sf : body.IsStandardForm := hwf_i.1.2
+        have hne := hwf_i.1.1  -- regs ≠ []
+        have hhalts_body : Halts body (List.ofFn fun i : Fin regs.length => s (regs[i])) := by
+          rw [runBlock_eq_runBlock', runBlock'] at hdom_i
+          exact hdom_i
+        have hsteps_block : Steps (compileBlock regs body) ⟨0, s⟩ result_i.finalConfig := by
+          simp only [compileInstr] at result_i; exact result_i.steps
+        have hhalted_block : result_i.finalConfig.isHalted (compileBlock regs body) := by
+          simp only [compileInstr] at result_i; exact result_i.halted
+        have hws_block := hws_i regs body rfl
+        have h_agree : ∀ r < registerBase regs, s' r = semantic r := fun r hr =>
+          compileBlock_agrees_below regs body hbody_sf s hne hhalts_body hws_block hdom_i
+            r hr hsteps_block hhalted_block
+        -- Need to convert hdom_rest' to use hdom_i instead of the original witness
+        -- Since runBlock outputs are proof-irrelevant, the domains are the same
+        have hdom_rest'' : (evalProgram rest semantic).Dom := hdom_rest'
+        -- Use evalProgram_dom_agree_below to transfer domain
         have hdom_rest_s' : (evalProgram rest s').Dom := by
-          -- Domain depends on whether sub-programs terminate
-          -- Since s' agrees with semantic on registers rest reads, domain transfers
-          -- The semantic state only modifies regs[0], and s' also sets regs[0] to the same value
-          -- For other registers, s' may differ in the workspace range [registerBase, ...]
-          -- but rest shouldn't read those (they're above any normal register)
-          convert hdom_rest' using 1
-          -- Need: s' = (runBlock s regs body).get hdom_i
-          -- This is NOT true in general (workspace differs), but for domain purposes
-          -- we need them to agree on registers that affect termination
-          sorry
+          exact (evalProgram_dom_agree_below rest s' semantic (registerBase regs)
+            h_agree hrest_bound hwsRead_rest).mpr hdom_rest''
         -- Apply IH
-        obtain ⟨c_rest, hsteps_rest, hhalted_rest, hr0_rest⟩ := ih s' hwf_rest hdom_rest_s' hws_rest
+        obtain ⟨c_rest, hsteps_rest, hhalted_rest, hr0_rest⟩ := ih s' hwf_rest hdom_rest_s' hws_rest hwsRead_rest
         -- compileInstr produces standard form
         -- hwf_i.1 : BlockWellFormed (Block regs body) = regs ≠ [] ∧ body.IsStandardForm
         -- bodyIsStandardForm (Block regs body) = body.isStandardForm
@@ -2361,16 +2379,38 @@ theorem compile_correct_aux (p : ExtendedProgram) (s : State)
         have hchain := Steps.chain_concat result_i.steps result_i.halted hpc_i hsteps_rest' hhalted_rest
         refine ⟨⟨c_rest.pc + (compileInstr (ExtendedInstr.Block regs body)).length, c_rest.state⟩,
                 hchain.1, hchain.2, ?_⟩
-        -- R[0] correctness
-        rw [hr0_rest]
-        have hevalPart : evalProgram rest s' = evalProgram (ExtendedInstr.Block regs body :: rest) s := by
-          rw [evalProgram_cons, Part.Dom.bind hdom_i']
-          congr 1
-          -- Need s' 0 and (runBlock s regs body).get hdom_i to imply evalProgram equality
-          -- This requires showing evalProgram only depends on R[0] agreement or full state agreement
-          sorry
-        have hget_eq := Part.get.congr_simp _ _ hevalPart hdom_rest_s'
-        exact congrArg (· 0) hget_eq
+        -- R[0] correctness: show c_rest.state 0 = (evalProgram (Block :: rest) s).get hdom 0
+        -- We have hr0_rest : c_rest.state 0 = (evalProgram rest s').get hdom_rest_s' 0
+        -- Need to connect (evalProgram rest s').get 0 with (evalProgram (Block :: rest) s).get 0
+        --
+        -- Step 1: Use evalProgram_result0_agree_below to relate s' and semantic states
+        have hr0_agree : (evalProgram rest s').get hdom_rest_s' 0 =
+                         (evalProgram rest semantic).get hdom_rest'' 0 := by
+          have h0_lt : 0 < registerBase regs := by
+            simp only [registerBase]
+            omega
+          exact evalProgram_result0_agree_below rest s' semantic (registerBase regs)
+            h_agree hrest_bound hwsRead_rest h0_lt hdom_rest_s' hdom_rest''
+        -- Step 2: Connect (evalProgram rest semantic) with (evalProgram (Block :: rest) s) via bind
+        have heq_cons : evalProgram (ExtendedInstr.Block regs body :: rest) s =
+                        (runBlock s regs body).bind (evalProgram rest) := by
+          rw [evalProgram_cons]
+          simp only [evalInstr]
+        -- Step 3: Use Part.Dom.bind to simplify the bind
+        -- Use hdom_i directly (semantic is defined as (runBlock s regs body).get hdom_i)
+        have heq_bind : (runBlock s regs body).bind (evalProgram rest) =
+                        evalProgram rest semantic :=
+          Part.Dom.bind hdom_i (evalProgram rest)
+        have hget_cons : (evalProgram (ExtendedInstr.Block regs body :: rest) s).get hdom 0 =
+                         (evalProgram rest semantic).get hdom_rest'' 0 := by
+          calc (evalProgram (ExtendedInstr.Block regs body :: rest) s).get hdom 0
+              = ((runBlock s regs body).bind (evalProgram rest)).get (heq_cons ▸ hdom) 0 := by
+                  simp only [Part.get.congr_simp _ _ heq_cons]
+            _ = (evalProgram rest semantic).get (heq_bind ▸ (heq_cons ▸ hdom)) 0 := by
+                  simp only [Part.get.congr_simp _ _ heq_bind]
+            _ = (evalProgram rest semantic).get hdom_rest'' 0 := rfl
+        -- Chain the equalities
+        rw [hr0_rest, hr0_agree, ← hget_cons]
       · -- While case
         -- For While: compileWhile_correct gives full agreement on ≤ max condReg maxRegister
         simp only [evalInstr] at hdom_i hr0_i hdom_rest' ⊢
@@ -2410,9 +2450,35 @@ theorem compile_correct_aux (p : ExtendedProgram) (s : State)
           -- s' = result_i.finalConfig.state
           simp only [s'] at hpres ⊢
           rw [hpres, hws_j]
+        -- For While, s' and semantic agree on registers <= max condReg body.maxRegister
+        -- Use WorkspaceReadSafe_cons_While to get rest.maxRegisterUsed <= max
+        have hwsRead_While := WorkspaceReadSafe_cons_While hwsRead
+        have hrest_bound : ExtendedProgram.maxRegisterUsed rest ≤ max condReg body.maxRegister := hwsRead_While.1
+        let semantic := (runWhile s condReg body).get hdom_i
+        -- Get agreement between s' and semantic on registers <= max condReg body.maxRegister
+        have hbody_sf : body.IsStandardForm := hwf_i.2
+        have hsteps_while : Steps (compileWhile condReg body) ⟨0, s⟩ result_i.finalConfig := by
+          simp only [compileInstr] at result_i; exact result_i.steps
+        have hhalted_while : result_i.finalConfig.isHalted (compileWhile condReg body) := by
+          simp only [compileInstr] at result_i; exact result_i.halted
+        obtain ⟨c', hsteps', hhalted', hstate'⟩ := compileWhile_correct condReg body hbody_sf s hdom_i
+        have hc'_eq : result_i.finalConfig = c' :=
+          Steps.halts_unique hsteps_while hhalted_while hsteps' hhalted'
+        -- Agreement on <= max
+        have h_agree : ∀ r, r ≤ max condReg body.maxRegister → s' r = semantic r := by
+          intro r hr
+          simp only [s', hc'_eq]
+          exact hstate' r hr
+        -- Use evalProgram_dom_agree_below with bound = max + 1
+        -- Since rest.maxRegisterUsed <= max, we have rest.maxRegisterUsed < max + 1
+        have hrest_bound' : ExtendedProgram.maxRegisterUsed rest < max condReg body.maxRegister + 1 :=
+          Nat.lt_add_one_of_le hrest_bound
+        have h_agree' : ∀ r < max condReg body.maxRegister + 1, s' r = semantic r :=
+          fun r hr => h_agree r (Nat.lt_succ_iff.mp hr)
         have hdom_rest_s' : (evalProgram rest s').Dom := by
-          sorry
-        obtain ⟨c_rest, hsteps_rest, hhalted_rest, hr0_rest⟩ := ih s' hwf_rest hdom_rest_s' hws_rest
+          exact (evalProgram_dom_agree_below rest s' semantic (max condReg body.maxRegister + 1)
+            h_agree' hrest_bound' hwsRead_rest).mpr hdom_rest'
+        obtain ⟨c_rest, hsteps_rest, hhalted_rest, hr0_rest⟩ := ih s' hwf_rest hdom_rest_s' hws_rest hwsRead_rest
         have hwf_body : (ExtendedInstr.While condReg body).bodyIsStandardForm := hwf_i.2
         have hci_sf : (compileInstr (ExtendedInstr.While condReg body)).IsStandardForm :=
           compileInstr_isStandardForm _ hwf_body
@@ -2422,13 +2488,32 @@ theorem compile_correct_aux (p : ExtendedProgram) (s : State)
         have hchain := Steps.chain_concat result_i.steps result_i.halted hpc_i hsteps_rest' hhalted_rest
         refine ⟨⟨c_rest.pc + (compileInstr (ExtendedInstr.While condReg body)).length, c_rest.state⟩,
                 hchain.1, hchain.2, ?_⟩
-        rw [hr0_rest]
-        have hevalPart : evalProgram rest s' = evalProgram (ExtendedInstr.While condReg body :: rest) s := by
-          rw [evalProgram_cons, Part.Dom.bind hdom_i']
-          congr 1
-          sorry
-        have hget_eq := Part.get.congr_simp _ _ hevalPart hdom_rest_s'
-        exact congrArg (· 0) hget_eq
+        -- R[0] correctness: show c_rest.state 0 = (evalProgram (While :: rest) s).get hdom 0
+        -- We have hr0_rest : c_rest.state 0 = (evalProgram rest s').get hdom_rest_s' 0
+        -- Step 1: Use evalProgram_result0_agree_below to relate s' and semantic states
+        have hr0_agree : (evalProgram rest s').get hdom_rest_s' 0 =
+                         (evalProgram rest semantic).get hdom_rest' 0 := by
+          have h0_lt : 0 < max condReg body.maxRegister + 1 := Nat.zero_lt_succ _
+          exact evalProgram_result0_agree_below rest s' semantic (max condReg body.maxRegister + 1)
+            h_agree' hrest_bound' hwsRead_rest h0_lt hdom_rest_s' hdom_rest'
+        -- Step 2: Connect (evalProgram rest semantic) with (evalProgram (While :: rest) s) via bind
+        have heq_cons : evalProgram (ExtendedInstr.While condReg body :: rest) s =
+                        (runWhile s condReg body).bind (evalProgram rest) := by
+          rw [evalProgram_cons]
+          simp only [evalInstr]
+        have heq_bind : (runWhile s condReg body).bind (evalProgram rest) =
+                        evalProgram rest semantic :=
+          Part.Dom.bind hdom_i (evalProgram rest)
+        have hget_cons : (evalProgram (ExtendedInstr.While condReg body :: rest) s).get hdom 0 =
+                         (evalProgram rest semantic).get hdom_rest' 0 := by
+          calc (evalProgram (ExtendedInstr.While condReg body :: rest) s).get hdom 0
+              = ((runWhile s condReg body).bind (evalProgram rest)).get (heq_cons ▸ hdom) 0 := by
+                  simp only [Part.get.congr_simp _ _ heq_cons]
+            _ = (evalProgram rest semantic).get (heq_bind ▸ (heq_cons ▸ hdom)) 0 := by
+                  simp only [Part.get.congr_simp _ _ heq_bind]
+            _ = (evalProgram rest semantic).get hdom_rest' 0 := rfl
+        -- Chain the equalities
+        rw [hr0_rest, hr0_agree, ← hget_cons]
 
 /-- The full compiler is correct: compiling and running an extended program
 produces the same result as the extended evaluation semantics.
@@ -2438,10 +2523,14 @@ Proof strategy:
 2. Use compileInstr_correct' for each instruction
 3. Connect via Steps lemmas for concatenated programs
 4. The workspace hypothesis for Block is satisfied because State.fromInputs
-   initializes all registers beyond inputs.length to 0 -/
+   initializes all registers beyond inputs.length to 0
+5. Workspace bases must be at least inputs.length (blocks use registers ≥ inputs) -/
 theorem compile_correct (p : ExtendedProgram) (inputs : List ℕ)
     (hwf : ExtendedProgram.WellFormed p)
-    (hdom : (evalFromInputs p inputs).Dom) :
+    (hdom : (evalFromInputs p inputs).Dom)
+    (hws_inputs : ∀ i ∈ p, ∀ regs body, i = ExtendedInstr.Block regs body →
+        inputs.length ≤ registerBase regs)
+    (hwsRead : ExtendedProgram.WorkspaceReadSafe p) :
     Halts (compile p) inputs ∧
     ∃ hH, ∀ hD, Result (compile p) inputs hH = (evalFromInputs p inputs).get hD := by
   -- Unfold evalFromInputs to get domain of evalProgram
@@ -2452,16 +2541,17 @@ theorem compile_correct (p : ExtendedProgram) (inputs : List ℕ)
   have hws : ∀ i ∈ p, ∀ regs body, i = ExtendedInstr.Block regs body →
       ∀ r, regs.length ≤ r → r ≤ body.maxRegister →
       (State.fromInputs inputs) (r + registerBase regs) = 0 := by
-    intro i _ regs body _ r hr_lo hr_hi
+    intro i hi regs body heq r _ _
     -- State.fromInputs initializes registers beyond inputs.length to 0
-    -- registerBase regs > max(regs) ≥ 0, so r + registerBase regs ≥ registerBase regs
-    -- We need to show this is ≥ inputs.length
     simp only [State.fromInputs, List.getD_eq_getElem?_getD]
-    -- The register index r + registerBase regs
-    -- registerBase regs ≥ 1 (unless regs is empty), and r ≥ regs.length
-    -- This should be enough to show the register is beyond any input
-    sorry -- Need to show r + registerBase regs ≥ inputs.length
-  obtain ⟨c, hsteps, hhalted, hr0⟩ := compile_correct_aux p (State.fromInputs inputs) hwf hdom' hws
+    -- Use hws_inputs: inputs.length ≤ registerBase regs
+    have h_base := hws_inputs i hi regs body heq
+    -- Since r ≥ 0 and registerBase ≥ inputs.length, r + registerBase ≥ inputs.length
+    have h_idx : r + registerBase regs ≥ inputs.length := Nat.le_trans h_base (Nat.le_add_left _ r)
+    -- So getElem? returns none
+    rw [List.getElem?_eq_none h_idx]
+    rfl
+  obtain ⟨c, hsteps, hhalted, hr0⟩ := compile_correct_aux p (State.fromInputs inputs) hwf hdom' hws hwsRead
   -- Construct the Halts proof
   have hH : Halts (compile p) inputs := ⟨c, hsteps, hhalted⟩
   constructor
