@@ -6,6 +6,7 @@ Authors: Jesse Alama
 
 import Urm.Extended.Basic
 import Urm.Execution
+import Urm.Shift
 import Mathlib.Data.Part
 import Mathlib.Computability.Partrec
 import Mathlib.Control.Fix
@@ -334,6 +335,358 @@ theorem runWhile_unfold (condReg : ℕ) (body : FlatProgram) (s : State) (hs : s
       exact ⟨s', hs', rfl⟩
     · exact hfix
 
+/-! ## State Agreement and Preservation Lemmas -/
+
+/-- Single step preserves registers above maxRegister. -/
+private theorem step_preserves_above_maxRegister {body : FlatProgram} {c c' : Config}
+    (hstep : Step body c c') (r : ℕ) (hr : body.maxRegister < r) : c'.state r = c.state r := by
+  cases hstep with
+  | zero hinstr =>
+    simp only [State.write]
+    have hmax := Program.getInstr_maxRegister hinstr
+    simp only [Instr.maxRegister] at hmax
+    have hn_lt : _ < r := Nat.lt_of_le_of_lt hmax hr
+    exact Function.update_of_ne (Ne.symm (Nat.ne_of_lt hn_lt)) _ _
+  | succ hinstr =>
+    simp only [State.write]
+    have hmax := Program.getInstr_maxRegister hinstr
+    simp only [Instr.maxRegister] at hmax
+    have hn_lt : _ < r := Nat.lt_of_le_of_lt hmax hr
+    exact Function.update_of_ne (Ne.symm (Nat.ne_of_lt hn_lt)) _ _
+  | trans hinstr =>
+    simp only [State.write, State.read]
+    have hmax := Program.getInstr_maxRegister hinstr
+    simp only [Instr.maxRegister] at hmax
+    have hn_le : _ ≤ body.maxRegister := Nat.le_trans (Nat.le_max_right _ _) hmax
+    have hn_lt : _ < r := Nat.lt_of_le_of_lt hn_le hr
+    exact Function.update_of_ne (Ne.symm (Nat.ne_of_lt hn_lt)) _ _
+  | jump_eq _ _ | jump_ne _ _ =>
+    rfl
+
+/-- evalFlat preserves registers above maxRegister. -/
+theorem evalFlat_preserves_above_maxRegister {body : FlatProgram} {s : State}
+    (hdom : (evalFlat body s).Dom) (r : ℕ) (hr : body.maxRegister < r) :
+    (evalFlat body s).get hdom r = s r := by
+  simp only [evalFlat] at hdom ⊢
+  let c := Classical.choose hdom
+  have hspec := Classical.choose_spec hdom
+  obtain ⟨hsteps, _⟩ := hspec
+  suffices h : ∀ (c₁ c₂ : Config), Steps body c₁ c₂ → c₂.state r = c₁.state r by
+    exact h ⟨0, s⟩ c hsteps
+  intro c₁ c₂ hsteps'
+  induction hsteps' using Relation.ReflTransGen.head_induction_on with
+  | refl => rfl
+  | head hstep _ ih => rw [ih]; exact step_preserves_above_maxRegister hstep r hr
+
+/-- If two states agree on registers ≤ maxRegister, a step from one state implies
+    the same step is possible from the other, with agreeing result states. -/
+private theorem step_synchronized {body : FlatProgram} {pc pc' : ℕ} {s s' σ : State}
+    (hagree : ∀ r, r ≤ body.maxRegister → s r = s' r)
+    (hstep : Step body ⟨pc, s⟩ ⟨pc', σ⟩) :
+    ∃ σ', Step body ⟨pc, s'⟩ ⟨pc', σ'⟩ ∧ (∀ r, r ≤ body.maxRegister → σ r = σ' r) := by
+  cases hstep with
+  | zero hinstr =>
+    have hmax := Program.getInstr_maxRegister hinstr
+    simp only [Instr.maxRegister] at hmax
+    refine ⟨s'.write _ 0, Step.zero hinstr, ?_⟩
+    intro r hr
+    simp only [State.write, Function.update]
+    split_ifs with heq
+    · rfl
+    · exact hagree r hr
+  | succ hinstr =>
+    have hmax := Program.getInstr_maxRegister hinstr
+    simp only [Instr.maxRegister] at hmax
+    have hn_le : _ ≤ body.maxRegister := hmax
+    refine ⟨s'.write _ (s'.read _ + 1), Step.succ hinstr, ?_⟩
+    intro r hr
+    simp only [State.write, State.read, Function.update]
+    split_ifs with heq
+    · subst heq; rw [hagree _ hn_le]
+    · exact hagree r hr
+  | trans hinstr =>
+    have hmax := Program.getInstr_maxRegister hinstr
+    simp only [Instr.maxRegister] at hmax
+    have hm_le : _ ≤ body.maxRegister := Nat.le_trans (Nat.le_max_left _ _) hmax
+    refine ⟨s'.write _ (s'.read _), Step.trans hinstr, ?_⟩
+    intro r hr
+    simp only [State.write, State.read, Function.update]
+    split_ifs with heq
+    · subst heq; rw [hagree _ hm_le]
+    · exact hagree r hr
+  | jump_eq hinstr hcmp =>
+    rename_i m n
+    have hmax := Program.getInstr_maxRegister hinstr
+    simp only [Instr.maxRegister] at hmax
+    have hm_le : m ≤ body.maxRegister := Nat.le_trans (Nat.le_max_left m n) hmax
+    have hn_le : n ≤ body.maxRegister := Nat.le_trans (Nat.le_max_right m n) hmax
+    have hcmp' : s'.read m = s'.read n := by
+      simp only [State.read] at hcmp ⊢
+      rw [← hagree m hm_le, ← hagree n hn_le, hcmp]
+    exact ⟨s', Step.jump_eq hinstr hcmp', hagree⟩
+  | jump_ne hinstr hcmp =>
+    rename_i m n _
+    have hmax := Program.getInstr_maxRegister hinstr
+    simp only [Instr.maxRegister] at hmax
+    have hm_le : m ≤ body.maxRegister := Nat.le_trans (Nat.le_max_left m n) hmax
+    have hn_le : n ≤ body.maxRegister := Nat.le_trans (Nat.le_max_right m n) hmax
+    have hcmp' : s'.read m ≠ s'.read n := by
+      simp only [State.read] at hcmp ⊢
+      rw [← hagree m hm_le, ← hagree n hn_le]
+      exact hcmp
+    exact ⟨s', Step.jump_ne hinstr hcmp', hagree⟩
+
+/-- If two states agree on ≤ maxRegister and we have steps from one,
+    we can build parallel steps from the other with agreeing final states. -/
+private theorem steps_synchronized' {body : FlatProgram} {c c_end : Config}
+    (hsteps : Steps body c c_end) :
+    ∀ s', (∀ r, r ≤ body.maxRegister → c.state r = s' r) →
+      ∃ c'_end : Config, Steps body ⟨c.pc, s'⟩ c'_end ∧
+        c'_end.pc = c_end.pc ∧
+        (∀ r, r ≤ body.maxRegister → c_end.state r = c'_end.state r) := by
+  induction hsteps using Relation.ReflTransGen.head_induction_on with
+  | refl =>
+    intro s' hagree
+    exact ⟨⟨c_end.pc, s'⟩, Steps.refl _, rfl, hagree⟩
+  | head hstep hrest ih =>
+    intro s' hagree
+    obtain ⟨σ', hstep', hagree'⟩ := step_synchronized hagree hstep
+    obtain ⟨c'_end, hsteps', hpc_eq, hagree_end⟩ := ih σ' hagree'
+    exact ⟨c'_end, Relation.ReflTransGen.head hstep' hsteps', hpc_eq, hagree_end⟩
+
+/-- If states agree on ≤ maxRegister, evalFlat has the same domain for both. -/
+theorem evalFlat_dom_agree {body : FlatProgram} {s s' : State}
+    (hagree : ∀ r, r ≤ body.maxRegister → s r = s' r) :
+    (evalFlat body s).Dom ↔ (evalFlat body s').Dom := by
+  simp only [evalFlat]
+  constructor
+  · intro ⟨c, hsteps, hhalted⟩
+    obtain ⟨c', hsteps', hpc_eq, _⟩ := steps_synchronized' hsteps s' hagree
+    have hhalted' : c'.isHalted body := by
+      simp only [Config.isHalted] at hhalted ⊢
+      rw [hpc_eq]; exact hhalted
+    exact ⟨c', hsteps', hhalted'⟩
+  · intro ⟨c', hsteps', hhalted'⟩
+    have hagree_sym : ∀ r, r ≤ body.maxRegister → s' r = s r := fun r hr => (hagree r hr).symm
+    obtain ⟨c, hsteps, hpc_eq, _⟩ := steps_synchronized' hsteps' s hagree_sym
+    have hhalted : c.isHalted body := by
+      simp only [Config.isHalted] at hhalted' ⊢
+      rw [hpc_eq]; exact hhalted'
+    exact ⟨c, hsteps, hhalted⟩
+
+/-- If states agree on ≤ maxRegister and both evalFlat calls are defined,
+    the results agree on registers ≤ maxRegister. -/
+theorem evalFlat_result_agree {body : FlatProgram} {s s' : State}
+    (hagree : ∀ r, r ≤ body.maxRegister → s r = s' r)
+    (hdom : (evalFlat body s).Dom) (hdom' : (evalFlat body s').Dom)
+    (r : ℕ) (hr : r ≤ body.maxRegister) :
+    (evalFlat body s).get hdom r = (evalFlat body s').get hdom' r := by
+  have hdom_unfold : ∃ c, Steps body ⟨0, s⟩ c ∧ c.isHalted body := by simp only [evalFlat] at hdom; exact hdom
+  have hdom'_unfold : ∃ c', Steps body ⟨0, s'⟩ c' ∧ c'.isHalted body := by simp only [evalFlat] at hdom'; exact hdom'
+  obtain ⟨c, hsteps, hhalted⟩ := hdom_unfold
+  obtain ⟨c', hsteps', hhalted'⟩ := hdom'_unfold
+  obtain ⟨c'_sync, hsteps'_sync, hpc_eq, hagree_end⟩ := steps_synchronized' hsteps s' hagree
+  have hhalted'_sync : c'_sync.isHalted body := by
+    simp only [Config.isHalted] at hhalted ⊢
+    rw [hpc_eq]; exact hhalted
+  have hc'_eq : c' = c'_sync := Steps.halts_unique hsteps' hhalted' hsteps'_sync hhalted'_sync
+  simp only [evalFlat]
+  have hchoose_c : (Classical.choose hdom) = c := by
+    have hspec := Classical.choose_spec hdom
+    exact Steps.halts_unique hspec.1 hspec.2 hsteps hhalted
+  have hchoose_c' : (Classical.choose hdom') = c' := by
+    have hspec' := Classical.choose_spec hdom'
+    exact Steps.halts_unique hspec'.1 hspec'.2 hsteps' hhalted'
+  rw [hchoose_c, hchoose_c', hc'_eq]
+  exact hagree_end r hr
+
+/-- If `x ∈ runWhile s condReg body` and s' agrees with s on relevant registers,
+    then `runWhile s' condReg body` is defined. -/
+private theorem runWhile_dom_of_mem_agree {condReg : ℕ} {body : FlatProgram}
+    {s s' : State} {x : State}
+    (hmem : x ∈ runWhile s condReg body)
+    (hagree : ∀ r, r ≤ max condReg body.maxRegister → s r = s' r) :
+    (runWhile s' condReg body).Dom := by
+  simp only [runWhile] at hmem ⊢
+  refine PFun.fixInduction' hmem
+    (fun a_final hstop a' hagree' => ?_)
+    (fun a₀ a₁ hmem_a₁ hcont ih a' hagree' => ?_)
+    s' hagree
+  · simp only [whileStep] at hstop
+    split_ifs at hstop with hcond
+    · have ha'_cond : a' condReg = 0 := by
+        rw [← hagree' condReg (Nat.le_max_left _ _), hcond]
+      have hstop' : Sum.inl a' ∈ whileStep condReg body a' := by
+        simp only [whileStep, ha'_cond, ↓reduceIte, Part.mem_some_iff]
+      exact Part.dom_iff_mem.mpr ⟨a', PFun.fix_stop hstop'⟩
+    · simp only [Part.mem_map_iff] at hstop
+      obtain ⟨_, _, h⟩ := hstop
+      exact absurd h (by simp)
+  · simp only [whileStep] at hcont
+    split_ifs at hcont with hcond
+    · simp only [Part.mem_some_iff] at hcont
+      exact absurd hcont (by simp)
+    · simp only [Part.mem_map_iff] at hcont
+      obtain ⟨σ, hσ_mem, hσ_eq⟩ := hcont
+      cases hσ_eq
+      have ha'_cond : a' condReg ≠ 0 := by
+        rw [← hagree' condReg (Nat.le_max_left _ _)]; exact hcond
+      have hagree_body : ∀ r, r ≤ body.maxRegister → a₀ r = a' r := fun r hr =>
+        hagree' r (Nat.le_trans hr (Nat.le_max_right _ _))
+      have hdom_a₀ : (evalFlat body a₀).Dom := Part.dom_iff_mem.mpr ⟨a₁, hσ_mem⟩
+      have hdom_a' : (evalFlat body a').Dom := (evalFlat_dom_agree hagree_body).mp hdom_a₀
+      let a'₁ := (evalFlat body a').get hdom_a'
+      have hagree_result : ∀ r, r ≤ max condReg body.maxRegister → a₁ r = a'₁ r := by
+        intro r hr
+        have ha₁_eq : a₁ = (evalFlat body a₀).get hdom_a₀ :=
+          (Part.get_eq_of_mem hσ_mem hdom_a₀).symm
+        by_cases hr_body : r ≤ body.maxRegister
+        · rw [ha₁_eq]
+          exact evalFlat_result_agree hagree_body hdom_a₀ hdom_a' r hr_body
+        · have hr_gt : body.maxRegister < r := Nat.lt_of_not_le hr_body
+          rw [ha₁_eq]
+          rw [evalFlat_preserves_above_maxRegister hdom_a₀ r hr_gt]
+          have ha'₁_eq : a'₁ = (evalFlat body a').get hdom_a' := rfl
+          rw [ha'₁_eq, evalFlat_preserves_above_maxRegister hdom_a' r hr_gt]
+          exact hagree' r hr
+      have hdom_recurse : (PFun.fix (whileStep condReg body) a'₁).Dom := ih a'₁ hagree_result
+      have hcont' : Sum.inr a'₁ ∈ whileStep condReg body a' := by
+        simp only [whileStep, ha'_cond, ↓reduceIte, Part.mem_map_iff]
+        exact ⟨a'₁, Part.get_mem hdom_a', rfl⟩
+      obtain ⟨y, hy⟩ := Part.dom_iff_mem.mp hdom_recurse
+      exact Part.dom_iff_mem.mpr ⟨y, PFun.mem_fix_iff.mpr (Or.inr ⟨a'₁, hcont', hy⟩)⟩
+
+/-- Domain equivalence: runWhile terminates iff runWhile from agreeing state terminates. -/
+theorem runWhile_dom_agree' {condReg : ℕ} {body : FlatProgram} {s s' : State}
+    (hagree : ∀ r, r ≤ max condReg body.maxRegister → s r = s' r) :
+    (runWhile s condReg body).Dom ↔ (runWhile s' condReg body).Dom := by
+  constructor
+  · intro hdom
+    obtain ⟨x, hmem⟩ := Part.dom_iff_mem.mp hdom
+    exact runWhile_dom_of_mem_agree hmem hagree
+  · intro hdom'
+    obtain ⟨x', hmem'⟩ := Part.dom_iff_mem.mp hdom'
+    have hagree_sym : ∀ r, r ≤ max condReg body.maxRegister → s' r = s r :=
+      fun r hr => (hagree r hr).symm
+    exact runWhile_dom_of_mem_agree hmem' hagree_sym
+
+/-- If `x ∈ runWhile s condReg body` and `x' ∈ runWhile s' condReg body` where s and s'
+    agree on relevant registers, then x and x' agree on relevant registers. -/
+theorem runWhile_result_of_mem_agree {condReg : ℕ} {body : FlatProgram}
+    {s s' x x' : State}
+    (hmem : x ∈ runWhile s condReg body)
+    (hmem' : x' ∈ runWhile s' condReg body)
+    (hagree : ∀ r, r ≤ max condReg body.maxRegister → s r = s' r) :
+    ∀ r, r ≤ max condReg body.maxRegister → x r = x' r := by
+  simp only [runWhile] at hmem hmem'
+  refine PFun.fixInduction' hmem
+    (fun a_final hstop a' hagree' x' hmem'_inner r hr => ?_)
+    (fun a₀ a₁ hmem_a₁ hcont ih a' hagree' x' hmem'_inner r hr => ?_)
+    s' hagree x' hmem'
+  · simp only [whileStep] at hstop
+    split_ifs at hstop with hcond
+    · have ha'_cond : a' condReg = 0 := by
+        rw [← hagree' condReg (Nat.le_max_left _ _), hcond]
+      have hx_eq : x = a_final := by
+        have hinj := Part.mem_some_iff.mp hstop
+        exact Sum.inl.inj hinj
+      have hstop' : Sum.inl a' ∈ whileStep condReg body a' := by
+        simp only [whileStep, ha'_cond, ↓reduceIte, Part.mem_some_iff]
+      have hx'_eq : x' = a' := by
+        rw [PFun.mem_fix_iff] at hmem'_inner
+        cases hmem'_inner with
+        | inl h =>
+          simp only [whileStep, ha'_cond, ↓reduceIte, Part.mem_some_iff] at h
+          exact Sum.inl.inj h
+        | inr h =>
+          obtain ⟨a'', hcont', _⟩ := h
+          simp only [whileStep, ha'_cond, ↓reduceIte, Part.mem_some_iff] at hcont'
+          exact absurd hcont' (by simp)
+      rw [hx_eq, hx'_eq]
+      exact hagree' r hr
+    · simp only [Part.mem_map_iff] at hstop
+      obtain ⟨_, _, h⟩ := hstop
+      exact absurd h (by simp)
+  · simp only [whileStep] at hcont
+    split_ifs at hcont with hcond
+    · simp only [Part.mem_some_iff] at hcont
+      exact absurd hcont (by simp)
+    · simp only [Part.mem_map_iff] at hcont
+      obtain ⟨σ, hσ_mem, hσ_eq⟩ := hcont
+      cases hσ_eq
+      have ha'_cond : a' condReg ≠ 0 := by
+        rw [← hagree' condReg (Nat.le_max_left _ _)]; exact hcond
+      have hagree_body : ∀ r, r ≤ body.maxRegister → a₀ r = a' r := fun r hr' =>
+        hagree' r (Nat.le_trans hr' (Nat.le_max_right _ _))
+      have hdom_a₀ : (evalFlat body a₀).Dom := Part.dom_iff_mem.mpr ⟨a₁, hσ_mem⟩
+      have hdom_a' : (evalFlat body a').Dom := (evalFlat_dom_agree hagree_body).mp hdom_a₀
+      let a'₁ := (evalFlat body a').get hdom_a'
+      have hagree_result : ∀ r, r ≤ max condReg body.maxRegister → a₁ r = a'₁ r := by
+        intro r' hr'
+        have ha₁_eq : a₁ = (evalFlat body a₀).get hdom_a₀ :=
+          (Part.get_eq_of_mem hσ_mem hdom_a₀).symm
+        by_cases hr_body : r' ≤ body.maxRegister
+        · rw [ha₁_eq]
+          exact evalFlat_result_agree hagree_body hdom_a₀ hdom_a' r' hr_body
+        · have hr_gt : body.maxRegister < r' := Nat.lt_of_not_le hr_body
+          rw [ha₁_eq]
+          rw [evalFlat_preserves_above_maxRegister hdom_a₀ r' hr_gt]
+          have ha'₁_eq : a'₁ = (evalFlat body a').get hdom_a' := rfl
+          rw [ha'₁_eq, evalFlat_preserves_above_maxRegister hdom_a' r' hr_gt]
+          exact hagree' r' hr'
+      rw [PFun.mem_fix_iff] at hmem'_inner
+      cases hmem'_inner with
+      | inl h =>
+        simp only [whileStep, ha'_cond, ↓reduceIte, Part.mem_map_iff] at h
+        obtain ⟨_, _, h'⟩ := h
+        exact absurd h' (by simp)
+      | inr h =>
+        obtain ⟨a'', hcont', hmem''⟩ := h
+        simp only [whileStep, ha'_cond, ↓reduceIte, Part.mem_map_iff] at hcont'
+        obtain ⟨σ', hσ'_mem, hσ'_eq⟩ := hcont'
+        have hσ'_eq_a'' : σ' = a'' := Sum.inr.inj hσ'_eq
+        have ha''_eq : a'' = a'₁ := by
+          rw [← hσ'_eq_a'']
+          exact (Part.get_eq_of_mem hσ'_mem hdom_a').symm
+        subst ha''_eq
+        exact ih a'₁ hagree_result x' hmem'' r hr
+
+/-- Helper: For any x ∈ runWhile s condReg body, x r = s r when r > max condReg maxRegister. -/
+private theorem runWhile_preserves_above_aux {condReg : ℕ} {body : FlatProgram}
+    {s x : State} (hmem : x ∈ runWhile s condReg body)
+    (r : ℕ) (hr : max condReg body.maxRegister < r) : x r = s r := by
+  simp only [runWhile] at hmem
+  refine PFun.fixInduction' hmem
+    (fun s_final hstop => ?_)
+    (fun s₀ s₁ _ hcont ih => ?_)
+  · simp only [whileStep] at hstop
+    split_ifs at hstop with hcond
+    · have hx_eq := Sum.inl.inj (Part.mem_some_iff.mp hstop)
+      rw [hx_eq]
+    · simp only [Part.mem_map_iff] at hstop
+      obtain ⟨_, _, h⟩ := hstop
+      exact absurd h (by simp)
+  · simp only [whileStep] at hcont
+    split_ifs at hcont with hcond
+    · simp only [Part.mem_some_iff] at hcont
+      exact absurd hcont (by simp)
+    · simp only [Part.mem_map_iff] at hcont
+      obtain ⟨σ, hσ_mem, hσ_eq⟩ := hcont
+      cases hσ_eq
+      have hdom_body : (evalFlat body s₀).Dom := Part.dom_iff_mem.mpr ⟨s₁, hσ_mem⟩
+      have hs₁_eq : s₁ = (evalFlat body s₀).get hdom_body :=
+        (Part.get_eq_of_mem hσ_mem hdom_body).symm
+      have hpres : s₁ r = s₀ r := by
+        rw [hs₁_eq]
+        exact evalFlat_preserves_above_maxRegister hdom_body r (Nat.lt_of_le_of_lt (Nat.le_max_right _ _) hr)
+      rw [ih, hpres]
+
+/-- runWhile preserves registers above max condReg body.maxRegister. -/
+theorem runWhile_preserves_above (condReg : ℕ) (body : FlatProgram) (s : State)
+    (hdom : (runWhile s condReg body).Dom) (r : ℕ) (hr : max condReg body.maxRegister < r) :
+    (runWhile s condReg body).get hdom r = s r :=
+  runWhile_preserves_above_aux (Part.get_mem hdom) r hr
+
 /-! ## Register Usage Bounds -/
 
 /-- Maximum register used (read or written) by an extended instruction at the host level.
@@ -505,22 +858,6 @@ theorem evalInstr_Block_agree_dom (regs : List ℕ) (body : FlatProgram) (s s' :
   simp only [evalInstr]
   exact runBlock_agree_dom regs body s s' h_agree
 
-/-- evalProgram domain only depends on registers ≤ p.maxRegisterUsed.
-Note: This is a partial result - Block and While cases are complex due to
-workspace register modifications. -/
-theorem evalProgram_agree_dom (p : ExtendedProgram) (s s' : State)
-    (h_agree : ∀ r ≤ p.maxRegisterUsed, s r = s' r) :
-    (evalProgram p s).Dom ↔ (evalProgram p s').Dom := by
-  sorry -- Complex proof deferred; we'll fill specific cases in Correctness.lean directly
-
-/-- evalProgram output (R[0]) only depends on registers ≤ p.maxRegisterUsed,
-given that the program terminates. -/
-theorem evalProgram_agree_output (p : ExtendedProgram) (s s' : State)
-    (h_agree : ∀ r ≤ p.maxRegisterUsed, s r = s' r)
-    (hdom : (evalProgram p s).Dom) (hdom' : (evalProgram p s').Dom) :
-    (evalProgram p s).get hdom 0 = (evalProgram p s').get hdom' 0 := by
-  sorry
-
 /-! ## Workspace Read Safety -/
 
 /-- For each Block/While in the program, subsequent instructions use registers below its workspace/internal register.
@@ -588,10 +925,12 @@ theorem evalInstr_dom_agree (i : ExtendedInstr) (s s' : State) (bound : ℕ)
       omega
     exact h_agree r hr_lt
   | While condReg body =>
-    -- While domain depends on runWhile, which depends on condReg and body execution
-    -- This case is more complex - we'll handle it specially in the correctness proof
-    -- For now, use sorry (this case will be bypassed by specific state equality in Correctness)
-    sorry
+    simp only [evalInstr]
+    apply runWhile_dom_agree'
+    intro r hr
+    apply h_agree
+    simp only [ExtendedInstr.maxRegisterUsed] at h_bound
+    omega
 
 /-- Helper: evalInstr result at register r < bound agrees when states agree below bound. -/
 theorem evalInstr_result_agree (i : ExtendedInstr) (s s' : State) (bound : ℕ) (r : ℕ)
@@ -667,8 +1006,22 @@ theorem evalInstr_result_agree (i : ExtendedInstr) (s s' : State) (bound : ℕ) 
         rw [runBlock_preserves_outside s' regs body hdom' r hr_neq]
         exact h_agree r hr
   | While condReg body =>
-    -- While case: complex, handle in correctness proof directly
-    sorry
+    simp only [evalInstr] at hdom hdom' ⊢
+    by_cases hr_le : r ≤ max condReg body.maxRegister
+    · -- r ≤ max condReg body.maxRegister: use runWhile_result_of_mem_agree
+      have hmem := Part.get_mem hdom
+      have hmem' := Part.get_mem hdom'
+      have hagree : ∀ r', r' ≤ max condReg body.maxRegister → s r' = s' r' := by
+        intro r' hr'
+        apply h_agree
+        simp only [ExtendedInstr.maxRegisterUsed] at h_bound
+        omega
+      exact runWhile_result_of_mem_agree hmem hmem' hagree r hr_le
+    · -- r > max condReg body.maxRegister: both preserve original value
+      have hr_gt : max condReg body.maxRegister < r := Nat.lt_of_not_le hr_le
+      rw [runWhile_preserves_above condReg body s hdom r hr_gt]
+      rw [runWhile_preserves_above condReg body s' hdom' r hr_gt]
+      exact h_agree r hr
 
 /-- If states agree below bound and program uses registers below bound,
 then evalProgram has equal domains. -/
