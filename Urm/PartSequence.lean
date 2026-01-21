@@ -97,4 +97,21 @@ theorem sequence_get {n : ℕ} {f : Fin n → Part α}
       simp only [sequence_succ, Part.bind, Part.map] at hdom ⊢
       exact ih _ ⟨j, Nat.lt_of_succ_lt_succ hlt⟩
 
+/-- Sequence of `Part.some` values equals `Part.some` of the tuple. -/
+theorem sequence_some {n : ℕ} {f : Fin n → α} :
+    sequence (fun i => Part.some (f i)) = Part.some f := by
+  induction n with
+  | zero =>
+    simp only [sequence]
+    congr
+    funext i
+    exact Fin.elim0 i
+  | succ n ih =>
+    simp only [sequence_succ, Part.bind_some, ih, Part.map_some]
+    congr
+    funext i
+    match i with
+    | ⟨0, _⟩ => rfl
+    | ⟨j + 1, _⟩ => rfl
+
 end Part

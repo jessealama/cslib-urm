@@ -35,16 +35,16 @@ namespace Urm
 
 /-- Extract the first n inputs from a (n+1)-tuple.
     Given inputs : Fin (n+1) → ℕ, returns the first n values. -/
-def initInputs {n : ℕ} (inputs : Fin (n + 1) → ℕ) : Fin n → ℕ :=
+def init_inputs {n : ℕ} (inputs : Fin (n + 1) → ℕ) : Fin n → ℕ :=
   fun i => inputs (Fin.castSucc i)
 
 /-- Extract the last input (recursion depth y) from a (n+1)-tuple. -/
-def lastInput {n : ℕ} (inputs : Fin (n + 1) → ℕ) : ℕ :=
+def last_input {n : ℕ} (inputs : Fin (n + 1) → ℕ) : ℕ :=
   inputs (Fin.last n)
 
 /-- Extend n inputs with two additional values (counter k and accumulator acc).
     Used for constructing inputs to g in primitive recursion. -/
-def extendInputsForG {n : ℕ} (x : Fin n → ℕ) (k : ℕ) (acc : ℕ) : Fin (n + 2) → ℕ :=
+def extend_inputs_for_g {n : ℕ} (x : Fin n → ℕ) (k : ℕ) (acc : ℕ) : Fin (n + 2) → ℕ :=
   Fin.snoc (Fin.snoc x k) acc
 
 /-! ## Primitive Recursion Definition -/
@@ -58,12 +58,12 @@ def extendInputsForG {n : ℕ} (x : Fin n → ℕ) (k : ℕ) (acc : ℕ) : Fin (
     Returns Part.none if f or any intermediate g call diverges. -/
 def Pr {n : ℕ} (f : (Fin n → ℕ) → Part ℕ) (g : (Fin (n + 2) → ℕ) → Part ℕ)
     (inputs : Fin (n + 1) → ℕ) : Part ℕ :=
-  let x := initInputs inputs
-  let y := lastInput inputs
+  let x := init_inputs inputs
+  let y := last_input inputs
   Nat.rec
     (motive := fun _ => Part ℕ)
     (f x)                                              -- base case: f(x)
-    (fun k ih => ih.bind (fun acc => g (extendInputsForG x k acc)))  -- recursive: g(x, k, prev)
+    (fun k ih => ih.bind (fun acc => g (extend_inputs_for_g x k acc)))  -- recursive: g(x, k, prev)
     y
 
 /-- The function computed by Pr, for stating computability theorems. -/
@@ -73,32 +73,32 @@ def PrFunction {n : ℕ} (f : (Fin n → ℕ) → Part ℕ) (g : (Fin (n + 2) �
 
 /-! ## Helper lemmas for input manipulation -/
 
-@[simp] theorem initInputs_apply {n : ℕ} (inputs : Fin (n + 1) → ℕ) (i : Fin n) :
-    initInputs inputs i = inputs (Fin.castSucc i) := rfl
+@[simp] theorem init_inputs_apply {n : ℕ} (inputs : Fin (n + 1) → ℕ) (i : Fin n) :
+    init_inputs inputs i = inputs (Fin.castSucc i) := rfl
 
-@[simp] theorem lastInput_apply {n : ℕ} (inputs : Fin (n + 1) → ℕ) :
-    lastInput inputs = inputs (Fin.last n) := rfl
+@[simp] theorem last_input_apply {n : ℕ} (inputs : Fin (n + 1) → ℕ) :
+    last_input inputs = inputs (Fin.last n) := rfl
 
-theorem extendInputsForG_castSucc_castSucc {n : ℕ} (x : Fin n → ℕ) (k acc : ℕ) (i : Fin n) :
-    extendInputsForG x k acc (Fin.castSucc (Fin.castSucc i)) = x i := by
-  simp only [extendInputsForG, Fin.snoc_castSucc, Fin.snoc_castSucc]
+theorem extend_inputs_for_g_castSucc_castSucc {n : ℕ} (x : Fin n → ℕ) (k acc : ℕ) (i : Fin n) :
+    extend_inputs_for_g x k acc (Fin.castSucc (Fin.castSucc i)) = x i := by
+  simp only [extend_inputs_for_g, Fin.snoc_castSucc, Fin.snoc_castSucc]
 
-theorem extendInputsForG_castSucc_last {n : ℕ} (x : Fin n → ℕ) (k acc : ℕ) :
-    extendInputsForG x k acc (Fin.castSucc (Fin.last n)) = k := by
-  simp only [extendInputsForG, Fin.snoc_castSucc, Fin.snoc_last]
+theorem extend_inputs_for_g_castSucc_last {n : ℕ} (x : Fin n → ℕ) (k acc : ℕ) :
+    extend_inputs_for_g x k acc (Fin.castSucc (Fin.last n)) = k := by
+  simp only [extend_inputs_for_g, Fin.snoc_castSucc, Fin.snoc_last]
 
-theorem extendInputsForG_last {n : ℕ} (x : Fin n → ℕ) (k acc : ℕ) :
-    extendInputsForG x k acc (Fin.last (n + 1)) = acc := by
-  simp only [extendInputsForG, Fin.snoc_last]
+theorem extend_inputs_for_g_last {n : ℕ} (x : Fin n → ℕ) (k acc : ℕ) :
+    extend_inputs_for_g x k acc (Fin.last (n + 1)) = acc := by
+  simp only [extend_inputs_for_g, Fin.snoc_last]
 
-theorem initInputs_snoc {n : ℕ} (x : Fin n → ℕ) (y : ℕ) :
-    initInputs (Fin.snoc x y) = x := by
+theorem init_inputs_snoc {n : ℕ} (x : Fin n → ℕ) (y : ℕ) :
+    init_inputs (Fin.snoc x y) = x := by
   ext i
-  simp only [initInputs_apply, Fin.snoc_castSucc]
+  simp only [init_inputs_apply, Fin.snoc_castSucc]
 
-theorem lastInput_snoc {n : ℕ} (x : Fin n → ℕ) (y : ℕ) :
-    lastInput (Fin.snoc x y) = y := by
-  simp only [lastInput_apply, Fin.snoc_last]
+theorem last_input_snoc {n : ℕ} (x : Fin n → ℕ) (y : ℕ) :
+    last_input (Fin.snoc x y) = y := by
+  simp only [last_input_apply, Fin.snoc_last]
 
 /-! ## Unfolding lemmas for Pr -/
 
@@ -106,14 +106,14 @@ theorem lastInput_snoc {n : ℕ} (x : Fin n → ℕ) (y : ℕ) :
 theorem Pr_snoc_zero {n : ℕ} {f : (Fin n → ℕ) → Part ℕ} {g : (Fin (n + 2) → ℕ) → Part ℕ}
     (x : Fin n → ℕ) :
     Pr f g (Fin.snoc x 0) = f x := by
-  simp only [Pr, lastInput_snoc, initInputs_snoc, Nat.rec_zero]
+  simp only [Pr, last_input_snoc, init_inputs_snoc, Nat.rec_zero]
 
 /-- Alternative form: construct inputs with explicit y + 1. -/
 theorem Pr_snoc_succ {n : ℕ} {f : (Fin n → ℕ) → Part ℕ} {g : (Fin (n + 2) → ℕ) → Part ℕ}
     (x : Fin n → ℕ) (y : ℕ) :
     Pr f g (Fin.snoc x (y + 1)) = (Pr f g (Fin.snoc x y)).bind
-      (fun acc => g (extendInputsForG x y acc)) := by
-  simp only [Pr, lastInput_snoc, initInputs_snoc]
+      (fun acc => g (extend_inputs_for_g x y acc)) := by
+  simp only [Pr, last_input_snoc, init_inputs_snoc]
 
 /-! ## Domain Characterization -/
 
@@ -129,7 +129,7 @@ theorem Pr_dom_succ {n : ℕ} {f : (Fin n → ℕ) → Part ℕ} {g : (Fin (n + 
     (Pr f g (Fin.snoc x (y + 1))).Dom ↔
       (Pr f g (Fin.snoc x y)).Dom ∧
       ∀ h : (Pr f g (Fin.snoc x y)).Dom,
-        (g (extendInputsForG x y ((Pr f g (Fin.snoc x y)).get h))).Dom := by
+        (g (extend_inputs_for_g x y ((Pr f g (Fin.snoc x y)).get h))).Dom := by
   rw [Pr_snoc_succ, Part.bind_dom]
   constructor
   · intro ⟨hPr, hg⟩
@@ -147,7 +147,7 @@ theorem Pr_dom_iff {n : ℕ} {f : (Fin n → ℕ) → Part ℕ} {g : (Fin (n + 2
     (x : Fin n → ℕ) (y : ℕ) :
     (Pr f g (Fin.snoc x y)).Dom ↔
       (f x).Dom ∧ ∀ k < y, ∀ h : (Pr f g (Fin.snoc x k)).Dom,
-        (g (extendInputsForG x k ((Pr f g (Fin.snoc x k)).get h))).Dom := by
+        (g (extend_inputs_for_g x k ((Pr f g (Fin.snoc x k)).get h))).Dom := by
   induction y with
   | zero =>
     rw [Pr_dom_zero]
@@ -185,7 +185,7 @@ theorem Pr_succ_spec {n : ℕ} {f : (Fin n → ℕ) → Part ℕ} {g : (Fin (n +
     let hPr := (Pr_dom_succ x y).mp h |>.1
     let prev := (Pr f g (Fin.snoc x y)).get hPr
     let hg := (Pr_dom_succ x y).mp h |>.2 hPr
-    (Pr f g (Fin.snoc x (y + 1))).get h = (g (extendInputsForG x y prev)).get hg := by
+    (Pr f g (Fin.snoc x (y + 1))).get h = (g (extend_inputs_for_g x y prev)).get hg := by
   simp only [Pr_snoc_succ]
   rfl
 

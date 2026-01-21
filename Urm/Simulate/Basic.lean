@@ -16,8 +16,8 @@ the equivalence with Mathlib's computability hierarchy.
 
 ## Main Results
 
-- `encodeConfig`, `decodeConfig`: Config ↔ ℕ encoding
-- `encodedStep_primrec`: Single step is primitive recursive
+- `encode_config`, `decode_config`: Config ↔ ℕ encoding
+- `encoded_step_primrec`: Single step is primitive recursive
 - `URMComputable1.toPartrec`: Every URM-computable function is partial recursive
 
 ## Strategy
@@ -27,6 +27,6 @@ the equivalence with Mathlib's computability hierarchy.
 3. Use μ-recursion (`Nat.rfind`) to find the halting step
 4. Extract output from register 0
 
-The key insight is `Steps.preserves_high_register`: registers above `maxRegister`
+The key insight is `Steps.read_high_register_eq`: registers above `max_register`
 are unchanged, so we only need to encode finitely many registers.
 -/

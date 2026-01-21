@@ -50,38 +50,35 @@ open Part
 /-- Helper to build a Fin 2 → ℕ from two values. -/
 private def mkPair (a b : ℕ) : Fin 2 → ℕ := Fin.cons a (Fin.cons b Fin.elim0)
 
-@[simp] private theorem mkPair_zero (a b : ℕ) : mkPair a b 0 = a := rfl
-@[simp] private theorem mkPair_one (a b : ℕ) : mkPair a b 1 = b := rfl
+@[simp] private theorem mkPair_zero : mkPair a b 0 = a := rfl
+@[simp] private theorem mkPair_one : mkPair a b 1 = b := rfl
 
 /-- Build a binary Gs from two computed functions: gs 0 = g₀, gs 1 = g₁. -/
 private def binaryGs {n : ℕ} (g₀ g₁ : (Fin n → ℕ) → Part ℕ) : Fin 2 → (Fin n → ℕ) → Part ℕ :=
   fun k => if k.val = 0 then g₀ else g₁
 
-@[simp] private theorem binaryGs_zero {n : ℕ} (g₀ g₁ : (Fin n → ℕ) → Part ℕ) :
-    binaryGs g₀ g₁ 0 = g₀ := rfl
-
-@[simp] private theorem binaryGs_one {n : ℕ} (g₀ g₁ : (Fin n → ℕ) → Part ℕ) :
-    binaryGs g₀ g₁ 1 = g₁ := rfl
+@[simp] private theorem binaryGs_zero : binaryGs g₀ g₁ 0 = g₀ := rfl
+@[simp] private theorem binaryGs_one : binaryGs g₀ g₁ 1 = g₁ := rfl
 
 /-- Compose a binary function with two computed inner functions.
     Given f(a, b) computable and g₀, g₁ computable, proves f(g₀(x), g₁(x)) computable.
-    Note: The result is expressed as compFunction to match comp_general's output type. -/
+    Note: The result is expressed as comp_function to match comp_general's output type. -/
 theorem URMComputable.comp_binary {n : ℕ} {f : (Fin 2 → ℕ) → Part ℕ}
     {g₀ g₁ : (Fin n → ℕ) → Part ℕ}
     (hf : URMComputable 2 f) (hg₀ : URMComputable n g₀) (hg₁ : URMComputable n g₁) :
-    URMComputable n (compFunction 2 n f (binaryGs g₀ g₁)) := by
+    URMComputable n (comp_function 2 n f (binaryGs g₀ g₁)) := by
   have hgs : ∀ k, URMComputable n (binaryGs g₀ g₁ k) := by
     intro k; fin_cases k
     · simp only [binaryGs]; exact hg₀
     · simp only [binaryGs]; exact hg₁
   exact (URMComputable.comp_general hf hgs).toComputable
 
-/-- compFunction with total binary Gs simplifies to direct application. -/
-private theorem compFunction_binary_total_eq {n : ℕ} (f : (Fin 2 → ℕ) → Part ℕ)
+/-- comp_function with total binary Gs simplifies to direct application. -/
+private theorem comp_function_binary_total_eq {n : ℕ} (f : (Fin 2 → ℕ) → Part ℕ)
     (v₀ v₁ : (Fin n → ℕ) → ℕ) (x : Fin n → ℕ) :
-    compFunction 2 n f (binaryGs (fun x => Part.some (v₀ x)) (fun x => Part.some (v₁ x))) x =
+    comp_function 2 n f (binaryGs (fun x => Part.some (v₀ x)) (fun x => Part.some (v₁ x))) x =
     f (mkPair (v₀ x) (v₁ x)) := by
-  simp only [compFunction, binaryGs, Part.sequence, Part.bind_some, Part.map_some,
+  simp only [comp_function, binaryGs, Part.sequence, Part.bind_some, Part.map_some,
     Fin.val_zero, ↓reduceIte, Fin.val_succ, Nat.add_one_ne_zero, mkPair]
 
 /-- Compose a binary function with two total computed inner functions.
@@ -95,7 +92,7 @@ theorem URMComputable.comp_binary_total {n : ℕ} {f : (Fin 2 → ℕ) → Part 
   have h := URMComputable.comp_binary hf hg₀ hg₁
   convert h using 1
   funext x
-  exact (compFunction_binary_total_eq f v₀ v₁ x).symm
+  exact (comp_function_binary_total_eq f v₀ v₁ x).symm
 
 /-- Compose a 2-ary function with two projections.
     Given f(a, b) computable and indices i, j, this proves f(x[i], x[j]) is computable.
@@ -124,7 +121,7 @@ theorem URMComputable.comp_unary_total {n : ℕ} {f : (Fin 1 → ℕ) → Part �
   have h := URMComputable.comp_general hf hgs
   convert h.toComputable using 1
   funext x
-  simp only [compFunction, unaryGs, Part.sequence, Part.bind_some, Part.map_some]
+  simp only [comp_function, unaryGs, Part.sequence, Part.bind_some, Part.map_some]
   congr 1
   funext i
   simp only [Fin.cons_zero, Fin.eq_zero i]
@@ -147,97 +144,97 @@ section Arithmetic
 /-- URM program that computes sign: sign(0) = 0, sign(n) = 1 for n > 0
 
 Uses R1 as a zero register for comparison. -/
-def signProgram : Program := [
+def sign_program : Program := [
   Instr.Z 1,      -- 0: Clear R1 (zero for comparison)
   Instr.J 0 1 4,  -- 1: If R0 = R1 (=0), jump to 4 (halt with 0)
   Instr.Z 0,      -- 2: Clear R0
   Instr.S 0       -- 3: Set R0 = 1, then halt (pc goes to 4)
 ]                 -- 4: Program ends (halted)
 
-namespace signProgram
+namespace sign_program
 
 -- Helper lemmas about instruction lookup
-@[simp] theorem instr_0 : signProgram[0]? = Option.some (Instr.Z 1) := rfl
-@[simp] theorem instr_1 : signProgram[1]? = Option.some (Instr.J 0 1 4) := rfl
-@[simp] theorem instr_2 : signProgram[2]? = Option.some (Instr.Z 0) := rfl
-@[simp] theorem instr_3 : signProgram[3]? = Option.some (Instr.S 0) := rfl
-@[simp] theorem length_eq : signProgram.length = 4 := rfl
+@[simp] theorem instr_0 : sign_program[0]? = Option.some (Instr.Z 1) := rfl
+@[simp] theorem instr_1 : sign_program[1]? = Option.some (Instr.J 0 1 4) := rfl
+@[simp] theorem instr_2 : sign_program[2]? = Option.some (Instr.Z 0) := rfl
+@[simp] theorem instr_3 : sign_program[3]? = Option.some (Instr.S 0) := rfl
+@[simp] theorem length_eq : sign_program.length = 4 := rfl
 
 /-- Clear R1 for zero check (pc 0 → 1). -/
 theorem step_clear_r1 (s : State) :
-    Step signProgram ⟨0, s⟩ ⟨1, s.write 1 0⟩ :=
+    Step sign_program ⟨0, s⟩ ⟨1, s.write 1 0⟩ :=
   Step.zero instr_0
 
 /-- When R0 = 0 (= R1 after clear), jump to halt (pc 1 → 4). -/
 theorem step_zero_exit (s : State) (heq : s.read 0 = s.read 1) :
-    Step signProgram ⟨1, s⟩ ⟨4, s⟩ :=
+    Step sign_program ⟨1, s⟩ ⟨4, s⟩ :=
   Step.jump_eq instr_1 heq
 
 /-- When R0 ≠ 0, continue to clear R0 (pc 1 → 2). -/
 theorem step_nonzero_continue (s : State) (hne : s.read 0 ≠ s.read 1) :
-    Step signProgram ⟨1, s⟩ ⟨2, s⟩ :=
+    Step sign_program ⟨1, s⟩ ⟨2, s⟩ :=
   Step.jump_ne instr_1 hne
 
 /-- Clear R0 (pc 2 → 3). -/
 theorem step_clear_r0 (s : State) :
-    Step signProgram ⟨2, s⟩ ⟨3, s.write 0 0⟩ :=
+    Step sign_program ⟨2, s⟩ ⟨3, s.write 0 0⟩ :=
   Step.zero instr_2
 
 /-- Increment R0 to 1 (pc 3 → 4). -/
 theorem step_inc_r0 (s : State) :
-    Step signProgram ⟨3, s⟩ ⟨4, s.write 0 (s.read 0 + 1)⟩ :=
+    Step sign_program ⟨3, s⟩ ⟨4, s.write 0 (s.read 0 + 1)⟩ :=
   Step.succ instr_3
 
 /-- Configuration at pc=4 is halted. -/
-theorem halted_at_4 (s : State) : (⟨4, s⟩ : Config).isHalted signProgram := by
-  simp [Config.isHalted, length_eq]
+theorem halted_at_4 (s : State) : (⟨4, s⟩ : Config).is_halted sign_program := by
+  simp [Config.is_halted, length_eq]
 
 /-- Full execution for input 0: halts at pc=4 with R0=0. -/
 theorem execution_zero :
-    ∃ s, Steps signProgram (Config.init [0]) ⟨4, s⟩ ∧
+    ∃ s, Steps sign_program (Config.init [0]) ⟨4, s⟩ ∧
          s.read 0 = 0 ∧
-         (⟨4, s⟩ : Config).isHalted signProgram := by
-  let s0 := State.fromInputs [0]
+         (⟨4, s⟩ : Config).is_halted sign_program := by
+  let s0 := State.of_inputs [0]
   let s1 := s0.write 1 0
   -- Step 0→1: clear R1
-  have h1 : Step signProgram ⟨0, s0⟩ ⟨1, s1⟩ := step_clear_r1 s0
+  have h1 : Step sign_program ⟨0, s0⟩ ⟨1, s1⟩ := step_clear_r1 s0
   -- Step 1→4: jump (R0 = R1 = 0)
   have heq : s1.read 0 = s1.read 1 := by
-    simp [s1, s0, State.write, State.read, State.fromInputs, Function.update_of_ne]
-  have h2 : Step signProgram ⟨1, s1⟩ ⟨4, s1⟩ := step_zero_exit s1 heq
+    simp [s1, s0, State.write, State.read, State.of_inputs, Function.update_of_ne]
+  have h2 : Step sign_program ⟨1, s1⟩ ⟨4, s1⟩ := step_zero_exit s1 heq
   use s1
   refine ⟨by aesop_steps, ?_, halted_at_4 s1⟩
-  simp [s1, s0, State.write, State.read, State.fromInputs, Function.update_of_ne]
+  simp [s1, s0, State.write, State.read, State.of_inputs, Function.update_of_ne]
 
 /-- Full execution for input n > 0: halts at pc=4 with R0=1. -/
 theorem execution_nonzero (n : ℕ) (hn : n > 0) :
-    ∃ s, Steps signProgram (Config.init [n]) ⟨4, s⟩ ∧
+    ∃ s, Steps sign_program (Config.init [n]) ⟨4, s⟩ ∧
          s.read 0 = 1 ∧
-         (⟨4, s⟩ : Config).isHalted signProgram := by
-  let s0 := State.fromInputs [n]
+         (⟨4, s⟩ : Config).is_halted sign_program := by
+  let s0 := State.of_inputs [n]
   let s1 := s0.write 1 0
   let s2 := s1.write 0 0
   let s3 := s2.write 0 (s2.read 0 + 1)
   -- Step 0→1: clear R1
-  have h1 : Step signProgram ⟨0, s0⟩ ⟨1, s1⟩ := step_clear_r1 s0
+  have h1 : Step sign_program ⟨0, s0⟩ ⟨1, s1⟩ := step_clear_r1 s0
   -- Step 1→2: no jump (R0 = n ≠ 0 = R1)
   have hne : s1.read 0 ≠ s1.read 1 := by
-    simp [s1, s0, State.write, State.read, State.fromInputs, Function.update_of_ne]
+    simp [s1, s0, State.write, State.read, State.of_inputs, Function.update_of_ne]
     omega
-  have h2 : Step signProgram ⟨1, s1⟩ ⟨2, s1⟩ := step_nonzero_continue s1 hne
+  have h2 : Step sign_program ⟨1, s1⟩ ⟨2, s1⟩ := step_nonzero_continue s1 hne
   -- Step 2→3: clear R0
-  have h3 : Step signProgram ⟨2, s1⟩ ⟨3, s2⟩ := step_clear_r0 s1
+  have h3 : Step sign_program ⟨2, s1⟩ ⟨3, s2⟩ := step_clear_r0 s1
   -- Step 3→4: increment R0 to 1
-  have h4 : Step signProgram ⟨3, s2⟩ ⟨4, s3⟩ := step_inc_r0 s2
+  have h4 : Step sign_program ⟨3, s2⟩ ⟨4, s3⟩ := step_inc_r0 s2
   use s3
   refine ⟨by aesop_steps, ?_, halted_at_4 s3⟩
   simp [s3, s2, s1, s0, State.write, State.read, Function.update_self]
 
-end signProgram
+end sign_program
 
 /-- Sign function: sign(0) = 0, sign(n+1) = 1 -/
 theorem sign_computable : URMComputable 1 (fun x => Part.some (if x 0 = 0 then 0 else 1)) := by
-  use signProgram
+  use sign_program
   intro inputs
   let n := inputs 0
   have h_ofFn : List.ofFn inputs = [n] := by simp only [List.ofFn]; rfl
@@ -248,31 +245,31 @@ theorem sign_computable : URMComputable 1 (fun x => Part.some (if x 0 = 0 then 0
     · -- n = 0 case
       rw [h_ofFn]
       simp only [hn]
-      obtain ⟨s, hsteps, _, hhalted⟩ := signProgram.execution_zero
+      obtain ⟨s, hsteps, _, hhalted⟩ := sign_program.execution_zero
       exact ⟨⟨4, s⟩, hsteps, hhalted⟩
     · -- n > 0 case
       rw [h_ofFn]
       have hn' : n > 0 := Nat.pos_of_ne_zero hn
-      obtain ⟨s, hsteps, _, hhalted⟩ := signProgram.execution_nonzero n hn'
+      obtain ⟨s, hsteps, _, hhalted⟩ := sign_program.execution_nonzero n hn'
       exact ⟨⟨4, s⟩, hsteps, hhalted⟩
   · -- Result equality
     intro hHalts _
     obtain ⟨hsteps_chosen, hhalted_chosen⟩ := Classical.choose_spec hHalts
     by_cases hn : n = 0
     · -- n = 0 case: result = 0
-      obtain ⟨s, hsteps, hr0, hhalted⟩ := signProgram.execution_zero
-      have hsteps' : Steps signProgram (Config.init (List.ofFn inputs)) ⟨4, s⟩ := by
+      obtain ⟨s, hsteps, hr0, hhalted⟩ := sign_program.execution_zero
+      have hsteps' : Steps sign_program (Config.init (List.ofFn inputs)) ⟨4, s⟩ := by
         simp only [h_ofFn, hn]; exact hsteps
-      have heq := Steps.halts_unique hsteps_chosen hhalted_chosen hsteps' hhalted
+      have heq := Steps.eq_of_halts hsteps_chosen hhalted_chosen hsteps' hhalted
       simp only [Result, heq, State.output, Part.get_some, State.read] at hr0 ⊢
       rw [show inputs 0 = 0 from hn, if_pos rfl]
       exact hr0
     · -- n > 0 case: result = 1
       have hn' : n > 0 := Nat.pos_of_ne_zero hn
-      obtain ⟨s, hsteps, hr0, hhalted⟩ := signProgram.execution_nonzero n hn'
-      have hsteps' : Steps signProgram (Config.init (List.ofFn inputs)) ⟨4, s⟩ := by
+      obtain ⟨s, hsteps, hr0, hhalted⟩ := sign_program.execution_nonzero n hn'
+      have hsteps' : Steps sign_program (Config.init (List.ofFn inputs)) ⟨4, s⟩ := by
         simp only [h_ofFn]; exact hsteps
-      have heq := Steps.halts_unique hsteps_chosen hhalted_chosen hsteps' hhalted
+      have heq := Steps.eq_of_halts hsteps_chosen hhalted_chosen hsteps' hhalted
       simp only [Result, heq, State.output, Part.get_some, State.read] at hr0 ⊢
       rw [if_neg (show inputs 0 ≠ 0 from hn)]
       exact hr0
@@ -280,13 +277,7 @@ theorem sign_computable : URMComputable 1 (fun x => Part.some (if x 0 = 0 then 0
 /-- Helper: sign(y - x) equals the characteristic function of x < y -/
 private theorem sign_sub_swap_eq_lt (x y : ℕ) :
     (if y - x = 0 then 0 else 1) = if x < y then 1 else 0 := by
-  by_cases h : x < y
-  · -- x < y: y - x > 0, so sign = 1
-    have hsub : y - x ≠ 0 := Nat.sub_ne_zero_of_lt h
-    simp [hsub, h]
-  · -- x ≥ y: y - x = 0, so sign = 0
-    have hsub : y - x = 0 := Nat.sub_eq_zero_of_le (Nat.not_lt.mp h)
-    simp [hsub, h]
+  by_cases h : x < y <;> simp [Nat.sub_eq_zero_iff_le, h]
 
 /-- Less-than comparison returns 1 if x < y, else 0.
     lt(x, y) = sign(y - x) -/
@@ -304,14 +295,7 @@ theorem lt_computable : URMComputable 2 (fun xy => Part.some (if xy 0 < xy 1 the
 /-- Helper: 1 - sign(x - y) equals the characteristic function of x ≤ y -/
 private theorem one_minus_sign_sub_eq_le (x y : ℕ) :
     1 - (if x - y = 0 then 0 else 1) = if x ≤ y then 1 else 0 := by
-  by_cases h : x ≤ y
-  · -- x ≤ y: x - y = 0, so 1 - 0 = 1
-    have hsub : x - y = 0 := Nat.sub_eq_zero_of_le h
-    simp [hsub, h]
-  · -- x > y: x - y > 0, so 1 - 1 = 0
-    have hgt : x > y := Nat.not_le.mp h
-    have hsub : x - y ≠ 0 := Nat.sub_ne_zero_of_lt hgt
-    simp [hsub, h]
+  by_cases h : x ≤ y <;> simp [Nat.sub_eq_zero_iff_le, h]
 
 /-- The intermediate function: sign(x - y). -/
 private def leSignXY : (Fin 2 → ℕ) → Part ℕ :=
@@ -329,19 +313,19 @@ private theorem leSignXY_computable : URMComputableSF 2 leSignXY := by
 private theorem const_one_n_computable (n : ℕ) : URMComputable n (fun _ : Fin n → ℕ => Part.some 1) := by
   use [Instr.Z 0, Instr.S 0]
   intro inputs
-  let s0 := State.fromInputs (List.ofFn inputs)
+  let s0 := State.of_inputs (List.ofFn inputs)
   let s1 := s0.write 0 0
   let s2 := s1.write 0 (s1.read 0 + 1)
   have hstep1 : Step [Instr.Z 0, Instr.S 0] ⟨0, s0⟩ ⟨1, s1⟩ := Step.zero rfl
   have hstep2 : Step [Instr.Z 0, Instr.S 0] ⟨1, s1⟩ ⟨2, s2⟩ := Step.succ rfl
-  have hhalted : (⟨2, s2⟩ : Config).isHalted [Instr.Z 0, Instr.S 0] := by simp
+  have hhalted : (⟨2, s2⟩ : Config).is_halted [Instr.Z 0, Instr.S 0] := by simp
   have hsteps : Steps [Instr.Z 0, Instr.S 0] (Config.init (List.ofFn inputs)) ⟨2, s2⟩ := by aesop_steps
   constructor
   · simp only [Part.some_dom, iff_true]
     exact ⟨⟨2, s2⟩, hsteps, hhalted⟩
   · intro hHalts _
     obtain ⟨hsteps', hhalted'⟩ := Classical.choose_spec hHalts
-    have heq := Steps.halts_unique hsteps' hhalted' hsteps hhalted
+    have heq := Steps.eq_of_halts hsteps' hhalted' hsteps hhalted
     simp only [Result, heq, State.output, s2, s1, s0, State.write, State.read,
       Function.update_self, Part.get_some]
 
@@ -364,15 +348,9 @@ theorem le_computable : URMComputable 2 (fun xy => Part.some (if xy 0 ≤ xy 1 t
 private theorem le_mul_le_swap_eq_eq (x y : ℕ) :
     (if x ≤ y then 1 else 0) * (if y ≤ x then 1 else 0) = if x = y then 1 else 0 := by
   by_cases h : x = y
-  · -- x = y: both conditions true, 1 * 1 = 1
-    simp [h]
-  · -- x ≠ y: at least one condition false
-    have hne : x < y ∨ y < x := Nat.lt_or_lt_of_ne h
-    rcases hne with hlt | hgt
-    · -- x < y: y ≤ x is false
-      simp [Nat.le_of_lt hlt, Nat.not_le.mpr hlt, h]
-    · -- y < x: x ≤ y is false
-      simp [Nat.le_of_lt hgt, Nat.not_le.mpr hgt, h]
+  · simp [h]
+  · rcases Nat.lt_or_lt_of_ne h with hcase | hcase <;>
+      simp [Nat.le_of_lt hcase, Nat.not_le.mpr hcase, h]
 
 /-- le(y, x) is computable (le with swapped arguments). -/
 private theorem leSwap_computable : URMComputable 2 (fun xy => Part.some (if xy 1 ≤ xy 0 then 1 else 0)) := by
@@ -418,11 +396,10 @@ private def sqrtPredFun : (Fin 2 → ℕ) → Part ℕ :=
   fun ns => Part.some (if (ns 1 + 1) * (ns 1 + 1) ≤ ns 0 then 1 else 0)
 
 /-- Helper: simplify Fin.snoc at index 0 -/
-private theorem snoc_at_zero (n s : ℕ) : (Fin.snoc (fun _ : Fin 1 => n) s : Fin 2 → ℕ) 0 = n := rfl
+private theorem snoc_at_zero : (Fin.snoc (fun _ : Fin 1 => n) s : Fin 2 → ℕ) 0 = n := rfl
 
 /-- Helper: simplify Fin.snoc at index 1 -/
-private theorem snoc_at_one (n s : ℕ) : (Fin.snoc (fun _ : Fin 1 => n) s : Fin 2 → ℕ) 1 = s := by
-  simp [Fin.snoc]
+private theorem snoc_at_one : (Fin.snoc (fun _ : Fin 1 => n) s : Fin 2 → ℕ) 1 = s := by simp [Fin.snoc]
 
 /-- For s < sqrt(n), we have (s+1)² ≤ n, so the predicate returns 1 (non-zero). -/
 private theorem sqrt_pred_nonzero_below (n s : ℕ) (hs : s < Nat.sqrt n) :
@@ -442,9 +419,9 @@ private theorem sqrt_pred_zero_at (n : ℕ) :
   have h : n < (Nat.sqrt n + 1) * (Nat.sqrt n + 1) := Nat.lt_succ_sqrt n
   simp only [Nat.not_le.mpr h, ↓reduceIte]
 
-/-- Helper: extendInputs (fun _ => n) s equals Fin.snoc (fun _ => n) s -/
-private theorem extendInputs_eq_snoc (n s : ℕ) :
-    extendInputs (fun _ : Fin 1 => n) s = Fin.snoc (fun _ : Fin 1 => n) s := rfl
+/-- Helper: extend_inputs (fun _ => n) s equals Fin.snoc (fun _ => n) s -/
+private theorem extend_inputs_eq_snoc :
+    extend_inputs (fun _ : Fin 1 => n) s = Fin.snoc (fun _ : Fin 1 => n) s := rfl
 
 /-- Key lemma: μ(sqrtPredFun) equals Nat.sqrt. -/
 private theorem sqrt_mu_eq (n : ℕ) :
@@ -456,13 +433,13 @@ private theorem sqrt_mu_eq (n : ℕ) :
   rw [Part.eq_some_iff]
   rw [Nat.mem_rfind]
   constructor
-  · -- true ∈ checkZero at sqrt(n): the predicate returns 0 here
-    rw [checkZero_true_iff, extendInputs_eq_snoc]
+  · -- true ∈ check_zero at sqrt(n): the predicate returns 0 here
+    rw [check_zero_true_iff, extend_inputs_eq_snoc]
     rw [sqrt_pred_zero_at]
     exact Part.mem_some 0
-  · -- For all y < sqrt(n), false ∈ checkZero: the predicate returns non-zero
+  · -- For all y < sqrt(n), false ∈ check_zero: the predicate returns non-zero
     intro y hy
-    rw [checkZero_false_iff, extendInputs_eq_snoc]
+    rw [check_zero_false_iff, extend_inputs_eq_snoc]
     use 1
     constructor
     · exact one_ne_zero
@@ -510,10 +487,7 @@ private theorem pair_branchless_eq (a b : ℕ) :
     (if a < b then 1 else 0) * (b * b + a) +
     (1 - if a < b then 1 else 0) * (a * a + a + b) =
     pair a b := by
-  unfold pair
-  by_cases h : a < b
-  · simp [h]
-  · simp [h]
+  unfold pair; by_cases h : a < b <;> simp [h]
 
 -- Helper: b² is computable (as a 2-arg function extracting b)
 private theorem sqB_computable : URMComputableSF 2 (fun xy => Part.some ((xy 1) * (xy 1))) :=
@@ -624,32 +598,32 @@ private theorem unpairDMinusS_computable :
     unpairD_computable
     sqrt_computable
 
--- Helper for unpairLeft: lt(d,s) * d
-private theorem unpairLeftTerm1_computable :
+-- Helper for unpair_left: lt(d,s) * d
+private theorem unpair_leftTerm1_computable :
     URMComputable 1 (fun x => Part.some ((if x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) < Nat.sqrt (x 0) then 1 else 0) *
                                          (x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0)))) :=
   URMComputable.comp_binary_total mul_computable
     unpairLtDS_computable
     unpairD_computable
 
--- Helper for unpairLeft: (1 - lt(d,s)) * s
-private theorem unpairLeftTerm2_computable :
+-- Helper for unpair_left: (1 - lt(d,s)) * s
+private theorem unpair_leftTerm2_computable :
     URMComputable 1 (fun x => Part.some ((1 - if x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) < Nat.sqrt (x 0) then 1 else 0) *
                                          Nat.sqrt (x 0))) :=
   URMComputable.comp_binary_total mul_computable
     unpairGeDS_computable
     sqrt_computable
 
--- Helper for unpairRight: lt(d,s) * s
-private theorem unpairRightTerm1_computable :
+-- Helper for unpair_right: lt(d,s) * s
+private theorem unpair_rightTerm1_computable :
     URMComputable 1 (fun x => Part.some ((if x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) < Nat.sqrt (x 0) then 1 else 0) *
                                          Nat.sqrt (x 0))) :=
   URMComputable.comp_binary_total mul_computable
     unpairLtDS_computable
     sqrt_computable
 
--- Helper for unpairRight: (1 - lt(d,s)) * (d - s)
-private theorem unpairRightTerm2_computable :
+-- Helper for unpair_right: (1 - lt(d,s)) * (d - s)
+private theorem unpair_rightTerm2_computable :
     URMComputable 1 (fun x => Part.some ((1 - if x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) < Nat.sqrt (x 0) then 1 else 0) *
                                          (x 0 - Nat.sqrt (x 0) * Nat.sqrt (x 0) - Nat.sqrt (x 0)))) :=
   URMComputable.comp_binary_total mul_computable
@@ -657,42 +631,38 @@ private theorem unpairRightTerm2_computable :
     unpairDMinusS_computable
 
 -- Branchless formula for unpair.1 equals Nat.unpair.1
-private theorem unpairLeft_branchless_eq (n : ℕ) :
+private theorem unpair_left_branchless_eq (n : ℕ) :
     (if n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n then 1 else 0) * (n - Nat.sqrt n * Nat.sqrt n) +
     (1 - if n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n then 1 else 0) * Nat.sqrt n =
     (Nat.unpair n).1 := by
   rw [Nat.unpair.eq_1]
-  by_cases h : n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n
-  · simp [h]
-  · simp [h]
+  by_cases h : n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n <;> simp [h]
 
 -- Branchless formula for unpair.2 equals Nat.unpair.2
-private theorem unpairRight_branchless_eq (n : ℕ) :
+private theorem unpair_right_branchless_eq (n : ℕ) :
     (if n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n then 1 else 0) * Nat.sqrt n +
     (1 - if n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n then 1 else 0) * (n - Nat.sqrt n * Nat.sqrt n - Nat.sqrt n) =
     (Nat.unpair n).2 := by
   rw [Nat.unpair.eq_1]
-  by_cases h : n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n
-  · simp [h]
-  · simp [h]
+  by_cases h : n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n <;> simp [h]
 
 /-- Left unpair component is URM-computable. -/
-theorem unpairLeft_computable : URMComputable 1 (fun x => Part.some (x 0).unpair.1) := by
+theorem unpair_left_computable : URMComputable 1 (fun x => Part.some (x 0).unpair.1) := by
   have h := URMComputable.comp_binary_total add_computable
-    unpairLeftTerm1_computable
-    unpairLeftTerm2_computable
+    unpair_leftTerm1_computable
+    unpair_leftTerm2_computable
   convert h using 1
   funext x
-  exact congrArg Part.some (unpairLeft_branchless_eq (x 0)).symm
+  exact congrArg Part.some (unpair_left_branchless_eq (x 0)).symm
 
 /-- Right unpair component is URM-computable. -/
-theorem unpairRight_computable : URMComputable 1 (fun x => Part.some (x 0).unpair.2) := by
+theorem unpair_right_computable : URMComputable 1 (fun x => Part.some (x 0).unpair.2) := by
   have h := URMComputable.comp_binary_total add_computable
-    unpairRightTerm1_computable
-    unpairRightTerm2_computable
+    unpair_rightTerm1_computable
+    unpair_rightTerm2_computable
   convert h using 1
   funext x
-  exact congrArg Part.some (unpairRight_branchless_eq (x 0)).symm
+  exact congrArg Part.some (unpair_right_branchless_eq (x 0)).symm
 
 end Pairing
 
@@ -714,13 +684,13 @@ theorem URMComputable1.zero : URMComputable1 (pure 0) := by
   let finalState := (Config.init (List.ofFn inputs)).state.write 0 0
   have hstep : Step [Instr.Z 0] (Config.init (List.ofFn inputs)) ⟨1, finalState⟩ :=
     Step.zero rfl
-  have hhalted : (⟨1, finalState⟩ : Config).isHalted [Instr.Z 0] := by simp
+  have hhalted : (⟨1, finalState⟩ : Config).is_halted [Instr.Z 0] := by simp
   constructor
   · simp only [Part.some_dom, iff_true]
     exact ⟨⟨1, finalState⟩, Steps.single hstep, hhalted⟩
   · intro hHalts _
     obtain ⟨hsteps, hhalted'⟩ := Classical.choose_spec hHalts
-    have heq := Steps.halts_unique hsteps hhalted' (Steps.single hstep) hhalted
+    have heq := Steps.eq_of_halts hsteps hhalted' (Steps.single hstep) hhalted
     simp only [Result, heq, State.output]
     rfl
 
@@ -733,12 +703,12 @@ theorem URMComputable1.succ : URMComputable1 Nat.succ := by
 /-- Left unpair is URMComputable1. -/
 theorem URMComputable1.left : URMComputable1 ↑fun n => n.unpair.1 := by
   unfold URMComputable1
-  convert unpairLeft_computable using 1
+  convert unpair_left_computable using 1
 
 /-- Right unpair is URMComputable1. -/
 theorem URMComputable1.right : URMComputable1 ↑fun n => n.unpair.2 := by
   unfold URMComputable1
-  convert unpairRight_computable using 1
+  convert unpair_right_computable using 1
 
 /-- Pairing preserves URMComputable1.
 
@@ -751,7 +721,7 @@ theorem URMComputable1.pair {f g : ℕ →. ℕ}
   have h := URMComputable.comp_binary pair_computable hf hg
   convert h using 1
   funext x
-  simp only [compFunction, Part.sequence, Part.bind_eq_bind, Part.map_eq_map,
+  simp only [comp_function, Part.sequence, Part.bind_eq_bind, Part.map_eq_map,
     seq_eq_bind_map, Part.bind_assoc, Part.bind_map, Part.map_bind, Part.bind_some,
     Part.map_some, Fin.cons_zero, Fin.cons_one, binaryGs, Fin.val_zero, ↓reduceIte,
     Fin.val_succ, Nat.add_one_ne_zero]
@@ -767,10 +737,10 @@ theorem URMComputable1.comp {f g : ℕ →. ℕ}
   unfold URMComputable1 at *
   -- Apply comp_general with m=1, n=1
   have h := URMComputable.comp_general (m := 1) (n := 1) hf (fun _ => hg)
-  -- Show compFunction equals our goal
+  -- Show comp_function equals our goal
   convert h.toComputable using 1
   funext x
-  simp only [compFunction, Part.sequence]
+  simp only [comp_function, Part.sequence]
   rw [Part.bind_assoc]
   congr 1
   funext a
@@ -809,7 +779,7 @@ theorem URMComputable1.prec {f g : ℕ →. ℕ}
 
   -- Step 4: Compose with unpair to get URMComputable 1
   have h_final := URMComputable.comp_binary_total h_primRec
-    unpairLeft_computable unpairRight_computable
+    unpair_left_computable unpair_right_computable
 
   -- Step 5: Prove semantic equivalence (types are definitionally equal)
   convert h_final using 1
@@ -836,7 +806,7 @@ theorem URMComputable1.rfind {f : ℕ →. ℕ} (hf : URMComputable1 f) :
   simp only [μFunction, μ]
   congr 1
   funext n
-  simp only [checkZero, extendInputs, compFunction, Part.sequence,
+  simp only [check_zero, extend_inputs, comp_function, Part.sequence,
              Part.bind_some, pairGs]
   congr 2
   simp only [Part.map_some, Part.bind_some, Fin.cons_zero]

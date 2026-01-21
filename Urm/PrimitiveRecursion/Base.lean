@@ -27,7 +27,7 @@ Register layout:
 - R[base+n+3]         = accumulator (result from previous iteration)
 - R[base+n+4]         = zero register (always 0, for J comparisons)
 
-The base is chosen as max(n+1, max(pF.maxRegister, pG.maxRegister)) to ensure
+The base is chosen as max(n+1, max(pF.max_register, pG.max_register)) to ensure
 neither pF nor pG clobbers the saved registers, and that saved registers
 don't overlap with pG's input space (registers 0 through n+1).
 -/
@@ -41,156 +41,156 @@ open Program
 /-- The base register for primitive recursion, ensuring neither pF nor pG
     clobbers saved registers, and saved registers don't overlap with pG's
     input space (registers 0 through n+1). -/
-def primitiveRecursionBase (n : ℕ) (pF pG : Program) : ℕ :=
-  max (n + 1) (max pF.maxRegister pG.maxRegister)
+def primitive_recursion_base (n : ℕ) (pF pG : Program) : ℕ :=
+  max (n + 1) (max pF.max_register pG.max_register)
 
 /-! ## Register indices -/
 
 /-- The start of saved input registers R[base+1..base+n]. -/
-def prSavedInputsStart (n : ℕ) (pF pG : Program) : ℕ :=
-  primitiveRecursionBase n pF pG + 1
+def pr_saved_inputs_start (n : ℕ) (pF pG : Program) : ℕ :=
+  primitive_recursion_base n pF pG + 1
 
 /-- The register storing the original y value (recursion depth). -/
-def prSavedYReg (n : ℕ) (pF pG : Program) : ℕ :=
-  primitiveRecursionBase n pF pG + n + 1
+def pr_saved_y_reg (n : ℕ) (pF pG : Program) : ℕ :=
+  primitive_recursion_base n pF pG + n + 1
 
 /-- The counter register (tracks current iteration 0..y). -/
-def prCounterReg (n : ℕ) (pF pG : Program) : ℕ :=
-  primitiveRecursionBase n pF pG + n + 2
+def pr_counter_reg (n : ℕ) (pF pG : Program) : ℕ :=
+  primitive_recursion_base n pF pG + n + 2
 
 /-- The accumulator register (holds result from previous iteration). -/
-def prAccumulatorReg (n : ℕ) (pF pG : Program) : ℕ :=
-  primitiveRecursionBase n pF pG + n + 3
+def pr_accumulator_reg (n : ℕ) (pF pG : Program) : ℕ :=
+  primitive_recursion_base n pF pG + n + 3
 
 /-- The zero register (always 0, used for J comparisons). -/
-def prZeroReg (n : ℕ) (pF pG : Program) : ℕ :=
-  primitiveRecursionBase n pF pG + n + 4
+def pr_zero_reg (n : ℕ) (pF pG : Program) : ℕ :=
+  primitive_recursion_base n pF pG + n + 4
 
 /-- Tactic for solving register arithmetic goals in primitive recursion.
     Unfolds register definitions and calls omega. -/
 macro "pr_register_omega" : tactic =>
-  `(tactic| (simp only [prSavedInputsStart, prSavedYReg, prCounterReg,
-      prAccumulatorReg, prZeroReg, primitiveRecursionBase]; omega))
+  `(tactic| (simp only [pr_saved_inputs_start, pr_saved_y_reg, pr_counter_reg,
+      pr_accumulator_reg, pr_zero_reg, primitive_recursion_base]; omega))
 
-/-! ## Bound lemmas for primitiveRecursionBase -/
+/-! ## Bound lemmas for primitive_recursion_base -/
 
-@[simp] theorem primitiveRecursionBase_ge_n_succ (n : ℕ) (pF pG : Program) :
-    n + 1 ≤ primitiveRecursionBase n pF pG := le_max_left (n + 1) _
+@[simp] theorem primitive_recursion_base_ge_n_succ (n : ℕ) (pF pG : Program) :
+    n + 1 ≤ primitive_recursion_base n pF pG := le_max_left (n + 1) _
 
-@[simp] theorem primitiveRecursionBase_ge_n (n : ℕ) (pF pG : Program) :
-    n ≤ primitiveRecursionBase n pF pG := by
-  have := primitiveRecursionBase_ge_n_succ n pF pG; omega
+@[simp] theorem primitive_recursion_base_ge_n (n : ℕ) (pF pG : Program) :
+    n ≤ primitive_recursion_base n pF pG := by
+  have := primitive_recursion_base_ge_n_succ n pF pG; omega
 
-@[simp] theorem primitiveRecursionBase_gt_n (n : ℕ) (pF pG : Program) :
-    n < primitiveRecursionBase n pF pG := by
-  have := primitiveRecursionBase_ge_n_succ n pF pG; omega
+@[simp] theorem primitive_recursion_base_gt_n (n : ℕ) (pF pG : Program) :
+    n < primitive_recursion_base n pF pG := by
+  have := primitive_recursion_base_ge_n_succ n pF pG; omega
 
-@[simp] theorem primitiveRecursionBase_ge_pF (n : ℕ) (pF pG : Program) :
-    pF.maxRegister ≤ primitiveRecursionBase n pF pG := by
-  simp only [primitiveRecursionBase]; exact le_max_of_le_right (le_max_left _ _)
+@[simp] theorem primitive_recursion_base_ge_pF (n : ℕ) (pF pG : Program) :
+    pF.max_register ≤ primitive_recursion_base n pF pG := by
+  simp only [primitive_recursion_base]; exact le_max_of_le_right (le_max_left _ _)
 
-@[simp] theorem primitiveRecursionBase_ge_pG (n : ℕ) (pF pG : Program) :
-    pG.maxRegister ≤ primitiveRecursionBase n pF pG := by
-  simp only [primitiveRecursionBase]; exact le_max_of_le_right (le_max_right _ _)
+@[simp] theorem primitive_recursion_base_ge_pG (n : ℕ) (pF pG : Program) :
+    pG.max_register ≤ primitive_recursion_base n pF pG := by
+  simp only [primitive_recursion_base]; exact le_max_of_le_right (le_max_right _ _)
 
 /-! ## Register ordering lemmas -/
 
-@[simp] theorem prSavedInputsStart_gt_base (n : ℕ) (pF pG : Program) :
-    primitiveRecursionBase n pF pG < prSavedInputsStart n pF pG := by pr_register_omega
+@[simp] theorem pr_saved_inputs_start_gt_base (n : ℕ) (pF pG : Program) :
+    primitive_recursion_base n pF pG < pr_saved_inputs_start n pF pG := by pr_register_omega
 
-@[simp] theorem prSavedYReg_gt_base (n : ℕ) (pF pG : Program) :
-    primitiveRecursionBase n pF pG < prSavedYReg n pF pG := by pr_register_omega
+@[simp] theorem pr_saved_y_reg_gt_base (n : ℕ) (pF pG : Program) :
+    primitive_recursion_base n pF pG < pr_saved_y_reg n pF pG := by pr_register_omega
 
-@[simp] theorem prCounterReg_gt_base (n : ℕ) (pF pG : Program) :
-    primitiveRecursionBase n pF pG < prCounterReg n pF pG := by pr_register_omega
+@[simp] theorem pr_counter_reg_gt_base (n : ℕ) (pF pG : Program) :
+    primitive_recursion_base n pF pG < pr_counter_reg n pF pG := by pr_register_omega
 
-@[simp] theorem prAccumulatorReg_gt_base (n : ℕ) (pF pG : Program) :
-    primitiveRecursionBase n pF pG < prAccumulatorReg n pF pG := by pr_register_omega
+@[simp] theorem pr_accumulator_reg_gt_base (n : ℕ) (pF pG : Program) :
+    primitive_recursion_base n pF pG < pr_accumulator_reg n pF pG := by pr_register_omega
 
-@[simp] theorem prZeroReg_gt_base (n : ℕ) (pF pG : Program) :
-    primitiveRecursionBase n pF pG < prZeroReg n pF pG := by pr_register_omega
+@[simp] theorem pr_zero_reg_gt_base (n : ℕ) (pF pG : Program) :
+    primitive_recursion_base n pF pG < pr_zero_reg n pF pG := by pr_register_omega
 
 /-! ## Register distinctness lemmas -/
 
-@[simp] theorem prSavedYReg_ne_prCounterReg (n : ℕ) (pF pG : Program) :
-    prSavedYReg n pF pG ≠ prCounterReg n pF pG := by pr_register_omega
+@[simp] theorem pr_saved_y_reg_ne_pr_counter_reg (n : ℕ) (pF pG : Program) :
+    pr_saved_y_reg n pF pG ≠ pr_counter_reg n pF pG := by pr_register_omega
 
-@[simp] theorem prSavedYReg_ne_prAccumulatorReg (n : ℕ) (pF pG : Program) :
-    prSavedYReg n pF pG ≠ prAccumulatorReg n pF pG := by pr_register_omega
+@[simp] theorem pr_saved_y_reg_ne_pr_accumulator_reg (n : ℕ) (pF pG : Program) :
+    pr_saved_y_reg n pF pG ≠ pr_accumulator_reg n pF pG := by pr_register_omega
 
-@[simp] theorem prSavedYReg_ne_prZeroReg (n : ℕ) (pF pG : Program) :
-    prSavedYReg n pF pG ≠ prZeroReg n pF pG := by pr_register_omega
+@[simp] theorem pr_saved_y_reg_ne_pr_zero_reg (n : ℕ) (pF pG : Program) :
+    pr_saved_y_reg n pF pG ≠ pr_zero_reg n pF pG := by pr_register_omega
 
-@[simp] theorem prCounterReg_ne_prAccumulatorReg (n : ℕ) (pF pG : Program) :
-    prCounterReg n pF pG ≠ prAccumulatorReg n pF pG := by pr_register_omega
+@[simp] theorem pr_counter_reg_ne_pr_accumulator_reg (n : ℕ) (pF pG : Program) :
+    pr_counter_reg n pF pG ≠ pr_accumulator_reg n pF pG := by pr_register_omega
 
-@[simp] theorem prCounterReg_ne_prZeroReg (n : ℕ) (pF pG : Program) :
-    prCounterReg n pF pG ≠ prZeroReg n pF pG := by pr_register_omega
+@[simp] theorem pr_counter_reg_ne_pr_zero_reg (n : ℕ) (pF pG : Program) :
+    pr_counter_reg n pF pG ≠ pr_zero_reg n pF pG := by pr_register_omega
 
-@[simp] theorem prAccumulatorReg_ne_prZeroReg (n : ℕ) (pF pG : Program) :
-    prAccumulatorReg n pF pG ≠ prZeroReg n pF pG := by pr_register_omega
+@[simp] theorem pr_accumulator_reg_ne_pr_zero_reg (n : ℕ) (pF pG : Program) :
+    pr_accumulator_reg n pF pG ≠ pr_zero_reg n pF pG := by pr_register_omega
 
 /-! ## Saved inputs don't overlap with working space -/
 
-@[simp] theorem prSavedInputsStart_ge_n (n : ℕ) (pF pG : Program) :
-    n ≤ prSavedInputsStart n pF pG := by pr_register_omega
+@[simp] theorem pr_saved_inputs_start_ge_n (n : ℕ) (pF pG : Program) :
+    n ≤ pr_saved_inputs_start n pF pG := by pr_register_omega
 
-theorem prSavedInput_reg_ne_working (n : ℕ) (pF pG : Program) (i : Fin n) :
-    prSavedInputsStart n pF pG + i ≠ i.val := by pr_register_omega
+theorem pr_saved_input_reg_ne_working (n : ℕ) (pF pG : Program) (i : Fin n) :
+    pr_saved_inputs_start n pF pG + i ≠ i.val := by pr_register_omega
 
 /-! ## Saved inputs don't overlap with high registers -/
 
-@[simp] theorem prSavedInput_ne_prSavedYReg (n : ℕ) (pF pG : Program) (i : Fin n) :
-    prSavedInputsStart n pF pG + i ≠ prSavedYReg n pF pG := by pr_register_omega
+@[simp] theorem pr_saved_input_ne_pr_saved_y_reg (n : ℕ) (pF pG : Program) (i : Fin n) :
+    pr_saved_inputs_start n pF pG + i ≠ pr_saved_y_reg n pF pG := by pr_register_omega
 
-@[simp] theorem prSavedInput_ne_prCounterReg (n : ℕ) (pF pG : Program) (i : Fin n) :
-    prSavedInputsStart n pF pG + i ≠ prCounterReg n pF pG := by pr_register_omega
+@[simp] theorem pr_saved_input_ne_pr_counter_reg (n : ℕ) (pF pG : Program) (i : Fin n) :
+    pr_saved_inputs_start n pF pG + i ≠ pr_counter_reg n pF pG := by pr_register_omega
 
-@[simp] theorem prSavedInput_ne_prAccumulatorReg (n : ℕ) (pF pG : Program) (i : Fin n) :
-    prSavedInputsStart n pF pG + i ≠ prAccumulatorReg n pF pG := by pr_register_omega
+@[simp] theorem pr_saved_input_ne_pr_accumulator_reg (n : ℕ) (pF pG : Program) (i : Fin n) :
+    pr_saved_inputs_start n pF pG + i ≠ pr_accumulator_reg n pF pG := by pr_register_omega
 
-@[simp] theorem prSavedInput_ne_prZeroReg (n : ℕ) (pF pG : Program) (i : Fin n) :
-    prSavedInputsStart n pF pG + i ≠ prZeroReg n pF pG := by pr_register_omega
+@[simp] theorem pr_saved_input_ne_pr_zero_reg (n : ℕ) (pF pG : Program) (i : Fin n) :
+    pr_saved_inputs_start n pF pG + i ≠ pr_zero_reg n pF pG := by pr_register_omega
 
 /-! ## Generic "doesn't touch" lemmas
 
-Any program bounded by primitiveRecursionBase doesn't touch high registers. -/
+Any program bounded by primitive_recursion_base doesn't touch high registers. -/
 
-theorem program_doesnt_touch_prSavedInputs (n : ℕ) (pF pG : Program) (p : Program)
-    (hp : p.maxRegister ≤ primitiveRecursionBase n pF pG) (i : Fin n) :
-    p.maxRegister < prSavedInputsStart n pF pG + i := by
-  simp only [prSavedInputsStart]; omega
+theorem program_doesnt_touch_pr_saved_inputs (n : ℕ) (pF pG : Program) (p : Program)
+    (hp : p.max_register ≤ primitive_recursion_base n pF pG) (i : Fin n) :
+    p.max_register < pr_saved_inputs_start n pF pG + i := by
+  simp only [pr_saved_inputs_start]; omega
 
-theorem program_doesnt_touch_prSavedYReg (n : ℕ) (pF pG : Program) (p : Program)
-    (hp : p.maxRegister ≤ primitiveRecursionBase n pF pG) :
-    p.maxRegister < prSavedYReg n pF pG := by
-  simp only [prSavedYReg]; omega
+theorem program_doesnt_touch_pr_saved_y_reg (n : ℕ) (pF pG : Program) (p : Program)
+    (hp : p.max_register ≤ primitive_recursion_base n pF pG) :
+    p.max_register < pr_saved_y_reg n pF pG := by
+  simp only [pr_saved_y_reg]; omega
 
-theorem program_doesnt_touch_prCounterReg (n : ℕ) (pF pG : Program) (p : Program)
-    (hp : p.maxRegister ≤ primitiveRecursionBase n pF pG) :
-    p.maxRegister < prCounterReg n pF pG := by
-  simp only [prCounterReg]; omega
+theorem program_doesnt_touch_pr_counter_reg (n : ℕ) (pF pG : Program) (p : Program)
+    (hp : p.max_register ≤ primitive_recursion_base n pF pG) :
+    p.max_register < pr_counter_reg n pF pG := by
+  simp only [pr_counter_reg]; omega
 
-theorem program_doesnt_touch_prZeroReg (n : ℕ) (pF pG : Program) (p : Program)
-    (hp : p.maxRegister ≤ primitiveRecursionBase n pF pG) :
-    p.maxRegister < prZeroReg n pF pG := by
-  simp only [prZeroReg]; omega
+theorem program_doesnt_touch_pr_zero_reg (n : ℕ) (pF pG : Program) (p : Program)
+    (hp : p.max_register ≤ primitive_recursion_base n pF pG) :
+    p.max_register < pr_zero_reg n pF pG := by
+  simp only [pr_zero_reg]; omega
 
 /-! ## High registers are above n + 1 (for pG input space) -/
 
-@[simp] theorem prSavedInputsStart_gt_n_plus_1 (n : ℕ) (pF pG : Program) :
-    n + 1 < prSavedInputsStart n pF pG := by pr_register_omega
+@[simp] theorem pr_saved_inputs_start_gt_n_plus_1 (n : ℕ) (pF pG : Program) :
+    n + 1 < pr_saved_inputs_start n pF pG := by pr_register_omega
 
-@[simp] theorem prSavedYReg_gt_n_plus_1 (n : ℕ) (pF pG : Program) :
-    n + 1 < prSavedYReg n pF pG := by pr_register_omega
+@[simp] theorem pr_saved_y_reg_gt_n_plus_1 (n : ℕ) (pF pG : Program) :
+    n + 1 < pr_saved_y_reg n pF pG := by pr_register_omega
 
-@[simp] theorem prCounterReg_gt_n_plus_1 (n : ℕ) (pF pG : Program) :
-    n + 1 < prCounterReg n pF pG := by pr_register_omega
+@[simp] theorem pr_counter_reg_gt_n_plus_1 (n : ℕ) (pF pG : Program) :
+    n + 1 < pr_counter_reg n pF pG := by pr_register_omega
 
-@[simp] theorem prAccumulatorReg_gt_n_plus_1 (n : ℕ) (pF pG : Program) :
-    n + 1 < prAccumulatorReg n pF pG := by pr_register_omega
+@[simp] theorem pr_accumulator_reg_gt_n_plus_1 (n : ℕ) (pF pG : Program) :
+    n + 1 < pr_accumulator_reg n pF pG := by pr_register_omega
 
-@[simp] theorem prZeroReg_gt_n_plus_1 (n : ℕ) (pF pG : Program) :
-    n + 1 < prZeroReg n pF pG := by pr_register_omega
+@[simp] theorem pr_zero_reg_gt_n_plus_1 (n : ℕ) (pF pG : Program) :
+    n + 1 < pr_zero_reg n pF pG := by pr_register_omega
 
 end Urm
