@@ -27,23 +27,23 @@ theorem URMComputableSF.primRec {n : ℕ}
     URMComputableSF (n + 1) (PrFunction f g) := by
   obtain ⟨pF, hF_sf, hF_spec⟩ := hf
   obtain ⟨pG, hG_sf, hG_spec⟩ := hg
-  refine ⟨primitiveRecursionProgram n pF pG,
-          primitiveRecursionProgram_isStandardForm n pF pG hF_sf hG_sf,
+  refine ⟨primitive_recursion_program n pF pG,
+          primitive_recursion_program_isStandardForm n pF pG hF_sf hG_sf,
           fun inputs => ?_⟩
   -- Extract x and y from inputs
-  have hinputs_eq : inputs = Fin.snoc (initInputs inputs) (lastInput inputs) := by
+  have hinputs_eq : inputs = Fin.snoc (init_inputs inputs) (last_input inputs) := by
     ext i
     by_cases hi : i.val < n
     · have heq : i = Fin.castSucc ⟨i.val, hi⟩ := by ext; simp
-      rw [heq]; simp only [Fin.snoc_castSucc, initInputs_apply]
+      rw [heq]; simp only [Fin.snoc_castSucc, init_inputs_apply]
     · have heq : i = Fin.last n := by ext; have := i.isLt; grind
-      rw [heq]; simp only [Fin.snoc_last, lastInput_apply]
+      rw [heq]; simp only [Fin.snoc_last, last_input_apply]
   rw [hinputs_eq]
   -- Use let for transparent definitions so type matching works
-  let x := initInputs inputs
-  let y := lastInput inputs
+  let x := init_inputs inputs
+  let y := last_input inputs
   -- Apply the bundled spec
-  have hspec := primitiveRecursionProgram_spec n pF pG hF_sf hG_sf f g
+  have hspec := primitive_recursion_program_spec n pF pG hF_sf hG_sf f g
     (fun args => ⟨(hF_spec args).1, (hF_spec args).2⟩)
     (fun args => ⟨(hG_spec args).1, (hG_spec args).2⟩)
     x y

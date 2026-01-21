@@ -53,7 +53,7 @@ namespace Instr
 
 /-- The registers read by an instruction. -/
 @[scoped grind =]
-def readsFrom : Instr → Finset ℕ
+def reads_from : Instr → Finset ℕ
   | Z _ => ∅
   | S n => {n}
   | T m _ => {m}
@@ -61,7 +61,7 @@ def readsFrom : Instr → Finset ℕ
 
 /-- The register written to by an instruction, if any. -/
 @[scoped grind =]
-def writesTo : Instr → Option ℕ
+def writes_to : Instr → Option ℕ
   | Z n => some n
   | S n => some n
   | T _ n => some n
@@ -69,7 +69,7 @@ def writesTo : Instr → Option ℕ
 
 /-- The maximum register index referenced by an instruction. -/
 @[scoped grind =]
-def maxRegister : Instr → ℕ
+def max_register : Instr → ℕ
   | Z n => n
   | S n => n
   | T m n => max m n
@@ -78,7 +78,7 @@ def maxRegister : Instr → ℕ
 /-- Shift all jump targets in an instruction by `offset`.
 Used when concatenating programs to maintain correct jump destinations. -/
 @[scoped grind =]
-def shiftJumps (offset : ℕ) : Instr → Instr
+def shift_jumps (offset : ℕ) : Instr → Instr
   | Z n => Z n
   | S n => S n
   | T m n => T m n
@@ -87,7 +87,7 @@ def shiftJumps (offset : ℕ) : Instr → Instr
 /-- Shift all register references in an instruction by `offset`.
 Used to isolate register usage when composing programs. -/
 @[scoped grind =]
-def shiftRegisters (offset : ℕ) : Instr → Instr
+def shift_registers (offset : ℕ) : Instr → Instr
   | Z n => Z (n + offset)
   | S n => S (n + offset)
   | T m n => T (m + offset) (n + offset)
@@ -102,59 +102,59 @@ namespace Program
 
 /-- The maximum register index referenced by any instruction in the program. -/
 @[scoped grind =]
-def maxRegister (p : Program) : ℕ :=
-  p.foldl (fun acc instr => max acc instr.maxRegister) 0
+def max_register (p : Program) : ℕ :=
+  p.foldl (fun acc instr => max acc instr.max_register) 0
 
 /-- Shift all jump targets in a program by `offset`.
 Used when concatenating programs: the second program's jumps must be adjusted
 by the length of the first program. -/
 @[scoped grind =]
-def shiftJumps (offset : ℕ) (p : Program) : Program :=
-  p.map (Instr.shiftJumps offset)
+def shift_jumps (offset : ℕ) (p : Program) : Program :=
+  p.map (Instr.shift_jumps offset)
 
 /-- Shift all register references in a program by `offset`.
 Used to isolate register usage when composing programs. -/
 @[scoped grind =]
-def shiftRegisters (offset : ℕ) (p : Program) : Program :=
-  p.map (Instr.shiftRegisters offset)
+def shift_registers (offset : ℕ) (p : Program) : Program :=
+  p.map (Instr.shift_registers offset)
 
 /-! ### MaxRegister helper lemmas -/
 
 /-- The foldl max operation preserves the initial value as a lower bound. -/
-theorem maxRegister_foldl_ge_init (init : ℕ) (p : Program) :
-    init ≤ p.foldl (fun acc i => max acc i.maxRegister) init := by
+theorem max_register_foldl_ge_init (init : ℕ) (p : Program) :
+    init ≤ p.foldl (fun acc i => max acc i.max_register) init := by
   induction p generalizing init with
   | nil => exact Nat.le_refl _
   | cons _ t iht => exact Nat.le_trans (Nat.le_max_left _ _) (iht _)
 
 /-- The foldl max operation is monotonic in the initial value. -/
-theorem maxRegister_foldl_mono (a b : ℕ) (p : Program) (hab : a ≤ b) :
-    p.foldl (fun acc i => max acc i.maxRegister) a ≤
-    p.foldl (fun acc i => max acc i.maxRegister) b := by
+theorem max_register_foldl_mono (a b : ℕ) (p : Program) (hab : a ≤ b) :
+    p.foldl (fun acc i => max acc i.max_register) a ≤
+    p.foldl (fun acc i => max acc i.max_register) b := by
   induction p generalizing a b with
   | nil => exact hab
   | cons _ t iht => simp only [List.foldl_cons]; apply iht; omega
 
-/-- Any element's maxRegister is at most the program's maxRegister. -/
-theorem maxRegister_foldl_ge_elem (p : Program) (init : ℕ) (instr : Instr) (h : instr ∈ p) :
-    instr.maxRegister ≤ p.foldl (fun acc i => max acc i.maxRegister) init := by
+/-- Any element's max_register is at most the program's max_register. -/
+theorem max_register_foldl_ge_elem (p : Program) (init : ℕ) (instr : Instr) (h : instr ∈ p) :
+    instr.max_register ≤ p.foldl (fun acc i => max acc i.max_register) init := by
   induction p generalizing init with
   | nil => cases h
   | cons hd tl ih =>
     simp only [List.foldl_cons]
     cases h with
     | head =>
-      calc instr.maxRegister
-          ≤ max init instr.maxRegister := Nat.le_max_right _ _
-        _ ≤ _ := maxRegister_foldl_ge_init _ _
+      calc instr.max_register
+          ≤ max init instr.max_register := Nat.le_max_right _ _
+        _ ≤ _ := max_register_foldl_ge_init _ _
     | tail _ htl => exact ih _ htl
 
-/-- If an instruction is at position i, its maxRegister is at most the program's maxRegister. -/
-theorem getElem?_maxRegister (p : Program) {i : ℕ} {instr : Instr}
-    (h : p[i]? = some instr) : instr.maxRegister ≤ p.maxRegister := by
+/-- If an instruction is at position i, its max_register is at most the program's max_register. -/
+theorem getElem?_max_register (p : Program) {i : ℕ} {instr : Instr}
+    (h : p[i]? = some instr) : instr.max_register ≤ p.max_register := by
   have hmem : instr ∈ p := List.mem_of_getElem? h
-  simp only [maxRegister]
-  exact maxRegister_foldl_ge_elem p 0 instr hmem
+  simp only [max_register]
+  exact max_register_foldl_ge_elem p 0 instr hmem
 
 end Program
 
@@ -181,7 +181,7 @@ def write (σ : State) (n : ℕ) (v : ℕ) : State := Function.update σ n v
 /-- Initialize state with input values in registers 0, 1, ..., k-1.
 Registers beyond the inputs are initialized to 0. -/
 @[scoped grind =]
-def fromInputs (inputs : List ℕ) : State := fun n => inputs.getD n 0
+def of_inputs (inputs : List ℕ) : State := fun n => inputs.getD n 0
 
 /-- Extract output from register 0. -/
 @[scoped grind =]
@@ -190,11 +190,11 @@ def output (σ : State) : ℕ := σ 0
 -- Basic lemmas about state operations
 
 @[simp, scoped grind =]
-theorem write_read_same (σ : State) (n v : ℕ) : (σ.write n v).read n = v := by
+theorem write_read_self (σ : State) (n v : ℕ) : (σ.write n v).read n = v := by
   simp only [write, read, Function.update_self]
 
 @[simp, scoped grind =]
-theorem write_read_diff (σ : State) (m n v : ℕ) (h : m ≠ n) :
+theorem write_read_of_ne (σ : State) (m n v : ℕ) (h : m ≠ n) :
     (σ.write n v).read m = σ.read m := by
   simp only [write, read, Function.update_of_ne h]
 
@@ -212,17 +212,17 @@ namespace Config
 /-- Initial configuration for a program with given inputs.
 The program counter starts at 0, and inputs are loaded into registers 0, 1, .... -/
 @[scoped grind =]
-def init (inputs : List ℕ) : Config := ⟨0, State.fromInputs inputs⟩
+def init (inputs : List ℕ) : Config := ⟨0, State.of_inputs inputs⟩
 
 /-- A configuration is halted if the program counter is at or beyond the program length. -/
 @[scoped grind =]
-def isHalted (c : Config) (p : Program) : Prop := p.length ≤ c.pc
+def is_halted (c : Config) (p : Program) : Prop := p.length ≤ c.pc
 
-instance (c : Config) (p : Program) : Decidable (c.isHalted p) :=
+instance (c : Config) (p : Program) : Decidable (c.is_halted p) :=
   inferInstanceAs (Decidable (p.length ≤ c.pc))
 
 @[simp]
-theorem isHalted_def (c : Config) (p : Program) : c.isHalted p ↔ p.length ≤ c.pc := Iff.rfl
+theorem is_halted_iff (c : Config) (p : Program) : c.is_halted p ↔ p.length ≤ c.pc := Iff.rfl
 
 /-- Extensionality for Config: two configs are equal iff their components are equal. -/
 @[ext]

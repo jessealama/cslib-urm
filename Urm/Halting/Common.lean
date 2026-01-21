@@ -19,7 +19,7 @@ primitive recursion and minimization constructions.
 ## Main definitions
 
 - `StraightLineResult`: Bundled result of executing a straight-line program
-- `straightLineExec`: Execute a straight-line program and extract the result
+- `straight_lineExec`: Execute a straight-line program and extract the result
 - `liftStraightLinePhase`: Lift straight-line execution to an embedded phase
 
 ## Main theorems
@@ -41,15 +41,15 @@ structure StraightLineResult (p : Program) (s : State) where
   /-- Steps from initial state to final config -/
   steps : Steps p ⟨0, s⟩ config
   /-- The program halted -/
-  halted : config.isHalted p
+  halted : config.is_halted p
   /-- PC equals program length at halt -/
   pc_eq : config.pc = p.length
 
 /-- Execute a straight-line program and extract the result as a bundled structure.
     This eliminates the common boilerplate of Classical.choose + spec extraction. -/
-noncomputable def straightLineExec {p : Program} (hsl : p.isStraightLine = true) (s : State) :
+noncomputable def straight_lineExec {p : Program} (hsl : p.is_straight_line = true) (s : State) :
     StraightLineResult p s :=
-  let hExists := straightLine_halts_from_state hsl s
+  let hExists := straight_line_halts_from_state hsl s
   let c := Classical.choose hExists
   let hspec := Classical.choose_spec hExists
   ⟨c, hspec.1, hspec.2.1, hspec.2.2⟩
@@ -66,13 +66,13 @@ structure LiftedPhaseResult (host : Program) (offset : ℕ) (s : State) (phaseLe
   pc_eq : config.pc = offset + phaseLen
 
 /-- Lift straight-line execution to an embedded phase in a larger program.
-    Combines straightLineExec with Steps.straightLine_at_offset. -/
+    Combines straight_lineExec with Steps.straight_line_at_offset. -/
 noncomputable def liftStraightLinePhase
-    {phase host : Program} (hsl : phase.isStraightLine = true) (offset : ℕ)
+    {phase host : Program} (hsl : phase.is_straight_line = true) (offset : ℕ)
     (hembed : ∀ i, i < phase.length → host[offset + i]? = phase[i]?)
     (s : State) : LiftedPhaseResult host offset s phase.length :=
-  let result := straightLineExec hsl s
-  let hsteps_lifted := Steps.straightLine_at_offset offset hsl hembed result.steps
+  let result := straight_lineExec hsl s
+  let hsteps_lifted := Steps.straight_line_at_offset offset hsl hembed result.steps
   -- After lifting: pc goes from offset + 0 to offset + phase.length
   have hpc_start : offset + (0 : ℕ) = offset := by omega
   have hpc_end : offset + result.config.pc = offset + phase.length := by rw [result.pc_eq]
@@ -89,7 +89,7 @@ abbrev LiftedPhaseResult.finalState {host : Program} {offset : ℕ} {s : State} 
 
 /-- Extract subprocess halting from host program execution exiting the embedded region.
 
-If a subprogram `sub` is embedded (via shiftJumps) at offset `offset` in a host program,
+If a subprogram `sub` is embedded (via shift_jumps) at offset `offset` in a host program,
 and execution in the host starting at `offset + k` eventually reaches a PC ≥ `offset + sub.length`,
 then the subprogram itself halts when started at PC `k`.
 
@@ -100,14 +100,14 @@ The proof uses strong induction on step count, with case analysis on each instru
 -/
 theorem halts_of_exits_embedded_region
     {host sub : Program} {offset : ℕ}
-    (hembed : ∀ i, i < sub.length → host[offset + i]? = (sub.shiftJumps offset)[i]?)
+    (hembed : ∀ i, i < sub.length → host[offset + i]? = (sub.shift_jumps offset)[i]?)
     (hsub_sf : Program.IsStandardForm sub)
     (k : ℕ) (state : State) (c : Config)
     (hk_le : k ≤ sub.length)
     (hsteps : Steps host ⟨offset + k, state⟩ c)
     (hpc_ge : c.pc ≥ offset + sub.length) :
     ∃ c_sub, Steps sub ⟨k, state⟩ c_sub ∧ c_sub.pc = sub.length := by
-  obtain ⟨numSteps, hstepsN⟩ := StepsN.fromSteps hsteps
+  obtain ⟨numSteps, hstepsN⟩ := StepsN.from_steps hsteps
   induction numSteps using Nat.strong_induction_on generalizing k state c with
   | _ numSteps ih =>
     by_cases hk_eq : k = sub.length
@@ -131,8 +131,8 @@ theorem halts_of_exits_embedded_region
         exact ⟨sub[k], List.getElem?_eq_getElem hk_lt⟩
       obtain ⟨instr, hsub_instr⟩ := hsub_instr_exists
       -- The shifted instruction in the host program
-      have hhost_instr : host[offset + k]? = some (instr.shiftJumps offset) := by
-        rw [hembed_k, getElem?_shiftJumps, hsub_instr]; rfl
+      have hhost_instr : host[offset + k]? = some (instr.shift_jumps offset) := by
+        rw [hembed_k, getElem?_shift_jumps, hsub_instr]; rfl
       have hm_lt : m < numSteps := by omega
       have hk1_le : k + 1 ≤ sub.length := Nat.succ_le_of_lt hk_lt
       match instr with
@@ -144,7 +144,7 @@ theorem halts_of_exits_embedded_region
         have hrest_steps' : StepsN host m ⟨offset + (k + 1), state.write r 0⟩ c := by
           rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
         obtain ⟨c_sub, hsub_steps, hsub_pc⟩ := ih m hm_lt (k + 1) (state.write r 0) c hk1_le
-            hrest_steps'.toSteps hpc_ge hrest_steps'
+            hrest_steps'.to_steps hpc_ge hrest_steps'
         exact ⟨c_sub, Relation.ReflTransGen.head hsub_step hsub_steps, hsub_pc⟩
       | Instr.S r =>
         have hsub_step : Step sub ⟨k, state⟩ ⟨k + 1, state.write r (state.read r + 1)⟩ := Step.succ hsub_instr
@@ -154,7 +154,7 @@ theorem halts_of_exits_embedded_region
         have hrest_steps' : StepsN host m ⟨offset + (k + 1), state.write r (state.read r + 1)⟩ c := by
           rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
         obtain ⟨c_sub, hsub_steps, hsub_pc⟩ := ih m hm_lt (k + 1) (state.write r (state.read r + 1)) c hk1_le
-            hrest_steps'.toSteps hpc_ge hrest_steps'
+            hrest_steps'.to_steps hpc_ge hrest_steps'
         exact ⟨c_sub, Relation.ReflTransGen.head hsub_step hsub_steps, hsub_pc⟩
       | Instr.T m' r =>
         have hsub_step : Step sub ⟨k, state⟩ ⟨k + 1, state.write r (state.read m')⟩ := Step.trans hsub_instr
@@ -164,13 +164,13 @@ theorem halts_of_exits_embedded_region
         have hrest_steps' : StepsN host m ⟨offset + (k + 1), state.write r (state.read m')⟩ c := by
           rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
         obtain ⟨c_sub, hsub_steps, hsub_pc⟩ := ih m hm_lt (k + 1) (state.write r (state.read m')) c hk1_le
-            hrest_steps'.toSteps hpc_ge hrest_steps'
+            hrest_steps'.to_steps hpc_ge hrest_steps'
         exact ⟨c_sub, Relation.ReflTransGen.head hsub_step hsub_steps, hsub_pc⟩
       | Instr.J m' r' q =>
         have hhost_instr' : host[offset + k]? = some (Instr.J m' r' (q + offset)) := by
           rw [hhost_instr]; rfl
         have hq_le : q ≤ sub.length := by
-          simpa [Instr.hasBoundedJump] using hsub_sf.getElem?_hasBoundedJump hsub_instr
+          simpa [Instr.has_bounded_jump] using hsub_sf.getElem?_has_bounded_jump hsub_instr
         by_cases heq : state.read m' = state.read r'
         · -- Equal: jump to q
           have hsub_step : Step sub ⟨k, state⟩ ⟨q, state⟩ := Step.jump_eq hsub_instr heq
@@ -179,7 +179,7 @@ theorem halts_of_exits_embedded_region
           have hrest_steps' : StepsN host m ⟨offset + q, state⟩ c := by
             rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2; omega
           obtain ⟨c_sub, hsub_steps, hsub_pc⟩ := ih m hm_lt q state c hq_le
-              hrest_steps'.toSteps hpc_ge hrest_steps'
+              hrest_steps'.to_steps hpc_ge hrest_steps'
           exact ⟨c_sub, Relation.ReflTransGen.head hsub_step hsub_steps, hsub_pc⟩
         · -- Not equal: proceed to k + 1
           have hsub_step : Step sub ⟨k, state⟩ ⟨k + 1, state⟩ := Step.jump_ne hsub_instr heq
@@ -188,7 +188,7 @@ theorem halts_of_exits_embedded_region
           have hrest_steps' : StepsN host m ⟨offset + (k + 1), state⟩ c := by
             rw [hc_mid_eq] at hrest_steps; convert hrest_steps using 2
           obtain ⟨c_sub, hsub_steps, hsub_pc⟩ := ih m hm_lt (k + 1) state c hk1_le
-              hrest_steps'.toSteps hpc_ge hrest_steps'
+              hrest_steps'.to_steps hpc_ge hrest_steps'
           exact ⟨c_sub, Relation.ReflTransGen.head hsub_step hsub_steps, hsub_pc⟩
 
 /-! ## Halts Equivalence for Agreeing States -/
@@ -201,24 +201,24 @@ This abstracts the common pattern in halting implication proofs. -/
 theorem halts_iff_of_agreeing_state
     {p : Program} {inputs : List ℕ} {c₂ : Config}
     (hpc : (Config.init inputs).pc = c₂.pc)
-    (hagree : (Config.init inputs).state.agreeOn c₂.state 0 p.maxRegister) :
-    Halts p inputs ↔ ∃ c, Steps p c₂ c ∧ c.isHalted p := by
-  have hagree_symm : c₂.state.agreeOn (Config.init inputs).state 0 p.maxRegister :=
-    State.agreeOn_symm hagree
+    (hagree : (Config.init inputs).state.agree_on c₂.state 0 p.max_register) :
+    Halts p inputs ↔ ∃ c, Steps p c₂ c ∧ c.is_halted p := by
+  have hagree_symm : c₂.state.agree_on (Config.init inputs).state 0 p.max_register :=
+    State.agree_on_symm hagree
   constructor
   · intro ⟨c, hsteps, hhalted⟩
-    let hagree_result := Steps.agreeOn hsteps hpc hagree
+    let hagree_result := Steps.agree_on hsteps hpc hagree
     let c' := Classical.choose hagree_result
     let hspec := Classical.choose_spec hagree_result
     let hsteps' : Steps p c₂ c' := hspec.1
     let hpc' : c.pc = c'.pc := hspec.2.1
-    exact ⟨c', hsteps', by simp only [Config.isHalted] at hhalted ⊢; omega⟩
+    exact ⟨c', hsteps', by simp only [Config.is_halted] at hhalted ⊢; omega⟩
   · intro ⟨c, hsteps, hhalted⟩
-    let hagree_result := Steps.agreeOn hsteps hpc.symm hagree_symm
+    let hagree_result := Steps.agree_on hsteps hpc.symm hagree_symm
     let c' := Classical.choose hagree_result
     let hspec := Classical.choose_spec hagree_result
     let hsteps' : Steps p (Config.init inputs) c' := hspec.1
     let hpc' : c.pc = c'.pc := hspec.2.1
-    exact ⟨c', hsteps', by simp only [Config.isHalted] at hhalted ⊢; omega⟩
+    exact ⟨c', hsteps', by simp only [Config.is_halted] at hhalted ⊢; omega⟩
 
 end Urm

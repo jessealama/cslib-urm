@@ -39,27 +39,27 @@ namespace Urm
 /-! ## Type conversion utilities -/
 
 /-- Convert from (Fin n → ℕ) → Part ℕ to List.Vector ℕ n →. ℕ -/
-def toVectorFun {n : ℕ} (f : (Fin n → ℕ) → Part ℕ) : List.Vector ℕ n →. ℕ :=
+def to_vector_fun {n : ℕ} (f : (Fin n → ℕ) → Part ℕ) : List.Vector ℕ n →. ℕ :=
   fun v => f v.get
 
 /-- Convert from List.Vector ℕ n →. ℕ to (Fin n → ℕ) → Part ℕ -/
-def fromVectorFun {n : ℕ} (f : List.Vector ℕ n →. ℕ) : (Fin n → ℕ) → Part ℕ :=
+def from_vector_fun {n : ℕ} (f : List.Vector ℕ n →. ℕ) : (Fin n → ℕ) → Part ℕ :=
   fun x => f (List.Vector.ofFn x)
 
-/-- Round-trip: fromVectorFun ∘ toVectorFun = id -/
-theorem fromVectorFun_toVectorFun {n : ℕ} (f : (Fin n → ℕ) → Part ℕ) :
-    fromVectorFun (toVectorFun f) = f := by
+/-- Round-trip: from_vector_fun ∘ to_vector_fun = id -/
+theorem from_vector_fun_to_vector_fun {n : ℕ} (f : (Fin n → ℕ) → Part ℕ) :
+    from_vector_fun (to_vector_fun f) = f := by
   funext x
-  simp only [fromVectorFun, toVectorFun]
+  simp only [from_vector_fun, to_vector_fun]
   congr 1
   funext i
   exact List.Vector.get_ofFn x i
 
-/-- Round-trip: toVectorFun ∘ fromVectorFun = id -/
-theorem toVectorFun_fromVectorFun {n : ℕ} (f : List.Vector ℕ n →. ℕ) :
-    toVectorFun (fromVectorFun f) = f := by
+/-- Round-trip: to_vector_fun ∘ from_vector_fun = id -/
+theorem to_vector_fun_from_vector_fun {n : ℕ} (f : List.Vector ℕ n →. ℕ) :
+    to_vector_fun (from_vector_fun f) = f := by
   funext v
-  simp only [toVectorFun, fromVectorFun, List.Vector.ofFn_get]
+  simp only [to_vector_fun, from_vector_fun, List.Vector.ofFn_get]
 
 /-! ## Helper lemmas for Partrec with ℕ output -/
 
@@ -85,28 +85,28 @@ List encoding: [] ↦ 0, a :: l ↦ (Nat.pair a (encode l)) + 1
 -/
 
 /-- Encoding a list as a natural number, following the Encodable List ℕ instance. -/
-def encodeList : List ℕ → ℕ
+def encode_list : List ℕ → ℕ
   | [] => 0
-  | a :: l => Nat.pair a (encodeList l) + 1
+  | a :: l => Nat.pair a (encode_list l) + 1
 
-theorem encodeList_eq_encode (l : List ℕ) : encodeList l = Encodable.encode l := by
+theorem encode_list_eq_encode (l : List ℕ) : encode_list l = Encodable.encode l := by
   induction l with
   | nil => rfl
   | cons a l ih =>
-    simp only [encodeList, Encodable.encode_list_cons, Encodable.encode_nat, ih]
+    simp only [encode_list, Encodable.encode_list_cons, Encodable.encode_nat, ih]
 
-/-- The encoding function for Vector ℕ n matches our encodeList. -/
+/-- The encoding function for Vector ℕ n matches our encode_list. -/
 theorem encode_vector_eq (v : List.Vector ℕ n) :
-    Encodable.encode v = encodeList v.toList :=
-  (encodeList_eq_encode v.toList).symm
+    Encodable.encode v = encode_list v.toList :=
+  (encode_list_eq_encode v.toList).symm
 
 /-- Vector.ofFn produces a list that matches List.ofFn. -/
 private theorem vector_ofFn_toList {n : ℕ} (f : Fin n → ℕ) :
     (List.Vector.ofFn f).toList = List.ofFn f := List.Vector.toList_ofFn f
 
-/-- The encoding of Vector.ofFn f equals encodeList (List.ofFn f). -/
+/-- The encoding of Vector.ofFn f equals encode_list (List.ofFn f). -/
 theorem encode_vector_ofFn {n : ℕ} (f : Fin n → ℕ) :
-    Encodable.encode (List.Vector.ofFn f) = encodeList (List.ofFn f) := by
+    Encodable.encode (List.Vector.ofFn f) = encode_list (List.ofFn f) := by
   rw [encode_vector_eq, vector_ofFn_toList]
 
 /-- The successor function on ℕ as URMComputable 1. -/
@@ -123,16 +123,16 @@ private theorem succPair_computable :
 private theorem const_zero_computable (n : ℕ) : URMComputable n (fun _ => Part.some 0) := by
   use [Instr.Z 0]
   intro inputs
-  let s := State.fromInputs (List.ofFn inputs)
+  let s := State.of_inputs (List.ofFn inputs)
   let s' := s.write 0 0
   have hstep : Step [Instr.Z 0] ⟨0, s⟩ ⟨1, s'⟩ := Step.zero rfl
-  have hhalted : (⟨1, s'⟩ : Config).isHalted [Instr.Z 0] := by simp
+  have hhalted : (⟨1, s'⟩ : Config).is_halted [Instr.Z 0] := by simp
   constructor
   · simp only [Part.some_dom, iff_true]
     exact ⟨⟨1, s'⟩, Steps.single hstep, hhalted⟩
   · intro hHalts _
     obtain ⟨hsteps, hhalted'⟩ := Classical.choose_spec hHalts
-    have heq := Steps.halts_unique hsteps hhalted' (Steps.single hstep) hhalted
+    have heq := Steps.eq_of_halts hsteps hhalted' (Steps.single hstep) hhalted
     simp only [Result, heq, State.output, s', s, State.write,
       Function.update_self, Part.get_some]
 
@@ -147,16 +147,16 @@ private theorem step_concat_Z0_preserves_pc_ge_one {p : Program} {c c' : Config}
   | jump_eq h _ =>
     simp only [Program.concat, List.length_singleton] at h
     rw [List.getElem?_append_right (by omega : 1 ≤ c.pc)] at h
-    simp only [Program.shiftJumps, List.getElem?_map, List.length_singleton] at h
+    simp only [Program.shift_jumps, List.getElem?_map, List.length_singleton] at h
     cases hp' : p[c.pc - 1]? with
     | none => simp [hp'] at h
     | some i => cases i with
       | J m n q =>
-        simp only [Instr.shiftJumps, hp', Option.map_some] at h
+        simp only [Instr.shift_jumps, hp', Option.map_some] at h
         simp only [Option.some.injEq] at h
         obtain ⟨-, -, rfl⟩ := h
         simp only; omega
-      | _ => simp [Instr.shiftJumps, hp'] at h
+      | _ => simp [Instr.shift_jumps, hp'] at h
   | jump_ne _ => simp only; omega
 
 /-- All configs reachable from a config with pc ≥ 1 in [Z 0].concat p have pc ≥ 1. -/
@@ -181,19 +181,19 @@ private theorem steps_concat_to_steps_p {p : Program} {c c' : Config}
     have hlt : a.pc - 1 < p.length := by omega
     have hstep_p : Step p ⟨a.pc - 1, a.state⟩ ⟨b.pc - 1, b.state⟩ := by
       have hinstr_concat : (Program.concat [Instr.Z 0] p)[a.pc]? =
-          (p.shiftJumps 1)[a.pc - 1]? := by
-        rw [Program.getElem?_concat_right]
+          (p.shift_jumps 1)[a.pc - 1]? := by
+        rw [Program.getElem?_concat_of_ge]
         · simp only [List.length_singleton]
         · simp only [List.length_singleton]; omega
-      have hinstr_shift : (p.shiftJumps 1)[a.pc - 1]? =
-          p[a.pc - 1]?.map (Instr.shiftJumps 1) := Program.getElem?_shiftJumps 1 p _
+      have hinstr_shift : (p.shift_jumps 1)[a.pc - 1]? =
+          p[a.pc - 1]?.map (Instr.shift_jumps 1) := Program.getElem?_shift_jumps 1 p _
       cases hstep with
       | zero h =>
         rw [hinstr_concat, hinstr_shift] at h
         cases hp' : p[a.pc - 1]? with
         | none => simp [hp'] at h
         | some i =>
-          cases i <;> simp [Instr.shiftJumps, hp'] at h
+          cases i <;> simp [Instr.shift_jumps, hp'] at h
           dsimp only -- reduce struct projections
           have hpc_eq : (a.pc + 1) - 1 = (a.pc - 1) + 1 := by omega
           rw [hpc_eq]
@@ -203,7 +203,7 @@ private theorem steps_concat_to_steps_p {p : Program} {c c' : Config}
         cases hp' : p[a.pc - 1]? with
         | none => simp [hp'] at h
         | some i =>
-          cases i <;> simp [Instr.shiftJumps, hp'] at h
+          cases i <;> simp [Instr.shift_jumps, hp'] at h
           dsimp only -- reduce struct projections
           have hpc_eq : (a.pc + 1) - 1 = (a.pc - 1) + 1 := by omega
           rw [hpc_eq]
@@ -213,7 +213,7 @@ private theorem steps_concat_to_steps_p {p : Program} {c c' : Config}
         cases hp' : p[a.pc - 1]? with
         | none => simp [hp'] at h
         | some i =>
-          cases i <;> simp [Instr.shiftJumps, hp'] at h
+          cases i <;> simp [Instr.shift_jumps, hp'] at h
           dsimp only -- reduce struct projections
           have hpc_eq : (a.pc + 1) - 1 = (a.pc - 1) + 1 := by omega
           rw [hpc_eq]
@@ -226,13 +226,13 @@ private theorem steps_concat_to_steps_p {p : Program} {c c' : Config}
         | some i =>
           cases i with
           | J m' n' q' =>
-            simp [Instr.shiftJumps, hp'] at h
+            simp [Instr.shift_jumps, hp'] at h
             obtain ⟨rfl, rfl, hq⟩ := h
             dsimp only -- reduce struct projections
             rw [← hq]
             simp only [Nat.add_sub_cancel]
             exact Step.jump_eq (by rw [hp']) heq
-          | _ => simp [Instr.shiftJumps, hp'] at h
+          | _ => simp [Instr.shift_jumps, hp'] at h
       | jump_ne h hne =>
         rw [hinstr_concat, hinstr_shift] at h
         cases hp' : p[a.pc - 1]? with
@@ -240,20 +240,20 @@ private theorem steps_concat_to_steps_p {p : Program} {c c' : Config}
         | some i =>
           cases i with
           | J m' n' q' =>
-            simp [Instr.shiftJumps, hp'] at h
+            simp [Instr.shift_jumps, hp'] at h
             obtain ⟨rfl, rfl, -⟩ := h
             dsimp only -- reduce struct projections
             have hpc_eq : (a.pc + 1) - 1 = (a.pc - 1) + 1 := by omega
             rw [hpc_eq]
             exact Step.jump_ne (by rw [hp']) hne
-          | _ => simp [Instr.shiftJumps, hp'] at h
+          | _ => simp [Instr.shift_jumps, hp'] at h
     exact Relation.ReflTransGen.head hstep_p (ih hb_pc)
 
 /-- After Z 0, the state from input [x] becomes the same as the empty input state. -/
-private theorem state_after_Z0_eq_fromInputs_nil (x : ℕ) :
-    (State.fromInputs [x]).write 0 0 = State.fromInputs [] := by
+private theorem state_after_Z0_eq_of_inputs_nil (x : ℕ) :
+    (State.of_inputs [x]).write 0 0 = State.of_inputs [] := by
   funext r
-  simp only [State.write, State.fromInputs, Function.update]
+  simp only [State.write, State.of_inputs, Function.update]
   split_ifs with hr
   · simp [List.getD]
   · rcases r with _ | r'
@@ -272,19 +272,19 @@ private theorem URMComputable_zero_to_one {f : (Fin 0 → ℕ) → Part ℕ} (hf
   let x := inputs 0
   -- The input list is just [x]
   have hinputs_eq : List.ofFn inputs = [x] := by simp [List.ofFn_succ, x]
-  -- Key state equality: after Z 0 on [x], state equals State.fromInputs []
-  have hstate_eq : (State.fromInputs [x]).write 0 0 = State.fromInputs [] :=
-    state_after_Z0_eq_fromInputs_nil x
+  -- Key state equality: after Z 0 on [x], state equals State.of_inputs []
+  have hstate_eq : (State.of_inputs [x]).write 0 0 = State.of_inputs [] :=
+    state_after_Z0_eq_of_inputs_nil x
   -- After Z 0, R₀ = 0, same as the 0-arity initial state. Then p computes f Fin.elim0
   have h0 := hp Fin.elim0
   -- First step: Z 0 executes
   have hZ0_step : Step (Program.concat [Instr.Z 0] p) (Config.init [x])
-      ⟨1, (State.fromInputs [x]).write 0 0⟩ := by
+      ⟨1, (State.of_inputs [x]).write 0 0⟩ := by
     apply Step.zero
-    simp only [Program.concat, Program.shiftJumps, Config.init]
+    simp only [Program.concat, Program.shift_jumps, Config.init]
     rfl
-  -- After the first step, we're at pc=1 with state = State.fromInputs []
-  have hafter_Z0 : (⟨1, (State.fromInputs [x]).write 0 0⟩ : Config) = ⟨1, State.fromInputs []⟩ := by
+  -- After the first step, we're at pc=1 with state = State.of_inputs []
+  have hafter_Z0 : (⟨1, (State.of_inputs [x]).write 0 0⟩ : Config) = ⟨1, State.of_inputs []⟩ := by
     simp only [Config.mk.injEq, true_and]; exact hstate_eq
   -- Simplify h0 to use [] instead of List.ofFn Fin.elim0
   have hlist_eq : List.ofFn (Fin.elim0 : Fin 0 → ℕ) = [] := rfl
@@ -302,7 +302,7 @@ private theorem URMComputable_zero_to_one {f : (Fin 0 → ℕ) → Part ℕ} (hf
       -- corresponds exactly to execution in p (with shifted pcs)
       have hp_halts : Halts p [] := by
         obtain ⟨c, hsteps, hhalted⟩ := hHalts_concat
-        simp only [Config.isHalted, Program.concat_length, List.length_singleton] at hhalted
+        simp only [Config.is_halted, Program.concat_length, List.length_singleton] at hhalted
         -- First step must be Z 0
         have hsteps' : Steps (Program.concat [Instr.Z 0] p) (Config.init [x]) c := hsteps
         -- Use a helper: extract the path structure
@@ -318,13 +318,13 @@ private theorem URMComputable_zero_to_one {f : (Fin 0 → ℕ) → Part ℕ} (hf
         rcases Relation.ReflTransGen.cases_head hsteps' with heq | ⟨mid, hfirst, hrest⟩
         · exact absurd heq hne
         have hmid_eq := Step.deterministic hfirst hZ0_step
-        -- After Z 0, we're at ⟨1, State.fromInputs []⟩
+        -- After Z 0, we're at ⟨1, State.of_inputs []⟩
         -- Build corresponding steps in p using the helper lemma
         have hsteps_p : Steps p (Config.init []) ⟨c.pc - 1, c.state⟩ := by
           rw [hmid_eq, hafter_Z0] at hrest
           -- Use the helper lemma to convert concat steps to p steps
           exact steps_concat_to_steps_p hrest (by decide)
-        exact ⟨⟨c.pc - 1, c.state⟩, hsteps_p, by simp only [Config.isHalted] at hhalted ⊢; omega⟩
+        exact ⟨⟨c.pc - 1, c.state⟩, hsteps_p, by simp only [Config.is_halted] at hhalted ⊢; omega⟩
       exact hiff.mp hp_halts
     · -- Backward: f Fin.elim0 is defined → concat halts
       intro hDom
@@ -338,7 +338,7 @@ private theorem URMComputable_zero_to_one {f : (Fin 0 → ℕ) → Part ℕ} (hf
       · apply Relation.ReflTransGen.head hZ0_step
         rw [hafter_Z0]
         convert hsteps' using 2
-      · simp only [Config.isHalted, Program.concat_length, List.length_singleton] at hhalted ⊢
+      · simp only [Config.is_halted, Program.concat_length, List.length_singleton] at hhalted ⊢
         omega
   · intro hHalts_concat hDom
     -- Result is the same as the 0-arity case
@@ -355,25 +355,25 @@ private theorem URMComputable_zero_to_one {f : (Fin 0 → ℕ) → Part ℕ} (hf
     -- Lift steps from p to concat
     have hsteps_lifted := Steps.concat_right (p1 := [Instr.Z 0]) hsteps_p
     simp only [List.length_singleton] at hsteps_lifted
-    have hsteps_from_1 : Steps (Program.concat [Instr.Z 0] p) ⟨1, State.fromInputs []⟩
+    have hsteps_from_1 : Steps (Program.concat [Instr.Z 0] p) ⟨1, State.of_inputs []⟩
         ⟨c_p.pc + 1, c_p.state⟩ := by convert hsteps_lifted using 2
     -- Decompose the concat execution
     have hne : Config.init [x] ≠ c_concat := by
       intro h_eq
       subst h_eq
-      simp only [Config.isHalted, Program.concat_length, List.length_singleton,
+      simp only [Config.is_halted, Program.concat_length, List.length_singleton,
         Config.init] at hhalted_concat
       omega
     rcases Relation.ReflTransGen.cases_head hsteps_concat with h_eq | ⟨mid, hfirst, hrest⟩
     · exact absurd h_eq hne
     have hmid_eq := Step.deterministic hfirst hZ0_step
     rw [hmid_eq, hafter_Z0] at hrest
-    have hhalted' : c_concat.isHalted (Program.concat [Instr.Z 0] p) := hhalted_concat
-    have hhalted_lifted : (⟨c_p.pc + 1, c_p.state⟩ : Config).isHalted
+    have hhalted' : c_concat.is_halted (Program.concat [Instr.Z 0] p) := hhalted_concat
+    have hhalted_lifted : (⟨c_p.pc + 1, c_p.state⟩ : Config).is_halted
         (Program.concat [Instr.Z 0] p) := by
-      simp only [Config.isHalted, Program.concat_length, List.length_singleton] at hhalted_p ⊢
+      simp only [Config.is_halted, Program.concat_length, List.length_singleton] at hhalted_p ⊢
       omega
-    have hconfigs_eq := Steps.halts_unique hrest hhalted' hsteps_from_1 hhalted_lifted
+    have hconfigs_eq := Steps.eq_of_halts hrest hhalted' hsteps_from_1 hhalted_lifted
     -- Show the states match: c_concat.state = c_p.state
     have hstate_eq' : c_concat.state = c_p.state := by
       have h := congrArg Config.state hconfigs_eq
@@ -384,11 +384,11 @@ private theorem URMComputable_zero_to_one {f : (Fin 0 → ℕ) → Part ℕ} (hf
     -- The Classical.choose for concat halts at some c_concat'
     -- By uniqueness, c_concat'.state = c_concat.state = c_p.state = c_p'.state
     obtain ⟨hsteps_chosen, hhalted_chosen⟩ := Classical.choose_spec hHalts_copy
-    have hchosen_eq := Steps.halts_unique hsteps_concat hhalted_concat hsteps_chosen hhalted_chosen
+    have hchosen_eq := Steps.eq_of_halts hsteps_concat hhalted_concat hsteps_chosen hhalted_chosen
     have hstate_concat : (Classical.choose hHalts_copy).state = c_concat.state :=
       congrArg Config.state hchosen_eq.symm
     have hstate_p := Classical.choose_spec hp_halts_copy
-    have hchosen_eq_p := Steps.halts_unique hsteps_p hhalted_p hstate_p.1 hstate_p.2
+    have hchosen_eq_p := Steps.eq_of_halts hsteps_p hhalted_p hstate_p.1 hstate_p.2
     -- Goal: (Classical.choose hHalts_copy).state 0 = (f Fin.elim0).get hDom
     -- hstate_concat : (Classical.choose hHalts_copy).state = c_concat.state
     -- hstate_eq' : c_concat.state = c_p.state
@@ -399,7 +399,7 @@ private theorem URMComputable_zero_to_one {f : (Fin 0 → ℕ) → Part ℕ} (hf
     exact hp_result
 
 /-- Encoding for n=0: empty vector encodes to 0. -/
-private theorem encodeVector_zero_computable :
+private theorem encode_vector_zero_computable :
     URMComputable 0 (fun _ => Part.some (Encodable.encode (List.Vector.nil : List.Vector ℕ 0))) := by
   convert const_zero_computable 0
 
@@ -410,10 +410,10 @@ private theorem proj_n_computable (n : ℕ) (i : Fin n) :
 
 /-- Encoding vectors of length n is URMComputable n.
 This is the key lemma: we build it inductively using pairing. -/
-theorem encodeVector_computable (n : ℕ) :
+theorem encode_vector_computable (n : ℕ) :
     URMComputable n (fun x => Part.some (Encodable.encode (List.Vector.ofFn x))) := by
   induction n with
-  | zero => convert encodeVector_zero_computable using 1
+  | zero => convert encode_vector_zero_computable using 1
   | succ n ih =>
     -- For n+1, encode [x₀, x₁, ..., xₙ] = Nat.pair x₀ (encode [x₁, ..., xₙ]) + 1
     -- We need to compose succPair with (proj 0, encode ∘ tail)
@@ -433,7 +433,7 @@ theorem encodeVector_computable (n : ℕ) :
         have h_comp := URMComputable.comp_general ih hgs
         convert h_comp.toComputable using 1
         funext x
-        simp only [compFunction, Part.sequence_some, Part.bind_some]
+        simp only [comp_function, Part.sequence_some, Part.bind_some]
 
     -- Now compose succPair with (proj 0, tail encoding)
     have h_result := URMComputable.comp_binary_total succPair_computable
@@ -452,7 +452,7 @@ theorem URMComputable.comp_with_total {n : ℕ} {f : ℕ →. ℕ} {g : (Fin n �
   have h := URMComputable.comp_general hf hgs
   convert h.toComputable using 1
   funext x
-  simp only [compFunction, gs, Part.sequence_some, Part.bind_some]
+  simp only [comp_function, gs, Part.sequence_some, Part.bind_some]
 
 /-- Every n-ary partial recursive function is n-ary URM-computable.
 
@@ -461,7 +461,7 @@ Strategy:
 2. Convert to URMComputable1 via Nat.Partrec.toURMComputable1
 3. Compose with vector encoding (which is URMComputable n) -/
 theorem Nat.Partrec'.toURMComputable {n : ℕ} {f : List.Vector ℕ n →. ℕ}
-    (hf : Nat.Partrec' f) : URMComputable n (fromVectorFun f) := by
+    (hf : Nat.Partrec' f) : URMComputable n (from_vector_fun f) := by
   -- Step 1: Get Partrec f from Nat.Partrec' f
   rw [Nat.Partrec'.part_iff] at hf
 
@@ -478,15 +478,15 @@ theorem Nat.Partrec'.toURMComputable {n : ℕ} {f : List.Vector ℕ n →. ℕ}
 
   -- Step 4: Vector encoding is URMComputable n (total)
   have h_encode : URMComputable n (fun x => Part.some (Encodable.encode (List.Vector.ofFn x))) :=
-    encodeVector_computable n
+    encode_vector_computable n
 
   -- Step 5: Compose
   have h_composed := URMComputable.comp_with_total h_urm1 h_encode
 
-  -- Step 6: Show this equals fromVectorFun f
+  -- Step 6: Show this equals from_vector_fun f
   convert h_composed using 1
   funext x
-  simp only [fromVectorFun]
+  simp only [from_vector_fun]
   -- Need: f (Vector.ofFn x) = decode₂ (encode (Vector.ofFn x)) >>= f
   -- By decode₂_encode: decode₂ (encode v) = some v
   rw [Encodable.decode₂_encode, Part.coe_some, Part.bind_some]
@@ -494,7 +494,7 @@ theorem Nat.Partrec'.toURMComputable {n : ℕ} {f : List.Vector ℕ n →. ℕ}
 /-! ## URMComputable n → Nat.Partrec'
 
 For the forward direction, we need to show that if f is URMComputable n, then
-the function (fun code => decode₂ code >>= toVectorFun f) is Nat.Partrec.
+the function (fun code => decode₂ code >>= to_vector_fun f) is Nat.Partrec.
 
 The key insight is that vector decoding is Computable (via Primcodable), and
 Partrec is closed under composition with Computable functions.
@@ -570,19 +570,19 @@ private def isEmptyList (c : ℕ) : ℕ := if c = 0 then 1 else 0
 private theorem const_one_n_computable' (n : ℕ) : URMComputable n (fun _ => Part.some 1) := by
   use [Instr.Z 0, Instr.S 0]
   intro inputs
-  let s0 := State.fromInputs (List.ofFn inputs)
+  let s0 := State.of_inputs (List.ofFn inputs)
   let s1 := s0.write 0 0
   let s2 := s1.write 0 (s1.read 0 + 1)
   have hstep1 : Step [Instr.Z 0, Instr.S 0] ⟨0, s0⟩ ⟨1, s1⟩ := Step.zero rfl
   have hstep2 : Step [Instr.Z 0, Instr.S 0] ⟨1, s1⟩ ⟨2, s2⟩ := Step.succ rfl
-  have hhalted : (⟨2, s2⟩ : Config).isHalted [Instr.Z 0, Instr.S 0] := by simp
+  have hhalted : (⟨2, s2⟩ : Config).is_halted [Instr.Z 0, Instr.S 0] := by simp
   have hsteps : Steps [Instr.Z 0, Instr.S 0] (Config.init (List.ofFn inputs)) ⟨2, s2⟩ := by aesop_steps
   constructor
   · simp only [Part.some_dom, iff_true]
     exact ⟨⟨2, s2⟩, hsteps, hhalted⟩
   · intro hHalts _
     obtain ⟨hsteps', hhalted'⟩ := Classical.choose_spec hHalts
-    have heq := Steps.halts_unique hsteps' hhalted' hsteps hhalted
+    have heq := Steps.eq_of_halts hsteps' hhalted' hsteps hhalted
     simp only [Result, heq, State.output, s2, s1, s0, State.write, State.read,
       Function.update_self, Part.get_some]
 
@@ -830,8 +830,8 @@ private theorem guardValid_computable (n : ℕ) :
         simp only [μFunction, μ]
         rw [Part.eq_some_iff, Nat.mem_rfind]
         constructor
-        · -- true ∈ checkZero predicate at 0
-          simp only [checkZero, extendInputs, guardValidPred, Part.map_some, Part.mem_some_iff]
+        · -- true ∈ check_zero predicate at 0
+          simp only [check_zero, extend_inputs, guardValidPred, Part.map_some, Part.mem_some_iff]
           -- Fin.snoc x 0 (0 : Fin 2) = x 0 because 0 < 1
           have h1 : (Fin.snoc x 0 : Fin 2 → ℕ) 0 = x 0 := by
             simp only [Fin.snoc, Fin.val_zero, Nat.zero_lt_one, ↓reduceDIte]
@@ -854,7 +854,7 @@ private theorem guardValid_computable (n : ℕ) :
         have hsnoc : (Fin.snoc x k : Fin 2 → ℕ) 0 = x 0 := by
           simp only [Fin.snoc, Fin.val_zero, Nat.zero_lt_one, ↓reduceDIte]
           rfl
-        simp only [checkZero, extendInputs, guardValidPred, Part.map_some, Part.mem_some_iff,
+        simp only [check_zero, extend_inputs, guardValidPred, Part.map_some, Part.mem_some_iff,
           hsnoc, hvalid, ↓reduceIte] at htrue
         -- htrue : true = decide (1 = 0) is a contradiction
         simp at htrue
@@ -1047,17 +1047,17 @@ private theorem decode_valid_extract {n : ℕ} (c : ℕ) (hvalid : hasValidLengt
 private def guardAndApply {n : ℕ} (f : (Fin n → ℕ) → Part ℕ) (code : ℕ) : Part ℕ :=
   (guardValid n code).bind fun _ => f (fun i => extractListElem i.val code)
 
-/-- guardAndApply agrees with decode₂ >>= toVectorFun f on valid codes. -/
+/-- guardAndApply agrees with decode₂ >>= to_vector_fun f on valid codes. -/
 private theorem guardAndApply_eq_decode_bind {n : ℕ} (f : (Fin n → ℕ) → Part ℕ) (code : ℕ) :
     guardAndApply f code =
-    (Part.ofOption (Encodable.decode₂ (List.Vector ℕ n) code)).bind (toVectorFun f) := by
+    (Part.ofOption (Encodable.decode₂ (List.Vector ℕ n) code)).bind (to_vector_fun f) := by
   simp only [guardAndApply]
   by_cases hvalid : hasValidLengthNum n code = 1
   · -- Code is valid
     rw [guardValid_valid n code hvalid, Part.bind_some]
     have hvalid' := (hasValidLengthNum_eq n code).mp hvalid
     obtain ⟨v, hdec, hget⟩ := decode_valid_extract code hvalid'
-    simp only [hdec, Part.coe_some, Part.bind_some, toVectorFun]
+    simp only [hdec, Part.coe_some, Part.bind_some, to_vector_fun]
     congr 1
     funext i
     exact (hget i).symm
@@ -1117,7 +1117,7 @@ private theorem guardAndApply_computable {n : ℕ} {f : (Fin n → ℕ) → Part
       have h := URMComputable.comp_general hf hgs
       convert h.toComputable using 1
       funext x
-      simp only [compFunction, Part.sequence_some, Part.bind_some]
+      simp only [comp_function, Part.sequence_some, Part.bind_some]
 
   -- Step 3: guardValid returns 0 when valid, so we need to sequence it with f_extract
   -- guardAndApply f code = guardValid n code >>= fun _ => f_extract code
@@ -1346,11 +1346,11 @@ The proof constructs a URMComputable1 function that:
 This is achieved using guardValid (minimization-based validity check)
 and extractListElem (primitive recursive component extraction). -/
 theorem URMComputable.toPartrec' {n : ℕ} {f : (Fin n → ℕ) → Part ℕ}
-    (hf : URMComputable n f) : Nat.Partrec' (toVectorFun f) := by
+    (hf : URMComputable n f) : Nat.Partrec' (to_vector_fun f) := by
   rw [Nat.Partrec'.part_iff, Partrec_iff_bind]
-  -- Need: Nat.Partrec (fun code => decode₂ code >>= toVectorFun f)
+  -- Need: Nat.Partrec (fun code => decode₂ code >>= to_vector_fun f)
   suffices h : URMComputable1 (fun code =>
-      (Part.ofOption (Encodable.decode₂ (List.Vector ℕ n) code)).bind (toVectorFun f)) by
+      (Part.ofOption (Encodable.decode₂ (List.Vector ℕ n) code)).bind (to_vector_fun f)) by
     exact URMComputable1.toPartrec h
   -- Use guardAndApply which implements the same function
   have h_guard := guardAndApply_computable hf
@@ -1362,10 +1362,10 @@ theorem URMComputable.toPartrec' {n : ℕ} {f : (Fin n → ℕ) → Part ℕ}
 
 /-- URMComputable n is equivalent to Nat.Partrec' up to the type conversion. -/
 theorem URMComputable_iff_Partrec' {n : ℕ} {f : (Fin n → ℕ) → Part ℕ} :
-    URMComputable n f ↔ Nat.Partrec' (toVectorFun f) :=
+    URMComputable n f ↔ Nat.Partrec' (to_vector_fun f) :=
   ⟨URMComputable.toPartrec', fun h => by
     have h' := Nat.Partrec'.toURMComputable h
     convert h' using 1
-    exact (fromVectorFun_toVectorFun f).symm⟩
+    exact (from_vector_fun_to_vector_fun f).symm⟩
 
 end Urm

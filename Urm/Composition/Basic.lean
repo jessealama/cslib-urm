@@ -15,12 +15,12 @@ open Program
 
 theorem URMComputableSF.comp_general {m n : ℕ} [NeZero m] {f : (Fin m → ℕ) → Part ℕ}
     {gs : Fin m → (Fin n → ℕ) → Part ℕ} (hf : URMComputableSF m f) (hgs : ∀ i, URMComputableSF n (gs i)) :
-    URMComputableSF n (compFunction m n f gs) := by
+    URMComputableSF n (comp_function m n f gs) := by
   obtain ⟨pF, hF_sf, hF_spec⟩ := hf
   choose pGs hGs_sf hGs_spec using fun i => hgs i
-  refine ⟨Program.composeGeneral m n pF pGs, composeGeneral_isStandardForm hF_sf hGs_sf, fun inputs => ⟨⟨?_, ?_⟩, ?_⟩⟩
+  refine ⟨Program.compose_general m n pF pGs, compose_general_isStandardForm hF_sf hGs_sf, fun inputs => ⟨⟨?_, ?_⟩, ?_⟩⟩
   · intro hHalts
-    simp only [compFunction]
+    simp only [comp_function]
     have hGs_dom : ∀ i, (gs i inputs).Dom :=
       fun i => comp_general_halts_imp_gi_dom hF_sf hGs_sf hF_spec hGs_spec inputs hHalts i
     have hSeq_dom : (Part.sequence (fun i => gs i inputs)).Dom := Part.sequence_dom.mpr hGs_dom
@@ -39,7 +39,7 @@ standard form case. -/
 theorem URMComputable.comp_general {m n : ℕ} [NeZero m] {f : (Fin m → ℕ) → Part ℕ}
     {gs : Fin m → (Fin n → ℕ) → Part ℕ}
     (hf : URMComputable m f) (hgs : ∀ i, URMComputable n (gs i)) :
-    URMComputableSF n (compFunction m n f gs) := by
+    URMComputableSF n (comp_function m n f gs) := by
   -- Reduce to standard form case using wlog
   wlog hf_sf : URMComputableSF m f with h_reduce
   · exact h_reduce hf hgs hf.toSF

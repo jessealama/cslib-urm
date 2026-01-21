@@ -42,13 +42,13 @@ private theorem single_instr_computes {instr : Instr} {inputs : List ℕ} {final
     (hstep : Step [instr] (Config.init inputs) ⟨1, finalState⟩) :
     Halts [instr] inputs ∧
     ∀ h : Halts [instr] inputs, Result [instr] inputs h = finalState.output := by
-  have h_final_halted : (⟨1, finalState⟩ : Config).isHalted [instr] := by
+  have h_final_halted : (⟨1, finalState⟩ : Config).is_halted [instr] := by
     simp
   constructor
   · exact ⟨⟨1, finalState⟩, Steps.single hstep, h_final_halted⟩
   · intro hHalts
     obtain ⟨hsteps, hhalted⟩ := Classical.choose_spec hHalts
-    have heq := Steps.halts_unique hsteps hhalted (Steps.single hstep) h_final_halted
+    have heq := Steps.eq_of_halts hsteps hhalted (Steps.single hstep) h_final_halted
     simp only [Result, heq]
 
 /-- The successor function `S(x) = x + 1` is URM-computable.
@@ -73,7 +73,7 @@ theorem proj_computable (n : ℕ) (k : Fin n) :
     (Step.trans (p := [Instr.T k 0]) rfl)
   refine ⟨by simp only [Part.some_dom, iff_true]; exact h.1, fun hHalts _ => ?_⟩
   simp only [h.2 hHalts, State.output, State.write, State.read, Function.update_self,
-             Config.init, State.fromInputs, List.getD_eq_getElem?_getD, List.getElem?_ofFn,
+             Config.init, State.of_inputs, List.getD_eq_getElem?_getD, List.getElem?_ofFn,
              k.isLt, ↓reduceDIte, Option.getD_some, Part.get_some]
 
 /-- The identity/projection function `U₁¹(x) = x` is URM-computable.

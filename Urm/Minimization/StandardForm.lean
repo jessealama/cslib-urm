@@ -17,11 +17,11 @@ open Program
 
 /-! ## Component standard form proofs -/
 
-theorem setupPhase_isStandardForm (n : ℕ) (pF : Program) :
-    (setupPhase n pF).IsStandardForm := by
-  simp only [setupPhase]
-  apply straightLine_isStandardForm
-  simp only [Program.isStraightLine, List.all_append, copyRegisterRange]
+theorem setup_phase_isStandardForm (n : ℕ) (pF : Program) :
+    (setup_phase n pF).IsStandardForm := by
+  simp only [setup_phase]
+  apply straight_line_isStandardForm
+  simp only [Program.is_straight_line, List.all_append, copy_register_range]
   rw [Bool.and_eq_true]
   constructor
   · rw [List.all_eq_true]
@@ -32,21 +32,21 @@ theorem setupPhase_isStandardForm (n : ℕ) (pF : Program) :
     rfl
   · rfl
 
-theorem loopPrologue_isStandardForm (n : ℕ) (pF : Program) :
-    (loopPrologue n pF).IsStandardForm := by
-  simp only [loopPrologue]
-  apply straightLine_isStandardForm
-  simp only [Program.isStraightLine, List.all_append]
+theorem loop_prologue_isStandardForm (n : ℕ) (pF : Program) :
+    (loop_prologue n pF).IsStandardForm := by
+  simp only [loop_prologue]
+  apply straight_line_isStandardForm
+  simp only [Program.is_straight_line, List.all_append]
   rw [Bool.and_eq_true, Bool.and_eq_true]
   refine ⟨⟨?_, ?_⟩, ?_⟩
-  · -- clearRegisters is straight-line
-    rw [clearRegisters, List.all_eq_true]
+  · -- clear_registers is straight-line
+    rw [clear_registers, List.all_eq_true]
     intro instr hinstr
     simp only [List.mem_map, List.mem_range] at hinstr
     obtain ⟨k, _, hk⟩ := hinstr
     subst hk; rfl
-  · -- copyRegisterRange is straight-line
-    rw [copyRegisterRange, List.all_eq_true]
+  · -- copy_register_range is straight-line
+    rw [copy_register_range, List.all_eq_true]
     intro instr hinstr
     simp only [List.mem_map, List.mem_range] at hinstr
     obtain ⟨k, _, hk⟩ := hinstr
@@ -54,59 +54,59 @@ theorem loopPrologue_isStandardForm (n : ℕ) (pF : Program) :
   · rfl
 
 /-- The loop epilogue has bounded jumps when bound is the full program length. -/
-theorem loopEpilogue_hasBoundedJumps (n : ℕ) (pF : Program) :
-    ∀ instr ∈ loopEpilogue n pF, instr.hasBoundedJump (outputPC n pF + 1) = true := by
+theorem loopEpilogue_has_bounded_jumps (n : ℕ) (pF : Program) :
+    ∀ instr ∈ loopEpilogue n pF, instr.has_bounded_jump (outputPC n pF + 1) = true := by
   intro instr hinstr
   unfold loopEpilogue at hinstr
   simp only [List.mem_cons, List.mem_nil_iff, or_false] at hinstr
   obtain rfl | rfl | rfl := hinstr
-  · -- J 0 zeroReg outputPC
-    simp only [Instr.hasBoundedJump, decide_eq_true_eq]
+  · -- J 0 zero_reg outputPC
+    simp only [Instr.has_bounded_jump, decide_eq_true_eq]
     omega
-  · -- S counterReg
-    simp only [Instr.hasBoundedJump]
-  · -- J zeroReg zeroReg loopStartPC
-    simp only [Instr.hasBoundedJump, decide_eq_true_eq, loopStartPC, setupPhaseLength,
-      outputPC, pFOffset, loopPrologueLength]
+  · -- S counter_reg
+    simp only [Instr.has_bounded_jump]
+  · -- J zero_reg zero_reg loop_start_pc
+    simp only [Instr.has_bounded_jump, decide_eq_true_eq, loop_start_pc, setup_phase_length,
+      outputPC, pFOffset, loop_prologueLength]
     omega
 
 /-! ## Main standard form theorem -/
 
 /-- Helper: if pF is standard form, then pF shifted has bounded jumps for the embedded position. -/
-theorem shiftedPF_hasBoundedJumps (n : ℕ) (pF : Program) (hF : pF.IsStandardForm) :
-    ∀ instr ∈ pF.shiftJumps (pFOffset n pF),
-      instr.hasBoundedJump (outputPC n pF + 1) = true :=
-  hF.shiftJumps_hasBoundedJumps (pFOffset n pF) (outputPC n pF + 1) (by simp only [outputPC]; omega)
+theorem shiftedPF_has_bounded_jumps (n : ℕ) (pF : Program) (hF : pF.IsStandardForm) :
+    ∀ instr ∈ pF.shift_jumps (pFOffset n pF),
+      instr.has_bounded_jump (outputPC n pF + 1) = true :=
+  hF.shift_jumps_has_bounded_jumps (pFOffset n pF) (outputPC n pF + 1) (by simp only [outputPC]; omega)
 
 /-- The minimization program is in standard form when pF is. -/
-theorem minimizeProgram_isStandardForm (n : ℕ) (pF : Program) (hF : pF.IsStandardForm) :
-    (minimizeProgram n pF).IsStandardForm := by
+theorem minimize_program_isStandardForm (n : ℕ) (pF : Program) (hF : pF.IsStandardForm) :
+    (minimize_program n pF).IsStandardForm := by
   unfold Program.IsStandardForm Program.isStandardForm
   rw [List.all_eq_true]
   intro instr hinstr
-  unfold minimizeProgram at hinstr
-  rw [minimizeProgram_length]
-  simp only [List.mem_append, outputPhase, List.mem_singleton] at hinstr
+  unfold minimize_program at hinstr
+  rw [minimize_program_length]
+  simp only [List.mem_append, output_phase, List.mem_singleton] at hinstr
   obtain (((hinstr | hinstr) | hinstr) | hinstr) | rfl := hinstr
   · -- Setup phase
-    have hsf := setupPhase_isStandardForm n pF
+    have hsf := setup_phase_isStandardForm n pF
     unfold Program.IsStandardForm Program.isStandardForm at hsf
     have h := List.all_eq_true.mp hsf instr hinstr
-    apply Instr.hasBoundedJump_mono h
-    simp only [outputPC, pFOffset, setupPhase_length, setupPhaseLength]
+    apply Instr.has_bounded_jump_mono h
+    simp only [outputPC, pFOffset, setup_phase_length, setup_phase_len]
     omega
   · -- Loop prologue
-    have hsf := loopPrologue_isStandardForm n pF
+    have hsf := loop_prologue_isStandardForm n pF
     unfold Program.IsStandardForm Program.isStandardForm at hsf
     have h := List.all_eq_true.mp hsf instr hinstr
-    apply Instr.hasBoundedJump_mono h
-    simp only [outputPC, pFOffset, loopPrologue_length, loopPrologueLength]
+    apply Instr.has_bounded_jump_mono h
+    simp only [outputPC, pFOffset, loop_prologue_length, loop_prologueLength]
     omega
   · -- Shifted pF
-    exact shiftedPF_hasBoundedJumps n pF hF instr hinstr
+    exact shiftedPF_has_bounded_jumps n pF hF instr hinstr
   · -- Loop epilogue
-    exact loopEpilogue_hasBoundedJumps n pF instr hinstr
+    exact loopEpilogue_has_bounded_jumps n pF instr hinstr
   · -- Output phase (instr = Instr.T ...)
-    simp only [Instr.hasBoundedJump]
+    simp only [Instr.has_bounded_jump]
 
 end Urm

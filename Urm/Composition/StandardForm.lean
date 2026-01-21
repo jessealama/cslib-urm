@@ -12,66 +12,66 @@ namespace Urm
 
 open Program
 
-theorem single_T_isStraightLine' (src dst : ℕ) : Program.isStraightLine [Instr.T src dst] = true := rfl
+theorem single_T_is_straight_line' (src dst : ℕ) : Program.is_straight_line [Instr.T src dst] = true := rfl
 
 theorem single_T_isStandardForm (src dst : ℕ) : Program.IsStandardForm [Instr.T src dst] :=
-  straightLine_isStandardForm (single_T_isStraightLine' src dst)
+  straight_line_isStandardForm (single_T_is_straight_line' src dst)
 
-theorem gPhase_isStandardForm {base n : ℕ} {pG : Program} {i : ℕ} (hG : pG.IsStandardForm) :
-    (gPhase base n pG i).IsStandardForm := by
-  simp only [gPhase]
-  exact (clearRegisters_isStandardForm base).concat
-    ((copyRegisterRange_isStandardForm (base + 1) 0 n).concat
+theorem g_phase_isStandardForm {base n : ℕ} {pG : Program} {i : ℕ} (hG : pG.IsStandardForm) :
+    (g_phase base n pG i).IsStandardForm := by
+  simp only [g_phase]
+  exact (clear_registers_isStandardForm base).concat
+    ((copy_register_range_isStandardForm (base + 1) 0 n).concat
     (hG.concat (single_T_isStandardForm 0 (base + n + 1 + i))))
 
 private theorem prod_preserves_isStandardForm (l : List Program)
     (hl : ∀ p ∈ l, p.IsStandardForm) : l.prod.IsStandardForm := by
   induction l with
-  | nil => exact straightLine_isStandardForm rfl
+  | nil => exact straight_line_isStandardForm rfl
   | cons x xs ih =>
     rw [List.prod_cons]
     show (x.concat xs.prod).IsStandardForm
     exact Program.IsStandardForm.concat (hl x List.mem_cons_self)
       (ih (fun p hp => hl p (List.mem_cons_of_mem x hp)))
 
-theorem allGPhases_isStandardForm {m n base : ℕ} {pGs : Fin m → Program}
-    (hGs : ∀ i, (pGs i).IsStandardForm) : (allGPhases m n base pGs).IsStandardForm := by
-  unfold allGPhases gPhaseList
+theorem all_g_phases_isStandardForm {m n base : ℕ} {pGs : Fin m → Program}
+    (hGs : ∀ i, (pGs i).IsStandardForm) : (all_g_phases m n base pGs).IsStandardForm := by
+  unfold all_g_phases g_phaseList
   exact prod_preserves_isStandardForm _ (fun p hp => by
     simp only [List.mem_map] at hp
     obtain ⟨i, _, rfl⟩ := hp
-    exact gPhase_isStandardForm (hGs i))
+    exact g_phase_isStandardForm (hGs i))
 
-theorem finalPhase_isStandardForm {m n base : ℕ} {pF : Program} (hF : pF.IsStandardForm) :
-    (finalPhase m n base pF).IsStandardForm := by
-  simp only [finalPhase]
-  exact (clearRegisters_isStandardForm base).concat
-    ((transferResultsToInputs_isStandardForm (base + n + 1) m).concat hF)
+theorem final_phase_isStandardForm {m n base : ℕ} {pF : Program} (hF : pF.IsStandardForm) :
+    (final_phase m n base pF).IsStandardForm := by
+  simp only [final_phase]
+  exact (clear_registers_isStandardForm base).concat
+    ((transfer_results_to_inputs_isStandardForm (base + n + 1) m).concat hF)
 
-theorem composeGeneral_isStandardForm {m n : ℕ} {pF : Program} {pGs : Fin m → Program}
+theorem compose_general_isStandardForm {m n : ℕ} {pF : Program} {pGs : Fin m → Program}
     (hF : pF.IsStandardForm) (hGs : ∀ i, (pGs i).IsStandardForm) :
-    (Program.composeGeneral m n pF pGs).IsStandardForm := by
-  simp only [Program.composeGeneral]
-  exact (copyRegisterRange_isStandardForm 0 (compositionBase m n pF pGs + 1) n).concat
-    ((allGPhases_isStandardForm hGs).concat (finalPhase_isStandardForm hF))
+    (Program.compose_general m n pF pGs).IsStandardForm := by
+  simp only [Program.compose_general]
+  exact (copy_register_range_isStandardForm 0 (composition_base m n pF pGs + 1) n).concat
+    ((all_g_phases_isStandardForm hGs).concat (final_phase_isStandardForm hF))
 
-theorem allGPhases_prefix_isStandardForm {m n base : ℕ} {pGs : Fin m → Program}
-    (hGs : ∀ i, (pGs i).IsStandardForm) (k : ℕ) : (allGPhases_prefix m n base pGs k).IsStandardForm := by
-  unfold allGPhases_prefix gPhaseList
+theorem all_g_phases_prefix_isStandardForm {m n base : ℕ} {pGs : Fin m → Program}
+    (hGs : ∀ i, (pGs i).IsStandardForm) (k : ℕ) : (all_g_phases_prefix m n base pGs k).IsStandardForm := by
+  unfold all_g_phases_prefix g_phaseList
   exact prod_preserves_isStandardForm _ (fun p hp => by
     simp only [List.mem_map] at hp
     obtain ⟨i, _, rfl⟩ := hp
-    exact gPhase_isStandardForm (hGs i))
+    exact g_phase_isStandardForm (hGs i))
 
-theorem allGPhases_suffix_isStandardForm {m n base : ℕ} {pGs : Fin m → Program}
-    (hGs : ∀ i, (pGs i).IsStandardForm) (k : ℕ) : (allGPhases_suffix m n base pGs k).IsStandardForm := by
-  unfold allGPhases_suffix gPhaseList
+theorem all_g_phases_suffix_isStandardForm {m n base : ℕ} {pGs : Fin m → Program}
+    (hGs : ∀ i, (pGs i).IsStandardForm) (k : ℕ) : (all_g_phases_suffix m n base pGs k).IsStandardForm := by
+  unfold all_g_phases_suffix g_phaseList
   exact prod_preserves_isStandardForm _ (fun p hp => by
     simp only [List.mem_map] at hp
     obtain ⟨i, _, rfl⟩ := hp
-    exact gPhase_isStandardForm (hGs i))
+    exact g_phase_isStandardForm (hGs i))
 
-theorem saveInputs_isStandardForm (base n : ℕ) : (copyRegisterRange 0 (base + 1) n).IsStandardForm :=
-  copyRegisterRange_isStandardForm 0 (base + 1) n
+theorem save_inputs_isStandardForm (base n : ℕ) : (copy_register_range 0 (base + 1) n).IsStandardForm :=
+  copy_register_range_isStandardForm 0 (base + 1) n
 
 end Urm

@@ -17,17 +17,17 @@ URM-computable functions are partial recursive.
 
 ## Main results
 
-- `nthEncoded_primrec`: `nthEncoded r` is primitive recursive for fixed r
-- `nthEncoded_primrec₂`: `nthEncoded` is primitive recursive in both arguments
-- `updateNthEncoded_primrec₂`: `updateNthEncoded r` is primitive recursive for fixed r
-- `updateNthEncoded_primrec₃`: `updateNthEncoded` is primitive recursive in all three arguments
-- `encodedStep_primrec_fixed`: Single step is primitive recursive (for fixed program)
-- `encodedIsHaltedNat_primrec_fixed`: Halting check is primitive recursive
-- `iterateEncodedStep_primrec_fixed`: Step iteration is primitive recursive
+- `nth_encoded_primrec`: `nth_encoded r` is primitive recursive for fixed r
+- `nth_encoded_primrec₂`: `nth_encoded` is primitive recursive in both arguments
+- `update_nth_encoded_primrec₂`: `update_nth_encoded r` is primitive recursive for fixed r
+- `update_nth_encoded_primrec₃`: `update_nth_encoded` is primitive recursive in all three arguments
+- `encoded_step_primrec_fixed`: Single step is primitive recursive (for fixed program)
+- `encoded_is_halted_nat_primrec_fixed`: Halting check is primitive recursive
+- `iterate_encoded_step_primrec_fixed`: Step iteration is primitive recursive
 
 ## Strategy
 
-For a fixed program p with bound = p.maxRegister:
+For a fixed program p with bound = p.max_register:
 1. Register read/write at fixed indices are primitive recursive
 2. Each instruction type (Z, S, T, J) produces a primitive recursive update
 3. The full step combines these with primitive recursive case analysis
@@ -42,30 +42,30 @@ open Nat (pair unpair)
 
 /-! ## Primitive Recursive Register Operations -/
 
-/-- For a fixed r, `nthEncoded r` is primitive recursive. -/
-theorem nthEncoded_primrec (r : ℕ) : Nat.Primrec (nthEncoded r) := by
+/-- For a fixed r, `nth_encoded r` is primitive recursive. -/
+theorem nth_encoded_primrec (r : ℕ) : Nat.Primrec (nth_encoded r) := by
   induction r with
   | zero => exact Nat.Primrec.left
   | succ r ih => exact ih.comp Nat.Primrec.right
 
-/-- For a fixed r, `updateNthEncoded r` is primitive recursive in (encoded, newVal). -/
-theorem updateNthEncoded_primrec₂ (r : ℕ) :
-    Primrec₂ (updateNthEncoded r) := by
+/-- For a fixed r, `update_nth_encoded r` is primitive recursive in (encoded, newVal). -/
+theorem update_nth_encoded_primrec₂ (r : ℕ) :
+    Primrec₂ (update_nth_encoded r) := by
   induction r with
   | zero =>
-    -- updateNthEncoded 0 n v = pair v n.unpair.2
+    -- update_nth_encoded 0 n v = pair v n.unpair.2
     apply Primrec₂.natPair.comp
     · exact Primrec₂.right
     · exact (Primrec.snd.comp Primrec.unpair).comp₂ Primrec₂.left
   | succ r ih =>
-    -- updateNthEncoded (r+1) n v = pair n.unpair.1 (updateNthEncoded r n.unpair.2 v)
+    -- update_nth_encoded (r+1) n v = pair n.unpair.1 (update_nth_encoded r n.unpair.2 v)
     apply Primrec₂.natPair.comp
     · exact (Primrec.fst.comp Primrec.unpair).comp₂ Primrec₂.left
     · exact ih.comp₂ ((Primrec.snd.comp Primrec.unpair).comp₂ Primrec₂.left) Primrec₂.right
 
 /-! ## Helper Functions for Variable-Position Primitiveness
 
-To prove `nthEncoded` and `updateNthEncoded` are primitive recursive in all arguments,
+To prove `nth_encoded` and `update_nth_encoded` are primitive recursive in all arguments,
 we use helper functions based on iteration:
 - `iterUnpairRight r x` - iterates `.unpair.2` r times
 - `iterBuildState r x` - collects prefix left values in a stack while iterating
@@ -110,29 +110,29 @@ private theorem iterUnpairRight_primrec₂ : Primrec₂ iterUnpairRight := by
   intro x n
   exact iterUnpairRight_eq_nat_rec n x
 
-/-- nthEncoded in terms of iterUnpairRight. -/
-private theorem nthEncoded_eq_iterUnpairRight (r encoded : ℕ) :
-    nthEncoded r encoded = (iterUnpairRight r encoded).unpair.1 := by
+/-- nth_encoded in terms of iterUnpairRight. -/
+private theorem nth_encoded_eq_iterUnpairRight (r encoded : ℕ) :
+    nth_encoded r encoded = (iterUnpairRight r encoded).unpair.1 := by
   induction r generalizing encoded with
   | zero => rfl
   | succ r ih =>
-    simp only [nthEncoded_succ, iterUnpairRight, ih]
+    simp only [nth_encoded_succ, iterUnpairRight, ih]
 
-/-- nthEncoded is primitive recursive in both arguments. -/
-theorem nthEncoded_primrec₂ : Primrec₂ nthEncoded := by
+/-- nth_encoded is primitive recursive in both arguments. -/
+theorem nth_encoded_primrec₂ : Primrec₂ nth_encoded := by
   have h : Primrec₂ (fun r encoded => (iterUnpairRight r encoded).unpair.1) := by
     exact (Primrec.fst.comp Primrec.unpair).comp₂ iterUnpairRight_primrec₂
   apply Primrec₂.of_eq h
   intro r encoded
-  exact (nthEncoded_eq_iterUnpairRight r encoded).symm
+  exact (nth_encoded_eq_iterUnpairRight r encoded).symm
 
-/-! ## Helper functions for updateNthEncoded primitiveness
+/-! ## Helper functions for update_nth_encoded primitiveness
 
-To prove `updateNthEncoded` is primitive recursive in all three arguments, we use two helpers:
+To prove `update_nth_encoded` is primitive recursive in all three arguments, we use two helpers:
 1. `iterBuildState r x` - iterates forward, collecting prefix left values in a stack
 2. `rebuildFromStack r stack y` - pops r elements from stack, pairs them with y
 
-The composition gives: `updateNthEncoded r x v = rebuildFromStack r (iterBuildState r x).2 (pair v (iterUnpairRight r x).unpair.2)`
+The composition gives: `update_nth_encoded r x v = rebuildFromStack r (iterBuildState r x).2 (pair v (iterUnpairRight r x).unpair.2)`
 -/
 
 /-- Forward iteration collecting left values as a stack.
@@ -303,16 +303,16 @@ private theorem rebuildFromStack_shift (r encoded y : ℕ) :
     -- Now the goal matches the IH with y' = pair (iterUnpairRight r encoded.unpair.2).unpair.1 y
     exact ih encoded (pair (iterUnpairRight r encoded.unpair.2).unpair.1 y)
 
-/-- Key relationship: updateNthEncoded equals composition of helpers. -/
-private theorem updateNthEncoded_eq_rebuild (r encoded newVal : ℕ) :
-    updateNthEncoded r encoded newVal =
+/-- Key relationship: update_nth_encoded equals composition of helpers. -/
+private theorem update_nth_encoded_eq_rebuild (r encoded newVal : ℕ) :
+    update_nth_encoded r encoded newVal =
     rebuildFromStack r (iterBuildState r encoded).2 (pair newVal (iterUnpairRight r encoded).unpair.2) := by
   induction r generalizing encoded with
   | zero =>
-    simp only [updateNthEncoded_zero, rebuildFromStack, iterUnpairRight]
+    simp only [update_nth_encoded_zero, rebuildFromStack, iterUnpairRight]
   | succ r ih =>
-    simp only [updateNthEncoded_succ, iterBuildState, rebuildFromStack]
-    -- LHS: pair encoded.unpair.1 (updateNthEncoded r encoded.unpair.2 newVal)
+    simp only [update_nth_encoded_succ, iterBuildState, rebuildFromStack]
+    -- LHS: pair encoded.unpair.1 (update_nth_encoded r encoded.unpair.2 newVal)
     -- Apply IH to recursive call
     rw [ih]
     -- Now use rebuildFromStack_shift to transform the LHS
@@ -322,10 +322,10 @@ private theorem updateNthEncoded_eq_rebuild (r encoded newVal : ℕ) :
     rw [iterBuildState_fst]
     simp only [Nat.unpair_pair, iterUnpairRight, iterUnpairRight_unpair_comm]
 
-/-- updateNthEncoded is primitive recursive in all three arguments. -/
-theorem updateNthEncoded_primrec₃ : Primrec fun p : ℕ × ℕ × ℕ =>
-    updateNthEncoded p.1 p.2.1 p.2.2 := by
-  -- Express updateNthEncoded using the helper composition
+/-- update_nth_encoded is primitive recursive in all three arguments. -/
+theorem update_nth_encoded_primrec₃ : Primrec fun p : ℕ × ℕ × ℕ =>
+    update_nth_encoded p.1 p.2.1 p.2.2 := by
+  -- Express update_nth_encoded using the helper composition
   have hCompose : Primrec fun p : ℕ × ℕ × ℕ =>
       rebuildFromStack p.1 (iterBuildState p.1 p.2.1).2
         (pair p.2.2 (iterUnpairRight p.1 p.2.1).unpair.2) := by
@@ -355,12 +355,12 @@ theorem updateNthEncoded_primrec₃ : Primrec fun p : ℕ × ℕ × ℕ =>
   -- Now show equality
   apply Primrec.of_eq hCompose
   intro p
-  exact (updateNthEncoded_eq_rebuild p.1 p.2.1 p.2.2).symm
+  exact (update_nth_encoded_eq_rebuild p.1 p.2.1 p.2.2).symm
 
 set_option maxHeartbeats 2000000 in
 /-- For fixed progCode and bound, the step function is primitive recursive. -/
-theorem encodedStep_primrec_fixed (progCode bound : ℕ) :
-    Nat.Primrec (fun configCode => encodedStep progCode bound configCode) := by
+theorem encoded_step_primrec_fixed (progCode bound : ℕ) :
+    Nat.Primrec (fun configCode => encoded_step progCode bound configCode) := by
   -- Fixed constants from the program
   let progLen := progCode.unpair.1
   let progInstrs := progCode.unpair.2
@@ -369,14 +369,14 @@ theorem encodedStep_primrec_fixed (progCode bound : ℕ) :
   have hPc : Primrec (fun c : ℕ => c.unpair.1) := Primrec.fst.comp Primrec.unpair
   have hRegs : Primrec (fun c : ℕ => c.unpair.2) := Primrec.snd.comp Primrec.unpair
 
-  -- Instruction lookup: nthEncoded pc progInstrs
-  have hInstr : Primrec (fun c : ℕ => nthEncoded c.unpair.1 progInstrs) :=
-    nthEncoded_primrec₂.comp hPc (Primrec.const progInstrs)
+  -- Instruction lookup: nth_encoded pc progInstrs
+  have hInstr : Primrec (fun c : ℕ => nth_encoded c.unpair.1 progInstrs) :=
+    nth_encoded_primrec₂.comp hPc (Primrec.const progInstrs)
 
   -- Tag and args extraction from instruction
-  have hTag : Primrec (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.1) :=
+  have hTag : Primrec (fun c : ℕ => (nth_encoded c.unpair.1 progInstrs).unpair.1) :=
     (Primrec.fst.comp Primrec.unpair).comp hInstr
-  have hArgs : Primrec (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.2) :=
+  have hArgs : Primrec (fun c : ℕ => (nth_encoded c.unpair.1 progInstrs).unpair.2) :=
     (Primrec.snd.comp Primrec.unpair).comp hInstr
 
   -- pc + 1 (used in most branches)
@@ -388,165 +388,165 @@ theorem encodedStep_primrec_fixed (progCode bound : ℕ) :
     Primrec₂.natPair.comp hPcNext hRegs
 
   -- Step 3: Z case (tag=0)
-  -- Z n: if n ≤ bound then pair (pc+1) (updateNthEncoded n regs 0) else pair (pc+1) regs
+  -- Z n: if n ≤ bound then pair (pc+1) (update_nth_encoded n regs 0) else pair (pc+1) regs
   -- where n = args
   have hZPred : PrimrecPred (fun c : ℕ =>
-      (nthEncoded c.unpair.1 progInstrs).unpair.2 ≤ bound) :=
+      (nth_encoded c.unpair.1 progInstrs).unpair.2 ≤ bound) :=
     Primrec.nat_le.comp hArgs (Primrec.const bound)
-  -- The "then" branch: pair (pc+1) (updateNthEncoded n regs 0)
+  -- The "then" branch: pair (pc+1) (update_nth_encoded n regs 0)
   have hZThen : Primrec (fun c : ℕ =>
-      pair (c.unpair.1 + 1) (updateNthEncoded
-        (nthEncoded c.unpair.1 progInstrs).unpair.2 c.unpair.2 0)) :=
+      pair (c.unpair.1 + 1) (update_nth_encoded
+        (nth_encoded c.unpair.1 progInstrs).unpair.2 c.unpair.2 0)) :=
     Primrec₂.natPair.comp hPcNext
-      (updateNthEncoded_primrec₃.comp (Primrec.pair hArgs (Primrec.pair hRegs (Primrec.const 0))))
+      (update_nth_encoded_primrec₃.comp (Primrec.pair hArgs (Primrec.pair hRegs (Primrec.const 0))))
   have hZ : Primrec (fun c : ℕ =>
-      if (nthEncoded c.unpair.1 progInstrs).unpair.2 ≤ bound then
-        pair (c.unpair.1 + 1) (updateNthEncoded
-          (nthEncoded c.unpair.1 progInstrs).unpair.2 c.unpair.2 0)
+      if (nth_encoded c.unpair.1 progInstrs).unpair.2 ≤ bound then
+        pair (c.unpair.1 + 1) (update_nth_encoded
+          (nth_encoded c.unpair.1 progInstrs).unpair.2 c.unpair.2 0)
       else pair (c.unpair.1 + 1) c.unpair.2) :=
     Primrec.ite hZPred hZThen hDefault
 
   -- Step 4: S case (tag=1)
-  -- S n: if n ≤ bound then pair (pc+1) (updateNthEncoded n regs (nthEncoded n regs + 1)) else default
+  -- S n: if n ≤ bound then pair (pc+1) (update_nth_encoded n regs (nth_encoded n regs + 1)) else default
   -- where n = args
-  -- Old value lookup: nthEncoded n regs
+  -- Old value lookup: nth_encoded n regs
   have hSOldVal : Primrec (fun c : ℕ =>
-      nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2 c.unpair.2) :=
-    nthEncoded_primrec₂.comp hArgs hRegs
+      nth_encoded (nth_encoded c.unpair.1 progInstrs).unpair.2 c.unpair.2) :=
+    nth_encoded_primrec₂.comp hArgs hRegs
   -- New value: oldVal + 1
   have hSNewVal : Primrec (fun c : ℕ =>
-      nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2 c.unpair.2 + 1) :=
+      nth_encoded (nth_encoded c.unpair.1 progInstrs).unpair.2 c.unpair.2 + 1) :=
     Primrec.nat_add.comp hSOldVal (Primrec.const 1)
-  -- The "then" branch: pair (pc+1) (updateNthEncoded n regs newVal)
+  -- The "then" branch: pair (pc+1) (update_nth_encoded n regs newVal)
   have hSThen : Primrec (fun c : ℕ =>
-      pair (c.unpair.1 + 1) (updateNthEncoded
-        (nthEncoded c.unpair.1 progInstrs).unpair.2 c.unpair.2
-        (nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2 c.unpair.2 + 1))) :=
+      pair (c.unpair.1 + 1) (update_nth_encoded
+        (nth_encoded c.unpair.1 progInstrs).unpair.2 c.unpair.2
+        (nth_encoded (nth_encoded c.unpair.1 progInstrs).unpair.2 c.unpair.2 + 1))) :=
     Primrec₂.natPair.comp hPcNext
-      (updateNthEncoded_primrec₃.comp (Primrec.pair hArgs (Primrec.pair hRegs hSNewVal)))
+      (update_nth_encoded_primrec₃.comp (Primrec.pair hArgs (Primrec.pair hRegs hSNewVal)))
   have hS : Primrec (fun c : ℕ =>
-      if (nthEncoded c.unpair.1 progInstrs).unpair.2 ≤ bound then
-        pair (c.unpair.1 + 1) (updateNthEncoded
-          (nthEncoded c.unpair.1 progInstrs).unpair.2 c.unpair.2
-          (nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2 c.unpair.2 + 1))
+      if (nth_encoded c.unpair.1 progInstrs).unpair.2 ≤ bound then
+        pair (c.unpair.1 + 1) (update_nth_encoded
+          (nth_encoded c.unpair.1 progInstrs).unpair.2 c.unpair.2
+          (nth_encoded (nth_encoded c.unpair.1 progInstrs).unpair.2 c.unpair.2 + 1))
       else pair (c.unpair.1 + 1) c.unpair.2) :=
     Primrec.ite hZPred hSThen hDefault  -- Reuse hZPred since same condition
 
   -- Step 5: T case (tag=2)
   -- T m n: copy register m to n
-  -- if n ≤ bound then pair (pc+1) (updateNthEncoded n regs (if m ≤ bound then nthEncoded m regs else 0)) else default
+  -- if n ≤ bound then pair (pc+1) (update_nth_encoded n regs (if m ≤ bound then nth_encoded m regs else 0)) else default
   -- Extract m and n from args
-  have hTM : Primrec (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1) :=
+  have hTM : Primrec (fun c : ℕ => (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.1) :=
     (Primrec.fst.comp Primrec.unpair).comp hArgs
-  have hTN : Primrec (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2) :=
+  have hTN : Primrec (fun c : ℕ => (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.2) :=
     (Primrec.snd.comp Primrec.unpair).comp hArgs
   -- Predicate for n ≤ bound
   have hTNPred : PrimrecPred (fun c : ℕ =>
-      (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2 ≤ bound) :=
+      (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.2 ≤ bound) :=
     Primrec.nat_le.comp hTN (Primrec.const bound)
   -- Predicate for m ≤ bound
   have hTMPred : PrimrecPred (fun c : ℕ =>
-      (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound) :=
+      (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound) :=
     Primrec.nat_le.comp hTM (Primrec.const bound)
-  -- srcVal = if m ≤ bound then nthEncoded m regs else 0
+  -- srcVal = if m ≤ bound then nth_encoded m regs else 0
   have hTMVal : Primrec (fun c : ℕ =>
-      nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2) :=
-    nthEncoded_primrec₂.comp hTM hRegs
+      nth_encoded (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2) :=
+    nth_encoded_primrec₂.comp hTM hRegs
   have hTSrcVal : Primrec (fun c : ℕ =>
-      if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound then
-        nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2
+      if (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound then
+        nth_encoded (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2
       else 0) :=
     Primrec.ite hTMPred hTMVal (Primrec.const 0)
-  -- The "then" branch: pair (pc+1) (updateNthEncoded n regs srcVal)
+  -- The "then" branch: pair (pc+1) (update_nth_encoded n regs srcVal)
   have hTThen : Primrec (fun c : ℕ =>
-      pair (c.unpair.1 + 1) (updateNthEncoded
-        (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2 c.unpair.2
-        (if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound then
-          nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2
+      pair (c.unpair.1 + 1) (update_nth_encoded
+        (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.2 c.unpair.2
+        (if (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound then
+          nth_encoded (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2
         else 0))) :=
     Primrec₂.natPair.comp hPcNext
-      (updateNthEncoded_primrec₃.comp (Primrec.pair hTN (Primrec.pair hRegs hTSrcVal)))
+      (update_nth_encoded_primrec₃.comp (Primrec.pair hTN (Primrec.pair hRegs hTSrcVal)))
   have hT : Primrec (fun c : ℕ =>
-      if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2 ≤ bound then
-        pair (c.unpair.1 + 1) (updateNthEncoded
-          (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2 c.unpair.2
-          (if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound then
-            nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2
+      if (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.2 ≤ bound then
+        pair (c.unpair.1 + 1) (update_nth_encoded
+          (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.2 c.unpair.2
+          (if (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound then
+            nth_encoded (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2
           else 0))
       else pair (c.unpair.1 + 1) c.unpair.2) :=
     Primrec.ite hTNPred hTThen hDefault
 
   -- Step 6: J case (tag=3)
   -- J m nReg q: if mVal = nVal then pair q regs else pair (pc+1) regs
-  -- where mVal = if m ≤ bound then nthEncoded m regs else 0
-  --       nVal = if nReg ≤ bound then nthEncoded nReg regs else 0
+  -- where mVal = if m ≤ bound then nth_encoded m regs else 0
+  --       nVal = if nReg ≤ bound then nth_encoded nReg regs else 0
   -- Extract m, nReg, q from args
-  have hJM : Primrec (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1) :=
+  have hJM : Primrec (fun c : ℕ => (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.1) :=
     (Primrec.fst.comp Primrec.unpair).comp hArgs
-  have hJNReg : Primrec (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1) :=
+  have hJNReg : Primrec (fun c : ℕ => (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1) :=
     (Primrec.fst.comp Primrec.unpair).comp ((Primrec.snd.comp Primrec.unpair).comp hArgs)
-  have hJQ : Primrec (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.2) :=
+  have hJQ : Primrec (fun c : ℕ => (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.2) :=
     (Primrec.snd.comp Primrec.unpair).comp ((Primrec.snd.comp Primrec.unpair).comp hArgs)
   -- Predicate for m ≤ bound
   have hJMPred : PrimrecPred (fun c : ℕ =>
-      (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound) :=
+      (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound) :=
     Primrec.nat_le.comp hJM (Primrec.const bound)
   -- Predicate for nReg ≤ bound
   have hJNPred : PrimrecPred (fun c : ℕ =>
-      (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 ≤ bound) :=
+      (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 ≤ bound) :=
     Primrec.nat_le.comp hJNReg (Primrec.const bound)
-  -- mVal = if m ≤ bound then nthEncoded m regs else 0
+  -- mVal = if m ≤ bound then nth_encoded m regs else 0
   have hJMValLookup : Primrec (fun c : ℕ =>
-      nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2) :=
-    nthEncoded_primrec₂.comp hJM hRegs
+      nth_encoded (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2) :=
+    nth_encoded_primrec₂.comp hJM hRegs
   have hJMVal : Primrec (fun c : ℕ =>
-      if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound then
-        nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2
+      if (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound then
+        nth_encoded (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2
       else 0) :=
     Primrec.ite hJMPred hJMValLookup (Primrec.const 0)
-  -- nVal = if nReg ≤ bound then nthEncoded nReg regs else 0
+  -- nVal = if nReg ≤ bound then nth_encoded nReg regs else 0
   have hJNValLookup : Primrec (fun c : ℕ =>
-      nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 c.unpair.2) :=
-    nthEncoded_primrec₂.comp hJNReg hRegs
+      nth_encoded (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 c.unpair.2) :=
+    nth_encoded_primrec₂.comp hJNReg hRegs
   have hJNVal : Primrec (fun c : ℕ =>
-      if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 ≤ bound then
-        nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 c.unpair.2
+      if (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 ≤ bound then
+        nth_encoded (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 c.unpair.2
       else 0) :=
     Primrec.ite hJNPred hJNValLookup (Primrec.const 0)
   -- Equality predicate for mVal = nVal
   have hJEqPred : PrimrecPred (fun c : ℕ =>
-      (if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound then
-        nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2
+      (if (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound then
+        nth_encoded (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2
       else 0) =
-      (if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 ≤ bound then
-        nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 c.unpair.2
+      (if (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 ≤ bound then
+        nth_encoded (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 c.unpair.2
       else 0)) :=
     Primrec.eq.comp hJMVal hJNVal
   -- "then" branch: pair q regs
   have hJThen : Primrec (fun c : ℕ =>
-      pair (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.2 c.unpair.2) :=
+      pair (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.2 c.unpair.2) :=
     Primrec₂.natPair.comp hJQ hRegs
   -- "else" branch: pair (pc+1) regs (same as hDefault)
   have hJ : Primrec (fun c : ℕ =>
-      if (if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound then
-            nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2
+      if (if (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.1 ≤ bound then
+            nth_encoded (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.1 c.unpair.2
           else 0) =
-         (if (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 ≤ bound then
-            nthEncoded (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 c.unpair.2
+         (if (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 ≤ bound then
+            nth_encoded (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.1 c.unpair.2
           else 0)
-      then pair (nthEncoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.2 c.unpair.2
+      then pair (nth_encoded c.unpair.1 progInstrs).unpair.2.unpair.2.unpair.2 c.unpair.2
       else pair (c.unpair.1 + 1) c.unpair.2) :=
     Primrec.ite hJEqPred hJThen hDefault
 
   -- Step 7: Tag dispatch using nested ite
   -- Tag predicates
-  have hTagEq0 : PrimrecPred (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.1 = 0) :=
+  have hTagEq0 : PrimrecPred (fun c : ℕ => (nth_encoded c.unpair.1 progInstrs).unpair.1 = 0) :=
     Primrec.eq.comp hTag (Primrec.const 0)
-  have hTagEq1 : PrimrecPred (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.1 = 1) :=
+  have hTagEq1 : PrimrecPred (fun c : ℕ => (nth_encoded c.unpair.1 progInstrs).unpair.1 = 1) :=
     Primrec.eq.comp hTag (Primrec.const 1)
-  have hTagEq2 : PrimrecPred (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.1 = 2) :=
+  have hTagEq2 : PrimrecPred (fun c : ℕ => (nth_encoded c.unpair.1 progInstrs).unpair.1 = 2) :=
     Primrec.eq.comp hTag (Primrec.const 2)
-  have hTagEq3 : PrimrecPred (fun c : ℕ => (nthEncoded c.unpair.1 progInstrs).unpair.1 = 3) :=
+  have hTagEq3 : PrimrecPred (fun c : ℕ => (nth_encoded c.unpair.1 progInstrs).unpair.1 = 3) :=
     Primrec.eq.comp hTag (Primrec.const 3)
 
   -- Build dispatch: if tag=0 then Z, else if tag=1 then S, else if tag=2 then T, else if tag=3 then J, else default
@@ -561,19 +561,19 @@ theorem encodedStep_primrec_fixed (progCode bound : ℕ) :
   have hFinal : Primrec (fun c : ℕ => _) :=
     Primrec.ite hNotHalted hExec Primrec.id
 
-  -- Convert to Nat.Primrec and show equality with encodedStep
+  -- Convert to Nat.Primrec and show equality with encoded_step
   apply Primrec.nat_iff.mp
   apply hFinal.of_eq
   intro c
-  -- Now that encodedStep uses if-then-else instead of match,
+  -- Now that encoded_step uses if-then-else instead of match,
   -- both sides have the same structure and the proof is direct.
   -- Note: progLen = (unpair progCode).1 and progInstrs = (unpair progCode).2 by definition
   rfl
 
 /-- For fixed progCode, the halting check is primitive recursive. -/
-theorem encodedIsHaltedNat_primrec_fixed (progCode : ℕ) :
-    Nat.Primrec (fun configCode => encodedIsHaltedNat progCode configCode) := by
-  -- encodedIsHaltedNat progCode configCode =
+theorem encoded_is_halted_nat_primrec_fixed (progCode : ℕ) :
+    Nat.Primrec (fun configCode => encoded_is_halted_nat progCode configCode) := by
+  -- encoded_is_halted_nat progCode configCode =
   --   if progCode.unpair.1 ≤ configCode.unpair.1 then 1 else 0
   -- This equals (decide (progCode.unpair.1 ≤ configCode.unpair.1)).toNat
   -- where progCode.unpair.1 is a constant K
@@ -588,11 +588,11 @@ theorem encodedIsHaltedNat_primrec_fixed (progCode : ℕ) :
   have hToNat : Primrec Bool.toNat := Primrec.dom_bool _
   have hComp : Primrec (fun (configCode : ℕ) => (decide (K ≤ configCode.unpair.1)).toNat) :=
     hToNat.comp hBool
-  -- Step 4: Show this equals encodedIsHaltedNat progCode
+  -- Step 4: Show this equals encoded_is_halted_nat progCode
   -- Since K = progCode.unpair.1 by definition, the equality is definitional
   have hEq : ∀ (configCode : ℕ), (decide (K ≤ configCode.unpair.1)).toNat =
-      encodedIsHaltedNat progCode configCode := fun configCode => by
-    simp only [encodedIsHaltedNat, encodedIsHalted, Bool.toNat, Bool.cond_decide,
+      encoded_is_halted_nat progCode configCode := fun configCode => by
+    simp only [encoded_is_halted_nat, encoded_is_halted, Bool.toNat, Bool.cond_decide,
                decide_eq_true_eq, K]
   -- Step 5: Convert to Nat.Primrec using nat_iff
   exact Primrec.nat_iff.mp (hComp.of_eq hEq)
@@ -600,54 +600,54 @@ theorem encodedIsHaltedNat_primrec_fixed (progCode : ℕ) :
 /-! ## Iteration -/
 
 /-- Iterate the step function n times on an encoded configuration. -/
-def iterateEncodedStep (progCode bound : ℕ) : ℕ → ℕ → ℕ
+def iterate_encoded_step (progCode bound : ℕ) : ℕ → ℕ → ℕ
   | 0, configCode => configCode
-  | n + 1, configCode => iterateEncodedStep progCode bound n (encodedStep progCode bound configCode)
+  | n + 1, configCode => iterate_encoded_step progCode bound n (encoded_step progCode bound configCode)
 
-/-- iterateEncodedStep equals Function.iterate. -/
-theorem iterateEncodedStep_eq_iterate (progCode bound n configCode : ℕ) :
-    iterateEncodedStep progCode bound n configCode =
-    (encodedStep progCode bound)^[n] configCode := by
+/-- iterate_encoded_step equals Function.iterate. -/
+theorem iterate_encoded_step_eq_iterate (progCode bound n configCode : ℕ) :
+    iterate_encoded_step progCode bound n configCode =
+    (encoded_step progCode bound)^[n] configCode := by
   induction n generalizing configCode with
   | zero => rfl
   | succ n ih =>
-    simp only [iterateEncodedStep, Function.iterate_succ_apply]
-    exact ih (encodedStep progCode bound configCode)
+    simp only [iterate_encoded_step, Function.iterate_succ_apply]
+    exact ih (encoded_step progCode bound configCode)
 
 /-- For fixed progCode and bound, iteration is primitive recursive. -/
-theorem iterateEncodedStep_primrec_fixed (progCode bound : ℕ) :
-    Primrec₂ (iterateEncodedStep progCode bound) := by
+theorem iterate_encoded_step_primrec_fixed (progCode bound : ℕ) :
+    Primrec₂ (iterate_encoded_step progCode bound) := by
   -- Convert Nat.Primrec to Primrec
-  have hStep : Primrec (encodedStep progCode bound) :=
-    Primrec.nat_iff.mpr (encodedStep_primrec_fixed progCode bound)
+  have hStep : Primrec (encoded_step progCode bound) :=
+    Primrec.nat_iff.mpr (encoded_step_primrec_fixed progCode bound)
   -- Build Primrec₂ for the constant step function
-  have hStep₂ : Primrec₂ (fun (_ : ℕ × ℕ) (c : ℕ) => encodedStep progCode bound c) :=
+  have hStep₂ : Primrec₂ (fun (_ : ℕ × ℕ) (c : ℕ) => encoded_step progCode bound c) :=
     hStep.comp₂ Primrec₂.right
   -- Apply nat_iterate: (h a)^[f a] (g a) with f=fst, g=snd, h=const step
-  have hIter : Primrec fun p : ℕ × ℕ => (encodedStep progCode bound)^[p.1] p.2 :=
+  have hIter : Primrec fun p : ℕ × ℕ => (encoded_step progCode bound)^[p.1] p.2 :=
     Primrec.nat_iterate Primrec.fst Primrec.snd hStep₂
   -- Convert to Primrec₂ using equality
   exact Primrec₂.of_eq hIter fun n c =>
-    (iterateEncodedStep_eq_iterate progCode bound n c).symm
+    (iterate_encoded_step_eq_iterate progCode bound n c).symm
 
 /-- Iteration correctness: iterating n times corresponds to StepsN. -/
-theorem iterateEncodedStep_correct (p : Program) (n : ℕ) (c c' : Config)
+theorem iterate_encoded_step_correct (p : Program) (n : ℕ) (c c' : Config)
     (hsteps : StepsN p n c c') :
-    let bound := p.maxRegister
-    let progCode := encodeProgram p
-    iterateEncodedStep progCode bound n (encodeConfig bound c) = encodeConfig bound c' := by
+    let bound := p.max_register
+    let progCode := encode_program p
+    iterate_encoded_step progCode bound n (encode_config bound c) = encode_config bound c' := by
   -- Induction on the step count
   induction hsteps with
   | zero =>
-    -- 0 steps: c' = c, and iterateEncodedStep _ _ 0 x = x
+    -- 0 steps: c' = c, and iterate_encoded_step _ _ 0 x = x
     rfl
   | @succ n' c0 c1 c2 hstep hrest ih =>
     -- n'+1 steps: Step c0 to c1, then n' steps from c1 to c2
-    -- iterateEncodedStep _ _ (n'+1) x = iterateEncodedStep _ _ n' (encodedStep _ _ x)
-    simp only [iterateEncodedStep]
-    -- encodedStep on encoded c0 gives encoded c1 (by encodedStep_correct)
-    rw [encodedStep_correct p c0 c1 hstep]
-    -- Now apply IH: iterateEncodedStep on encoded c1 gives encoded c2
+    -- iterate_encoded_step _ _ (n'+1) x = iterate_encoded_step _ _ n' (encoded_step _ _ x)
+    simp only [iterate_encoded_step]
+    -- encoded_step on encoded c0 gives encoded c1 (by encoded_step_correct)
+    rw [encoded_step_correct p c0 c1 hstep]
+    -- Now apply IH: iterate_encoded_step on encoded c1 gives encoded c2
     exact ih
 
 end Urm

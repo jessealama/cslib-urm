@@ -15,7 +15,7 @@ specifically designed to reduce boilerplate in halting proofs.
 
 The existing `LiftedPhaseResult` in `Halting/Common.lean` loses access to the original
 `StraightLineResult`, which is needed for invariant proofs that use lemmas like
-`loopPrologue_preserves_high_register`. This module provides:
+`loop_prologue_read_high_register_eq`. This module provides:
 
 1. `PhaseExecutionResult`: Preserves both local and lifted execution information
 2. `execPhaseInHost`: Convenient function to execute and lift a phase
@@ -25,12 +25,12 @@ The existing `LiftedPhaseResult` in `Halting/Common.lean` loses access to the or
 
 Instead of:
 ```lean
-let prologueResult := straightLineExec hsl_prologue s
+let prologueResult := straight_lineExec hsl_prologue s
 let c_prologue := prologueResult.config
 let hsteps_prologue := prologueResult.steps
 let hhalted_prologue := prologueResult.halted
 -- ... establish invariants using helper lemmas with hsteps_prologue, hhalted_prologue ...
-have hsteps_prologue_lifted := Steps.straightLine_at_offset offset hsl hembed hsteps_prologue
+have hsteps_prologue_lifted := Steps.straight_line_at_offset offset hsl hembed hsteps_prologue
 ```
 
 You can write:
@@ -69,8 +69,8 @@ abbrev PhaseExecutionResult.finalState {host phase : Program} {offset : ℕ} {s 
 /-- Execute a straight-line phase and lift to the host program.
 
 This is the primary entry point for phase execution. It combines:
-1. `straightLineExec` to run the phase locally
-2. `Steps.straightLine_at_offset` to lift the execution to the host
+1. `straight_lineExec` to run the phase locally
+2. `Steps.straight_line_at_offset` to lift the execution to the host
 
 Usage:
 ```lean
@@ -80,11 +80,11 @@ let result := execPhaseInHost hsl_prologue offset hembed s
 ```
 -/
 noncomputable def execPhaseInHost
-    {phase host : Program} (hsl : phase.isStraightLine = true) (offset : ℕ)
+    {phase host : Program} (hsl : phase.is_straight_line = true) (offset : ℕ)
     (hembed : ∀ i, i < phase.length → host[offset + i]? = phase[i]?)
     (s : State) : PhaseExecutionResult host phase offset s :=
-  let localResult := straightLineExec hsl s
-  let lifted := Steps.straightLine_at_offset offset hsl hembed localResult.steps
+  let localResult := straight_lineExec hsl s
+  let lifted := Steps.straight_line_at_offset offset hsl hembed localResult.steps
   -- Rewrite to get the correct form: ⟨offset + phase.length, state⟩
   have hpc_rewrite : offset + localResult.config.pc = offset + phase.length := by
     rw [localResult.pc_eq]
@@ -130,7 +130,7 @@ theorem PhaseExecutionResult.localSteps {host phase : Program} {offset : ℕ} {s
 
 /-- Access the local halted proof (for use with invariant lemmas). -/
 theorem PhaseExecutionResult.localHalted {host phase : Program} {offset : ℕ} {s : State}
-    (r : PhaseExecutionResult host phase offset s) : r.phaseResult.config.isHalted phase :=
+    (r : PhaseExecutionResult host phase offset s) : r.phaseResult.config.is_halted phase :=
   r.phaseResult.halted
 
 /-- Access the final config of the local execution. -/
@@ -144,8 +144,8 @@ This section provides infrastructure for executing embedded subprograms (like pF
 within a host program. The key challenge is handling:
 
 1. State agreement: The current state may differ from the init state, but agrees on
-   registers 0..maxRegister
-2. Lifting via `Steps.shiftJumps_at_offset`: The subprogram is embedded with shifted jumps
+   registers 0..max_register
+2. Lifting via `Steps.shift_jumps_at_offset`: The subprogram is embedded with shifted jumps
 3. Standard form: The subprogram's PC ends at its length when halted
 4. Result extraction: The result is in R[0]
 -/
@@ -153,10 +153,10 @@ within a host program. The key challenge is handling:
 /-- Result of executing a subprogram embedded within a host program.
 
 This captures the common pattern for "Phase 2" execution where:
-- A subprogram `sub` is embedded at `offset` in `host` via `shiftJumps`
+- A subprogram `sub` is embedded at `offset` in `host` via `shift_jumps`
 - The subprogram executes from a state that agrees with its init state
 - The result is extracted from R[0]
-- High registers (above sub.maxRegister) are preserved
+- High registers (above sub.max_register) are preserved
 
 Usage: After executing a prologue phase, use this to execute the embedded subprogram. -/
 structure SubprogramExecResult (host sub : Program) (offset : ℕ) (s : State) where
@@ -168,37 +168,37 @@ structure SubprogramExecResult (host sub : Program) (offset : ℕ) (s : State) w
   result : ℕ
   /-- The result equals what's in R[0] -/
   result_eq : finalState.read 0 = result
-  /-- Registers above sub.maxRegister are preserved -/
-  highPreserved : ∀ r, sub.maxRegister < r → finalState.read r = s.read r
+  /-- Registers above sub.max_register are preserved -/
+  highPreserved : ∀ r, sub.max_register < r → finalState.read r = s.read r
 
 /-- Execute an embedded subprogram and lift to the host program.
 
 This handles the common "Phase 2" pattern where a standard form subprogram is
-embedded at an offset via shiftJumps. It combines:
-1. `Steps.agreeOn` to transfer execution from the agreeing state
-2. `Steps.shiftJumps_at_offset` to lift the execution to the host
+embedded at an offset via shift_jumps. It combines:
+1. `Steps.agree_on` to transfer execution from the agreeing state
+2. `Steps.shift_jumps_at_offset` to lift the execution to the host
 3. Standard form to establish PC ends at sub.length
 
 Parameters:
 - `hsf`: The subprogram must be standard form (so PC = length when halted)
-- `hembed`: Embedding lemma (host[offset + i]? = sub.shiftJumps[i]?)
+- `hembed`: Embedding lemma (host[offset + i]? = sub.shift_jumps[i]?)
 - `hHalts`: Proof that sub halts on the original inputs
-- `hagree`: State agreement (s agrees with init state on 0..sub.maxRegister)
+- `hagree`: State agreement (s agrees with init state on 0..sub.max_register)
 - `inputs`: The original inputs (used for Result definition)
 
 Returns a `SubprogramExecResult` with:
 - `finalState`: State after execution
 - `liftedSteps`: Steps from ⟨offset, s⟩ to ⟨offset + sub.length, finalState⟩
 - `result`: The value in R[0], equal to `Result sub inputs hHalts`
-- `highPreserved`: Registers above sub.maxRegister unchanged
+- `highPreserved`: Registers above sub.max_register unchanged
 -/
 noncomputable def execSubprogramInHost
     {sub host : Program} {inputs : List ℕ}
     (hsf : sub.IsStandardForm) (offset : ℕ)
-    (hembed : ∀ i, i < sub.length → host[offset + i]? = (sub.shiftJumps offset)[i]?)
+    (hembed : ∀ i, i < sub.length → host[offset + i]? = (sub.shift_jumps offset)[i]?)
     (hHalts : Halts sub inputs)
     (s : State)
-    (hagree : s.agreeOn (Config.init inputs).state 0 sub.maxRegister) :
+    (hagree : s.agree_on (Config.init inputs).state 0 sub.max_register) :
     SubprogramExecResult host sub offset s := by
   -- Get the halting configuration from the original execution
   let cSub := Classical.choose hHalts
@@ -206,26 +206,26 @@ noncomputable def execSubprogramInHost
   let hsteps := hspec.1
   let hhalted := hspec.2
 
-  -- Use Steps.agreeOn to transfer execution to our state
+  -- Use Steps.agree_on to transfer execution to our state
   let initState := (Config.init inputs).state
   let c₂ : Config := ⟨0, s⟩
   have hpc_c2 : (Config.init inputs).pc = c₂.pc := rfl
-  have hagree_symm : initState.agreeOn c₂.state 0 sub.maxRegister := State.agreeOn_symm hagree
-  let hagree_result := Steps.agreeOn hsteps hpc_c2 hagree_symm
+  have hagree_symm : initState.agree_on c₂.state 0 sub.max_register := State.agree_on_symm hagree
+  let hagree_result := Steps.agree_on hsteps hpc_c2 hagree_symm
   let cSub' := Classical.choose hagree_result
   have hspec' := Classical.choose_spec hagree_result
   let hsteps' := hspec'.1
   let hpc' := hspec'.2.1
-  have hagree' : cSub.state.agreeOn cSub'.state 0 sub.maxRegister := hspec'.2.2
+  have hagree' : cSub.state.agree_on cSub'.state 0 sub.max_register := hspec'.2.2
 
   -- Show PC ends at sub.length (standard form)
-  have hhalted' : cSub'.isHalted sub := by
-    unfold Config.isHalted; rw [← hpc']; exact hhalted
+  have hhalted' : cSub'.is_halted sub := by
+    unfold Config.is_halted; rw [← hpc']; exact hhalted
   have hpc_length : cSub'.pc = sub.length :=
     hsf.pc_eq_length_of_halted hsteps' (Nat.zero_le _) hhalted'
 
-  -- Lift steps using shiftJumps_at_offset
-  have hsteps_lifted := Steps.shiftJumps_at_offset offset hembed hsteps'
+  -- Lift steps using shift_jumps_at_offset
+  have hsteps_lifted := Steps.shift_jumps_at_offset offset hembed hsteps'
 
   -- Simplify lifted steps to use sub.length
   have hsteps_lifted' : Steps host ⟨offset, s⟩ ⟨offset + sub.length, cSub'.state⟩ := by
@@ -241,9 +241,9 @@ noncomputable def execSubprogramInHost
     exact h_agree_at_0.symm
 
   -- High registers are preserved
-  have hhigh : ∀ r, sub.maxRegister < r → cSub'.state.read r = s.read r := by
+  have hhigh : ∀ r, sub.max_register < r → cSub'.state.read r = s.read r := by
     intro r hr
-    exact Steps.preserves_high_register hsteps' r hr
+    exact Steps.read_high_register_eq hsteps' r hr
 
   exact {
     finalState := cSub'.state

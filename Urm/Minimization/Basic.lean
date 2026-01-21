@@ -32,8 +32,8 @@ open Program
 theorem URMComputableSF.min {n : ℕ} {f : (Fin (n + 1) → ℕ) → Part ℕ}
     (hf : URMComputableSF (n + 1) f) : URMComputableSF n (μFunction f) := by
   obtain ⟨pF, hF_sf, hF_spec⟩ := hf
-  refine ⟨minimizeProgram n pF, minimizeProgram_isStandardForm n pF hF_sf, fun inputs => ?_⟩
-  exact minimizeProgram_spec n pF hF_sf f hF_spec inputs
+  refine ⟨minimize_program n pF, minimize_program_isStandardForm n pF hF_sf, fun inputs => ?_⟩
+  exact minimize_program_spec n pF hF_sf f hF_spec inputs
 
 /-- Closure under minimization for general URM-computable functions.
     This version relaxes the standard form requirement on the hypothesis -

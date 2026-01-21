@@ -24,7 +24,7 @@ Single-step and multi-step execution semantics for URMs.
 ## Main statements
 
 - `Step.deterministic`: The step relation is deterministic
-- `halted_no_step`: Halted configurations have no successor
+- `no_step_of_halted`: Halted configurations have no successor
 
 ## References
 
@@ -75,26 +75,26 @@ theorem deterministic {c c' c'' : Config} (h1 : Step p c c') (h2 : Step p c c'')
   cases h1 <;> cases h2 <;> simp_all
 
 /-- A halted configuration has no successor in the step relation. -/
-theorem halted_no_step {c c' : Config} (hhalted : c.isHalted p) : ¬Step p c c' := by
+theorem no_step_of_halted {c c' : Config} (hhalted : c.is_halted p) : ¬Step p c c' := by
   intro hstep
-  cases hstep <;> simp_all [Config.isHalted]
+  cases hstep <;> simp_all [Config.is_halted]
 
-/-- If a step exists from config c, then c.pc < p.length (contrapositive of halted_no_step). -/
+/-- If a step exists from config c, then c.pc < p.length (contrapositive of no_step_of_halted). -/
 theorem pc_lt_length {c c' : Config} (hstep : Step p c c') : c.pc < p.length := by
-  by_contra hc; exact halted_no_step (Nat.not_lt.mp hc) hstep
+  by_contra hc; exact no_step_of_halted (Nat.not_lt.mp hc) hstep
 
-/-- If an instruction is at position i, its maxRegister is at most p.maxRegister. -/
-private theorem instr_maxRegister_le {i : ℕ} {instr : Instr}
-    (h : p[i]? = some instr) : instr.maxRegister ≤ p.maxRegister :=
-  Program.getElem?_maxRegister p h
+/-- If an instruction is at position i, its max_register is at most p.max_register. -/
+private theorem instr_max_register_le {i : ℕ} {instr : Instr}
+    (h : p[i]? = some instr) : instr.max_register ≤ p.max_register :=
+  Program.getElem?_max_register p h
 
-/-- A step preserves any register above p.maxRegister (cannot be read or written). -/
-theorem preserves_high_register {c c' : Config} (hstep : Step p c c') (r : ℕ)
-    (hr : p.maxRegister < r) : c'.state.read r = c.state.read r := by
+/-- A step preserves any register above p.max_register (cannot be read or written). -/
+theorem read_high_register_eq {c c' : Config} (hstep : Step p c c') (r : ℕ)
+    (hr : p.max_register < r) : c'.state.read r = c.state.read r := by
   cases hstep with
   | zero h | succ h | trans h =>
-    have hinstr := instr_maxRegister_le h
-    simp only [Instr.maxRegister] at hinstr
+    have hinstr := instr_max_register_le h
+    simp only [Instr.max_register] at hinstr
     simp only [State.read, State.write]; exact Function.update_of_ne (by omega) _ _
   | jump_eq _ _ | jump_ne _ _ => rfl
 
@@ -120,23 +120,23 @@ theorem refl (c : Config) : Steps p c c :=
 
 This follows from the determinism of `Step`: any two execution paths from the same
 initial configuration must be prefixes of each other (or identical if both terminate). -/
-theorem halts_unique {init c₁ c₂ : Config}
-    (h1 : Steps p init c₁) (hh1 : c₁.isHalted p)
-    (h2 : Steps p init c₂) (hh2 : c₂.isHalted p) : c₁ = c₂ := by
+theorem eq_of_halts {init c₁ c₂ : Config}
+    (h1 : Steps p init c₁) (hh1 : c₁.is_halted p)
+    (h2 : Steps p init c₂) (hh2 : c₂.is_halted p) : c₁ = c₂ := by
   induction h1 using Relation.ReflTransGen.head_induction_on with
   | refl =>
     -- c₁ = init, so init is halted
-    -- By halted_no_step, init cannot step, so h2 must also be refl
+    -- By no_step_of_halted, init cannot step, so h2 must also be refl
     cases h2 using Relation.ReflTransGen.head_induction_on with
     | refl => rfl
-    | head hstep _ => exact absurd hstep (Step.halted_no_step hh1)
+    | head hstep _ => exact absurd hstep (Step.no_step_of_halted hh1)
   | head hstep_c hrest ih =>
     -- init → c → ... → c₁, where hstep_c : Step p init c
     -- init is not halted (it can step)
     cases h2 using Relation.ReflTransGen.head_induction_on with
     | refl =>
       -- c₂ = init is halted, but init can step - contradiction
-      exact absurd hstep_c (Step.halted_no_step hh2)
+      exact absurd hstep_c (Step.no_step_of_halted hh2)
     | head hstep_c' hrest' =>
       -- init → c' → ... → c₂
       -- By determinism, c = c'
@@ -150,7 +150,7 @@ theorem halts_unique {init c₁ c₂ : Config}
     This is the "continuation" lemma: since execution is deterministic, the path
     to a halted state must pass through any intermediate reachable state. -/
 theorem deterministic_continuation {init c c' : Config}
-    (h1 : Steps p init c) (h2 : Steps p init c') (hh2 : c'.isHalted p) :
+    (h1 : Steps p init c) (h2 : Steps p init c') (hh2 : c'.is_halted p) :
     Steps p c c' := by
   induction h1 using Relation.ReflTransGen.head_induction_on with
   | refl =>
@@ -162,7 +162,7 @@ theorem deterministic_continuation {init c c' : Config}
     cases h2 using Relation.ReflTransGen.head_induction_on with
     | refl =>
       -- init = c' is halted, but init can step - contradiction
-      exact absurd hstep_c (Step.halted_no_step hh2)
+      exact absurd hstep_c (Step.no_step_of_halted hh2)
     | head hstep_c' hrest' =>
       -- init → c' → ... → c''
       -- By determinism, the intermediate configs match
@@ -170,12 +170,12 @@ theorem deterministic_continuation {init c c' : Config}
       subst heq
       exact ih hrest'
 
-/-- Multi-step execution preserves any register above p.maxRegister. -/
-theorem preserves_high_register {c c' : Config} (hsteps : Steps p c c') (r : ℕ)
-    (hr : p.maxRegister < r) : c'.state.read r = c.state.read r := by
+/-- Multi-step execution preserves any register above p.max_register. -/
+theorem read_high_register_eq {c c' : Config} (hsteps : Steps p c c') (r : ℕ)
+    (hr : p.max_register < r) : c'.state.read r = c.state.read r := by
   induction hsteps using Relation.ReflTransGen.head_induction_on with
   | refl => rfl
-  | head hstep _ ih => rw [ih]; exact Step.preserves_high_register hstep r hr
+  | head hstep _ ih => rw [ih]; exact Step.read_high_register_eq hstep r hr
 
 /-- Aesop-based tactic for step chaining using ReflTransGen constructors.
     Automatically chains Step hypotheses into a Steps proof. -/
@@ -187,7 +187,7 @@ end Steps
 /-- A program halts on given inputs if there exists a halted configuration reachable from
 the initial configuration. -/
 def Halts (inputs : List ℕ) : Prop :=
-  ∃ c, Steps p (Config.init inputs) c ∧ c.isHalted p
+  ∃ c, Steps p (Config.init inputs) c ∧ c.is_halted p
 
 /-- A program diverges on given inputs if it does not halt. -/
 def Diverges (inputs : List ℕ) : Prop := ¬Halts p inputs
@@ -214,7 +214,7 @@ namespace StepsN
 variable {p : Program}
 
 /-- StepsN implies Steps. -/
-theorem toSteps {n : ℕ} {c c' : Config} (h : StepsN p n c c') : Steps p c c' := by
+theorem to_steps {n : ℕ} {c c' : Config} (h : StepsN p n c c') : Steps p c c' := by
   induction h with
   | zero => exact Relation.ReflTransGen.refl
   | succ hstep _ ih => exact Relation.ReflTransGen.head hstep ih
@@ -230,7 +230,7 @@ theorem add {m n : ℕ} {c₁ c₂ c₃ : Config}
     exact succ hstep (ih h2)
 
 /-- Steps implies there exists some n for StepsN. -/
-theorem fromSteps {c c' : Config} (h : Steps p c c') : ∃ n, StepsN p n c c' := by
+theorem from_steps {c c' : Config} (h : Steps p c c') : ∃ n, StepsN p n c c' := by
   induction h using Relation.ReflTransGen.head_induction_on with
   | refl => exact ⟨0, StepsN.zero c'⟩
   | head hstep _ ih =>
@@ -250,8 +250,8 @@ theorem succ_inv {c c' : Config} (hn : n ≠ 0) (h : StepsN p n c c') :
 
 /-- Step counts are unique when reaching a halted configuration.
     If StepsN p n1 c final and StepsN p n2 c final with final halted, then n1 = n2. -/
-theorem stepsN_unique_halted : ∀ {c final : Config} {n1 n2 : ℕ},
-    StepsN p n1 c final → StepsN p n2 c final → final.isHalted p → n1 = n2 := by
+theorem eq_of_halted : ∀ {c final : Config} {n1 n2 : ℕ},
+    StepsN p n1 c final → StepsN p n2 c final → final.is_halted p → n1 = n2 := by
   intro c final n1
   induction n1 generalizing c with
   | zero =>
@@ -261,7 +261,7 @@ theorem stepsN_unique_halted : ∀ {c final : Config} {n1 n2 : ℕ},
     -- final is halted, so n2 must also be 0
     cases h2 with
     | zero => rfl
-    | succ hstep _ => exact absurd hstep (Step.halted_no_step h_halted)
+    | succ hstep _ => exact absurd hstep (Step.no_step_of_halted h_halted)
   | succ n1' ih =>
     intro n2 h1 h2 h_halted
     -- n1 > 0, decompose h1
@@ -270,7 +270,7 @@ theorem stepsN_unique_halted : ∀ {c final : Config} {n1 n2 : ℕ},
       cases h2 with
       | zero =>
         -- n2 = 0 means c = final, but c can step - contradiction
-        exact absurd hstep1 (Step.halted_no_step h_halted)
+        exact absurd hstep1 (Step.no_step_of_halted h_halted)
       | succ hstep2 hrest2 =>
         -- Both step, by determinism they go to same config
         have heq : _ = _ := Step.deterministic hstep1 hstep2
@@ -283,26 +283,26 @@ theorem stepsN_unique_halted : ∀ {c final : Config} {n1 n2 : ℕ},
 theorem split_at_intermediate {init mid final : Config} {n : ℕ}
     (h_total : StepsN p n init final)
     (h_mid : Steps p init mid)
-    (h_halted : final.isHalted p) :
+    (h_halted : final.is_halted p) :
     ∃ m1 m2, StepsN p m1 init mid ∧ StepsN p m2 mid final ∧ m1 + m2 = n := by
   -- Get step count for first segment
-  obtain ⟨m1, hm1⟩ := fromSteps h_mid
+  obtain ⟨m1, hm1⟩ := from_steps h_mid
   -- Get steps from mid to final using deterministic continuation
   have h_mid_to_final : Steps p mid final :=
-    Steps.deterministic_continuation h_mid h_total.toSteps h_halted
+    Steps.deterministic_continuation h_mid h_total.to_steps h_halted
   -- Get step count for second segment
-  obtain ⟨m2, hm2⟩ := fromSteps h_mid_to_final
+  obtain ⟨m2, hm2⟩ := from_steps h_mid_to_final
   use m1, m2, hm1, hm2
   -- The combined path has step count m1 + m2
   have h_combined : StepsN p (m1 + m2) init final := add hm1 hm2
   -- By uniqueness, n = m1 + m2
-  exact stepsN_unique_halted h_combined h_total h_halted
+  exact eq_of_halted h_combined h_total h_halted
 
 /-- If we take at least one step to reach mid, then remaining steps to halted final is strictly less. -/
 theorem split_strictly_smaller {init mid final : Config} {n : ℕ}
     (h_total : StepsN p n init final)
     (h_mid : Steps p init mid)
-    (h_halted : final.isHalted p)
+    (h_halted : final.is_halted p)
     (h_moved : init ≠ mid) :
     ∃ m, m < n ∧ StepsN p m mid final := by
   obtain ⟨m1, m2, hm1, hm2, heq⟩ := split_at_intermediate h_total h_mid h_halted
