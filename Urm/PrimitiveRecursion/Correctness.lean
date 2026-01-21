@@ -70,25 +70,17 @@ theorem primitiveRecursionProgram_result (n : ℕ) (pF pG : Program)
     rw [hOutput_read, hacc_y]
   have hTotal : Steps (primitiveRecursionProgram n pF pG)
       (Config.init (List.ofFn (Fin.snoc inputs y))) cOutput := by
-    let h1 := setup.steps
-    let h2 : Steps (primitiveRecursionProgram n pF pG) setup.config baseCase.config :=
-      baseCase.steps
-    let h3 : Steps (primitiveRecursionProgram n pF pG) baseCase.config loopResult.config :=
-      loopResult.steps
-    let hconfig : loopResult.config = ⟨prLoopCheckPC n pF pG, loopResult.config.state⟩ := by
+    have hconfig : loopResult.config = ⟨prLoopCheckPC n pF pG, loopResult.config.state⟩ := by
       ext; exact loopResult.pc_eq; rfl
-    let h4 : Steps (primitiveRecursionProgram n pF pG) loopResult.config
+    have h4 : Steps (primitiveRecursionProgram n pF pG) loopResult.config
         ⟨prOutputPC n pF pG, loopResult.config.state⟩ := by
-      rw [hconfig]
-      exact Relation.ReflTransGen.single hstep_exit
-    let h5 : Steps (primitiveRecursionProgram n pF pG)
-        ⟨prOutputPC n pF pG, loopResult.config.state⟩ cOutput := hOutput_steps
-    exact h1.trans (h2.trans (h3.trans (h4.trans h5)))
+      rw [hconfig]; exact Relation.ReflTransGen.single hstep_exit
+    exact setup.steps.trans (baseCase.steps.trans (loopResult.steps.trans (h4.trans hOutput_steps)))
   have hHalts' := hHalts
   obtain ⟨cFinal, hFinal_steps, hFinal_halted⟩ := hHalts'
   have hFinal_eq_Output : cFinal = cOutput :=
     Steps.halts_unique hFinal_steps hFinal_halted hTotal hOutput_halted
-  let hwit := Classical.choose_spec hHalts
+  have hwit := Classical.choose_spec hHalts
   have hcFinal_is_witness : cFinal = Classical.choose hHalts :=
     Steps.halts_unique hFinal_steps hFinal_halted hwit.1 hwit.2
   simp only [Result, State.output]

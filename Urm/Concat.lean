@@ -72,16 +72,11 @@ theorem concat_assoc (p1 p2 p3 : Program) :
     (p1.concat p2).concat p3 = p1.concat (p2.concat p3) := by
   simp only [concat, List.append_assoc, List.length_append, shiftJumps_length]
   congr 1
-  simp only [shiftJumps, List.map_append]
+  simp only [shiftJumps, List.map_append, List.map_map]
   congr 1
-  simp only [List.map_map]
-  congr 1
-  funext instr
-  cases instr with
-  | Z n => simp [Instr.shiftJumps]
-  | S n => simp [Instr.shiftJumps]
-  | T m n => simp [Instr.shiftJumps]
-  | J m n q => simp [Instr.shiftJumps]; omega
+  apply List.map_eq_map_iff.mpr
+  intro instr _
+  cases instr <;> simp [Instr.shiftJumps]; omega
 
 /-- Program concatenation forms a semigroup.
 Note: This uses `concat` (which shifts jumps), not raw list append. -/
@@ -130,17 +125,13 @@ variable {p1 p2 : Program}
 /-- Stepping in the first part of a concatenated program. -/
 theorem Step.concat_left {c c' : Config} (hpc : c.pc < p1.length)
     (hstep : Step p1 c c') : Step (p1.concat p2) c c' := by
+  have hinstr : (p1.concat p2)[c.pc]? = p1[c.pc]? := Program.getElem?_concat_left _ hpc
   cases hstep with
-  | zero h =>
-    exact Step.zero (by rw [Program.getElem?_concat_left _ hpc]; exact h)
-  | succ h =>
-    exact Step.succ (by rw [Program.getElem?_concat_left _ hpc]; exact h)
-  | trans h =>
-    exact Step.trans (by rw [Program.getElem?_concat_left _ hpc]; exact h)
-  | jump_eq h heq =>
-    exact Step.jump_eq (by rw [Program.getElem?_concat_left _ hpc]; exact h) heq
-  | jump_ne h hne =>
-    exact Step.jump_ne (by rw [Program.getElem?_concat_left _ hpc]; exact h) hne
+  | zero h => exact Step.zero (hinstr ▸ h)
+  | succ h => exact Step.succ (hinstr ▸ h)
+  | trans h => exact Step.trans (hinstr ▸ h)
+  | jump_eq h heq => exact Step.jump_eq (hinstr ▸ h) heq
+  | jump_ne h hne => exact Step.jump_ne (hinstr ▸ h) hne
 
 /-- Reverse direction: stepping in concatenated program with pc in first part gives step in p1. -/
 theorem Step.of_concat_left {c c' : Config} (hpc : c.pc < p1.length)

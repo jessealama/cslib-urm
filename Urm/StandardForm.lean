@@ -83,7 +83,7 @@ theorem Instr.hasBoundedJump_mono {instr : Instr} {len1 len2 : ℕ}
     instr.hasBoundedJump len2 = true := by
   cases instr with
   | Z _ | S _ | T _ _ => simp [hasBoundedJump]
-  | J _ _ q => simp only [hasBoundedJump, decide_eq_true_eq] at h ⊢; exact Nat.le_trans h hle
+  | J _ _ q => simp only [hasBoundedJump, decide_eq_true_eq] at h ⊢; omega
 
 /-- shiftJumps preserves bounded jumps with adjusted bound. -/
 theorem Instr.hasBoundedJump_shiftJumps {instr : Instr} {len offset : ℕ}
@@ -139,10 +139,9 @@ theorem Step.pc_le_length_of_step {p : Program} (hsf : p.IsStandardForm)
     {c c' : Config} (hstep : Step p c c') : c'.pc ≤ p.length := by
   cases hstep with
   | zero hinstr | succ hinstr | trans hinstr | jump_ne hinstr _ =>
-    show c.pc + 1 ≤ p.length; have := List.getElem?_eq_some_iff.mp hinstr |>.1; omega
+    exact Nat.succ_le_of_lt (List.getElem?_eq_some_iff.mp hinstr).1
   | jump_eq hinstr _ =>
-    have hbounded := hsf.getElem?_hasBoundedJump hinstr
-    simp only [Instr.hasBoundedJump, decide_eq_true_eq] at hbounded; exact hbounded
+    simpa [Instr.hasBoundedJump] using hsf.getElem?_hasBoundedJump hinstr
 
 /-- The pc stays ≤ p.length throughout execution of a standard form program. -/
 theorem Program.IsStandardForm.pc_le_length {p : Program} (hsf : p.IsStandardForm)
@@ -157,12 +156,8 @@ theorem Program.IsStandardForm.pc_le_length {p : Program} (hsf : p.IsStandardFor
 This is the key semantic consequence of the syntactic bounded-jump property. -/
 theorem Program.IsStandardForm.halts_at_length {p : Program} (hsf : p.IsStandardForm)
     (inputs : List ℕ) (c : Config) (hsteps : Steps p (Config.init inputs) c)
-    (hhalted : c.isHalted p) : c.pc = p.length := by
-  -- From invariant: c.pc ≤ p.length
-  have hle : c.pc ≤ p.length := hsf.pc_le_length hsteps (Nat.zero_le _)
-  -- From halted: c.pc ≥ p.length
-  -- Combine: c.pc = p.length
-  exact Nat.le_antisymm hle hhalted
+    (hhalted : c.isHalted p) : c.pc = p.length :=
+  Nat.le_antisymm (hsf.pc_le_length hsteps (Nat.zero_le _)) hhalted
 
 /-- When a standard form program halts from any starting point with pc ≤ length, pc = length. -/
 theorem Program.IsStandardForm.pc_eq_length_of_halted {p : Program} (hsf : p.IsStandardForm)
@@ -311,17 +306,15 @@ theorem Step.simulate_toStandardForm {p : Program} {c₁ c₁' : Config}
   | zero hinstr => exact ⟨_, Steps.single (Step.toStandardForm_zero hinstr), Or.inl ⟨rfl, rfl⟩⟩
   | succ hinstr => exact ⟨_, Steps.single (Step.toStandardForm_succ hinstr), Or.inl ⟨rfl, rfl⟩⟩
   | trans hinstr => exact ⟨_, Steps.single (Step.toStandardForm_trans hinstr), Or.inl ⟨rfl, rfl⟩⟩
-  | jump_ne hinstr hne_reg =>
-    exact ⟨_, Steps.single (Step.toStandardForm_jump_ne hinstr hne_reg), Or.inl ⟨rfl, rfl⟩⟩
-  | jump_eq hinstr heq_reg =>
+  | jump_ne hinstr hne =>
+    exact ⟨_, Steps.single (Step.toStandardForm_jump_ne hinstr hne), Or.inl ⟨rfl, rfl⟩⟩
+  | jump_eq hinstr heq =>
     rename_i m n q
     by_cases hbounded : q ≤ p.length
-    · exact ⟨⟨q, c₁.state⟩, Steps.single (Step.toStandardForm_jump_eq_bounded hinstr hbounded heq_reg),
-             Or.inl ⟨rfl, rfl⟩⟩
-    · have hgt : q > p.length := Nat.not_le.mp hbounded
-      have hcap := Program.toStandardForm_getElem?_some hinstr
-      simp only [Instr.capJump, Nat.min_eq_right (Nat.le_of_lt hgt)] at hcap
-      exact ⟨⟨p.length, c₁.state⟩, Steps.single (Step.jump_eq hcap heq_reg),
+    · exact ⟨_, Steps.single (Step.toStandardForm_jump_eq_bounded hinstr hbounded heq), Or.inl ⟨rfl, rfl⟩⟩
+    · have hcap := Program.toStandardForm_getElem?_some hinstr
+      simp only [Instr.capJump, Nat.min_eq_right (Nat.le_of_not_ge hbounded)] at hcap
+      exact ⟨_, Steps.single (Step.jump_eq hcap heq),
              Or.inr ⟨by simp; omega, by simp [Program.toStandardForm_length], rfl⟩⟩
 
 /-- Multi-step simulation: if original reaches halted config, standard form can too. -/

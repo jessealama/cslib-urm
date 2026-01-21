@@ -50,18 +50,15 @@ open Part
 /-- Helper to build a Fin 2 → ℕ from two values. -/
 private def mkPair (a b : ℕ) : Fin 2 → ℕ := Fin.cons a (Fin.cons b Fin.elim0)
 
-@[simp] private theorem mkPair_zero (a b : ℕ) : mkPair a b 0 = a := rfl
-@[simp] private theorem mkPair_one (a b : ℕ) : mkPair a b 1 = b := rfl
+@[simp] private theorem mkPair_zero : mkPair a b 0 = a := rfl
+@[simp] private theorem mkPair_one : mkPair a b 1 = b := rfl
 
 /-- Build a binary Gs from two computed functions: gs 0 = g₀, gs 1 = g₁. -/
 private def binaryGs {n : ℕ} (g₀ g₁ : (Fin n → ℕ) → Part ℕ) : Fin 2 → (Fin n → ℕ) → Part ℕ :=
   fun k => if k.val = 0 then g₀ else g₁
 
-@[simp] private theorem binaryGs_zero {n : ℕ} (g₀ g₁ : (Fin n → ℕ) → Part ℕ) :
-    binaryGs g₀ g₁ 0 = g₀ := rfl
-
-@[simp] private theorem binaryGs_one {n : ℕ} (g₀ g₁ : (Fin n → ℕ) → Part ℕ) :
-    binaryGs g₀ g₁ 1 = g₁ := rfl
+@[simp] private theorem binaryGs_zero : binaryGs g₀ g₁ 0 = g₀ := rfl
+@[simp] private theorem binaryGs_one : binaryGs g₀ g₁ 1 = g₁ := rfl
 
 /-- Compose a binary function with two computed inner functions.
     Given f(a, b) computable and g₀, g₁ computable, proves f(g₀(x), g₁(x)) computable.
@@ -280,13 +277,7 @@ theorem sign_computable : URMComputable 1 (fun x => Part.some (if x 0 = 0 then 0
 /-- Helper: sign(y - x) equals the characteristic function of x < y -/
 private theorem sign_sub_swap_eq_lt (x y : ℕ) :
     (if y - x = 0 then 0 else 1) = if x < y then 1 else 0 := by
-  by_cases h : x < y
-  · -- x < y: y - x > 0, so sign = 1
-    have hsub : y - x ≠ 0 := Nat.sub_ne_zero_of_lt h
-    simp [hsub, h]
-  · -- x ≥ y: y - x = 0, so sign = 0
-    have hsub : y - x = 0 := Nat.sub_eq_zero_of_le (Nat.not_lt.mp h)
-    simp [hsub, h]
+  by_cases h : x < y <;> simp [Nat.sub_eq_zero_iff_le, h]
 
 /-- Less-than comparison returns 1 if x < y, else 0.
     lt(x, y) = sign(y - x) -/
@@ -304,14 +295,7 @@ theorem lt_computable : URMComputable 2 (fun xy => Part.some (if xy 0 < xy 1 the
 /-- Helper: 1 - sign(x - y) equals the characteristic function of x ≤ y -/
 private theorem one_minus_sign_sub_eq_le (x y : ℕ) :
     1 - (if x - y = 0 then 0 else 1) = if x ≤ y then 1 else 0 := by
-  by_cases h : x ≤ y
-  · -- x ≤ y: x - y = 0, so 1 - 0 = 1
-    have hsub : x - y = 0 := Nat.sub_eq_zero_of_le h
-    simp [hsub, h]
-  · -- x > y: x - y > 0, so 1 - 1 = 0
-    have hgt : x > y := Nat.not_le.mp h
-    have hsub : x - y ≠ 0 := Nat.sub_ne_zero_of_lt hgt
-    simp [hsub, h]
+  by_cases h : x ≤ y <;> simp [Nat.sub_eq_zero_iff_le, h]
 
 /-- The intermediate function: sign(x - y). -/
 private def leSignXY : (Fin 2 → ℕ) → Part ℕ :=
@@ -364,15 +348,9 @@ theorem le_computable : URMComputable 2 (fun xy => Part.some (if xy 0 ≤ xy 1 t
 private theorem le_mul_le_swap_eq_eq (x y : ℕ) :
     (if x ≤ y then 1 else 0) * (if y ≤ x then 1 else 0) = if x = y then 1 else 0 := by
   by_cases h : x = y
-  · -- x = y: both conditions true, 1 * 1 = 1
-    simp [h]
-  · -- x ≠ y: at least one condition false
-    have hne : x < y ∨ y < x := Nat.lt_or_lt_of_ne h
-    rcases hne with hlt | hgt
-    · -- x < y: y ≤ x is false
-      simp [Nat.le_of_lt hlt, Nat.not_le.mpr hlt, h]
-    · -- y < x: x ≤ y is false
-      simp [Nat.le_of_lt hgt, Nat.not_le.mpr hgt, h]
+  · simp [h]
+  · rcases Nat.lt_or_lt_of_ne h with hcase | hcase <;>
+      simp [Nat.le_of_lt hcase, Nat.not_le.mpr hcase, h]
 
 /-- le(y, x) is computable (le with swapped arguments). -/
 private theorem leSwap_computable : URMComputable 2 (fun xy => Part.some (if xy 1 ≤ xy 0 then 1 else 0)) := by
@@ -418,11 +396,10 @@ private def sqrtPredFun : (Fin 2 → ℕ) → Part ℕ :=
   fun ns => Part.some (if (ns 1 + 1) * (ns 1 + 1) ≤ ns 0 then 1 else 0)
 
 /-- Helper: simplify Fin.snoc at index 0 -/
-private theorem snoc_at_zero (n s : ℕ) : (Fin.snoc (fun _ : Fin 1 => n) s : Fin 2 → ℕ) 0 = n := rfl
+private theorem snoc_at_zero : (Fin.snoc (fun _ : Fin 1 => n) s : Fin 2 → ℕ) 0 = n := rfl
 
 /-- Helper: simplify Fin.snoc at index 1 -/
-private theorem snoc_at_one (n s : ℕ) : (Fin.snoc (fun _ : Fin 1 => n) s : Fin 2 → ℕ) 1 = s := by
-  simp [Fin.snoc]
+private theorem snoc_at_one : (Fin.snoc (fun _ : Fin 1 => n) s : Fin 2 → ℕ) 1 = s := by simp [Fin.snoc]
 
 /-- For s < sqrt(n), we have (s+1)² ≤ n, so the predicate returns 1 (non-zero). -/
 private theorem sqrt_pred_nonzero_below (n s : ℕ) (hs : s < Nat.sqrt n) :
@@ -443,7 +420,7 @@ private theorem sqrt_pred_zero_at (n : ℕ) :
   simp only [Nat.not_le.mpr h, ↓reduceIte]
 
 /-- Helper: extendInputs (fun _ => n) s equals Fin.snoc (fun _ => n) s -/
-private theorem extendInputs_eq_snoc (n s : ℕ) :
+private theorem extendInputs_eq_snoc :
     extendInputs (fun _ : Fin 1 => n) s = Fin.snoc (fun _ : Fin 1 => n) s := rfl
 
 /-- Key lemma: μ(sqrtPredFun) equals Nat.sqrt. -/
@@ -510,10 +487,7 @@ private theorem pair_branchless_eq (a b : ℕ) :
     (if a < b then 1 else 0) * (b * b + a) +
     (1 - if a < b then 1 else 0) * (a * a + a + b) =
     pair a b := by
-  unfold pair
-  by_cases h : a < b
-  · simp [h]
-  · simp [h]
+  unfold pair; by_cases h : a < b <;> simp [h]
 
 -- Helper: b² is computable (as a 2-arg function extracting b)
 private theorem sqB_computable : URMComputableSF 2 (fun xy => Part.some ((xy 1) * (xy 1))) :=
@@ -662,9 +636,7 @@ private theorem unpairLeft_branchless_eq (n : ℕ) :
     (1 - if n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n then 1 else 0) * Nat.sqrt n =
     (Nat.unpair n).1 := by
   rw [Nat.unpair.eq_1]
-  by_cases h : n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n
-  · simp [h]
-  · simp [h]
+  by_cases h : n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n <;> simp [h]
 
 -- Branchless formula for unpair.2 equals Nat.unpair.2
 private theorem unpairRight_branchless_eq (n : ℕ) :
@@ -672,9 +644,7 @@ private theorem unpairRight_branchless_eq (n : ℕ) :
     (1 - if n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n then 1 else 0) * (n - Nat.sqrt n * Nat.sqrt n - Nat.sqrt n) =
     (Nat.unpair n).2 := by
   rw [Nat.unpair.eq_1]
-  by_cases h : n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n
-  · simp [h]
-  · simp [h]
+  by_cases h : n - Nat.sqrt n * Nat.sqrt n < Nat.sqrt n <;> simp [h]
 
 /-- Left unpair component is URM-computable. -/
 theorem unpairLeft_computable : URMComputable 1 (fun x => Part.some (x 0).unpair.1) := by

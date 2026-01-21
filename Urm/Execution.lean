@@ -85,30 +85,8 @@ theorem pc_lt_length {c c' : Config} (hstep : Step p c c') : c.pc < p.length := 
 
 /-- If an instruction is at position i, its maxRegister is at most p.maxRegister. -/
 private theorem instr_maxRegister_le {i : ℕ} {instr : Instr}
-    (h : p[i]? = some instr) : instr.maxRegister ≤ p.maxRegister := by
-  have hi : i < p.length := by by_contra hc; simp only [not_lt] at hc; simp [List.getElem?_eq_none hc] at h
-  have foldl_ge_init : ∀ (init : ℕ) (l : List Instr), init ≤ l.foldl (fun acc i => max acc i.maxRegister) init := by
-    intro init l; induction l generalizing init with
-    | nil => exact Nat.le_refl _
-    | cons h t iht => exact Nat.le_trans (Nat.le_max_left _ _) (iht _)
-  have foldl_mono : ∀ (a b : ℕ) (l : List Instr), a ≤ b →
-      l.foldl (fun acc i => max acc i.maxRegister) a ≤ l.foldl (fun acc i => max acc i.maxRegister) b := by
-    intro a b l hab; induction l generalizing a b with
-    | nil => exact hab
-    | cons h t iht => simp only [List.foldl_cons]; apply iht; omega
-  induction p generalizing i instr with
-  | nil => simp at h
-  | cons hd tl ih =>
-    simp only [Program.maxRegister, List.foldl_cons]
-    cases i with
-    | zero =>
-      simp only [List.getElem?_cons_zero, Option.some.injEq] at h; subst h
-      exact Nat.le_trans (Nat.le_max_right 0 _) (foldl_ge_init _ _)
-    | succ j =>
-      simp only [List.getElem?_cons_succ] at h
-      have hj : j < tl.length := by simp at hi; omega
-      have ih' := ih h hj; simp only [Program.maxRegister] at ih'
-      exact Nat.le_trans ih' (foldl_mono 0 _ tl (Nat.zero_le _))
+    (h : p[i]? = some instr) : instr.maxRegister ≤ p.maxRegister :=
+  Program.getElem?_maxRegister p h
 
 /-- A step preserves any register above p.maxRegister (cannot be read or written). -/
 theorem preserves_high_register {c c' : Config} (hstep : Step p c c') (r : ℕ)

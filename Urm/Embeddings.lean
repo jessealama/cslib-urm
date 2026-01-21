@@ -41,12 +41,7 @@ theorem Step.at_offset {p P : Program} {c c' : Config} (k : ℕ)
     have h' : P[k + c.pc]? = some (Instr.T _ _) := hinstr ▸ h
     have hstep' : Step P ⟨k + c.pc, c.state⟩ ⟨k + c.pc + 1, _⟩ := Step.trans h'
     simp only [Nat.add_assoc] at hstep'; exact hstep'
-  | jump_eq h _ =>
-    -- Can't happen: straight-line programs have no jumps
-    have ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.mp h
-    simp only [Program.isStraightLine, List.all_eq_true] at hsl
-    exact absurd (hsl _ (heq ▸ List.getElem_mem hlt)) (by simp [Instr.isNonJumping])
-  | jump_ne h _ =>
+  | jump_eq h _ | jump_ne h _ =>
     -- Can't happen: straight-line programs have no jumps
     have ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.mp h
     simp only [Program.isStraightLine, List.all_eq_true] at hsl

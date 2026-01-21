@@ -320,11 +320,9 @@ macro "writesTo_omega" : tactic =>
 
 theorem clearRegisters_isStraightLine (maxReg : ℕ) :
     (Program.clearRegisters maxReg).isStraightLine = true := by
-  simp only [Program.clearRegisters, Program.isStraightLine, List.all_map]
-  induction maxReg + 1 with
-  | zero => simp only [List.range_zero, List.all_nil]
-  | succ k ih => simp only [List.range_succ, List.all_append, ih, List.all_cons, List.all_nil,
-      Function.comp_apply, Instr.isNonJumping, Bool.and_self]
+  simp only [Program.clearRegisters, Program.isStraightLine, List.all_map, List.all_eq_true,
+             List.mem_range]
+  intro _ _; rfl
 
 theorem copyRegisterRange_isStraightLine (srcStart dstStart count : ℕ) :
     (Program.copyRegisterRange srcStart dstStart count).isStraightLine = true := by

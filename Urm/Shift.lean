@@ -163,7 +163,7 @@ theorem shiftRegisters_zero (p : Program) : p.shiftRegisters 0 = p := by
 
 theorem shiftRegisters_add (k₁ k₂ : ℕ) (p : Program) :
     (p.shiftRegisters k₁).shiftRegisters k₂ = p.shiftRegisters (k₁ + k₂) := by
-  simp only [shiftRegisters, List.map_map, Function.comp_def, Instr.shiftRegisters_add]
+  simp [shiftRegisters, List.map_map, Function.comp_def, Instr.shiftRegisters_add]
 
 @[simp]
 theorem getElem?_shiftRegisters (offset : ℕ) (p : Program) (i : ℕ) :
@@ -341,43 +341,20 @@ theorem State.agreeOn_symm {σ₁ σ₂ : State} {lo hi : ℕ}
 /-- Writing the same value to the same register preserves agreement. -/
 theorem State.agreeOn_write_same {σ₁ σ₂ : State} {lo hi n : ℕ} {v : ℕ}
     (h : σ₁.agreeOn σ₂ lo hi) :
-    (σ₁.write n v).agreeOn (σ₂.write n v) lo hi := by
-  intro r hlo hhi
-  by_cases hr : r = n
-  · simp [hr]
-  · simp [write_read_diff _ _ _ _ hr, h r hlo hhi]
+    (σ₁.write n v).agreeOn (σ₂.write n v) lo hi := fun r hlo hhi => by
+  by_cases hr : r = n <;> simp [hr, write_read_diff, h r hlo hhi]
 
-/-- Helper for foldl max: value in accumulator is preserved. -/
+/-- Helper for foldl max: value in accumulator is preserved.
+    Re-exported from Program namespace for local use. -/
 private theorem foldl_max_ge_init (p : List Instr) (init : ℕ) :
-    init ≤ p.foldl (fun acc i => max acc i.maxRegister) init := by
-  induction p generalizing init with
-  | nil => rfl
-  | cons hd tl ih =>
-    simp only [List.foldl_cons]
-    calc init ≤ max init hd.maxRegister := Nat.le_max_left _ _
-      _ ≤ _ := ih _
+    init ≤ p.foldl (fun acc i => max acc i.maxRegister) init :=
+  Program.maxRegister_foldl_ge_init init p
 
-/-- Helper for foldl max: any element's maxRegister is ≤ the result. -/
+/-- Helper for foldl max: any element's maxRegister is ≤ the result.
+    Re-exported from Program namespace for local use. -/
 private theorem foldl_max_ge_elem (p : List Instr) (init : ℕ) (instr : Instr) (h : instr ∈ p) :
-    instr.maxRegister ≤ p.foldl (fun acc i => max acc i.maxRegister) init := by
-  induction p generalizing init with
-  | nil => cases h
-  | cons hd tl ih =>
-    simp only [List.foldl_cons]
-    cases h with
-    | head =>
-      calc instr.maxRegister
-          ≤ max init instr.maxRegister := Nat.le_max_right _ _
-        _ ≤ _ := foldl_max_ge_init _ _
-    | tail _ htl =>
-      exact ih _ htl
-
-/-- Helper: the instruction at a position has maxRegister ≤ program's maxRegister. -/
-theorem Program.getElem?_maxRegister {p : Program} {i : ℕ} {instr : Instr}
-    (h : p[i]? = some instr) : instr.maxRegister ≤ p.maxRegister := by
-  have hmem : instr ∈ p := List.mem_of_getElem? h
-  simp only [maxRegister]
-  exact foldl_max_ge_elem p 0 instr hmem
+    instr.maxRegister ≤ p.foldl (fun acc i => max acc i.maxRegister) init :=
+  Program.maxRegister_foldl_ge_elem p init instr h
 
 /-- Key lemma: if two configs agree on `[0, maxRegister]` and PC is the same,
     a step produces configs that still agree. -/
@@ -393,24 +370,24 @@ theorem Step.agreeOn {p : Program} {c₁ c₁' c₂ : Config}
     exact ⟨⟨c₂.pc + 1, c₂.state.write _ 0⟩, Step.zero hinstr, by simp [hpc], State.agreeOn_write_same hagree⟩
   | succ hinstr =>
     rename_i n; rw [hpc] at hinstr
-    have hmax : n ≤ p.maxRegister := by simpa [Instr.maxRegister] using Program.getElem?_maxRegister hinstr
+    have hmax : n ≤ p.maxRegister := by simpa [Instr.maxRegister] using Program.getElem?_maxRegister p hinstr
     have hread := hagree n (Nat.zero_le n) hmax
     exact ⟨⟨c₂.pc + 1, c₂.state.write n (c₂.state.read n + 1)⟩, Step.succ hinstr, by simp [hpc],
            by rw [hread]; exact State.agreeOn_write_same hagree⟩
   | trans hinstr =>
     rename_i m n; rw [hpc] at hinstr
-    have hmax := by simpa [Instr.maxRegister] using Program.getElem?_maxRegister hinstr
+    have hmax := by simpa [Instr.maxRegister] using Program.getElem?_maxRegister p hinstr
     have hread := hagree m (Nat.zero_le m) (by omega : m ≤ p.maxRegister)
     exact ⟨⟨c₂.pc + 1, c₂.state.write n (c₂.state.read m)⟩, Step.trans hinstr, by simp [hpc],
            by rw [hread]; exact State.agreeOn_write_same hagree⟩
   | jump_eq hinstr hcmp =>
     rename_i m n q; rw [hpc] at hinstr
-    have hmax := by simpa [Instr.maxRegister] using Program.getElem?_maxRegister hinstr
+    have hmax := by simpa [Instr.maxRegister] using Program.getElem?_maxRegister p hinstr
     have hreadm := hagree m (Nat.zero_le m) (by omega); have hreadn := hagree n (Nat.zero_le n) (by omega)
     exact ⟨⟨q, c₂.state⟩, Step.jump_eq hinstr (by rw [← hreadm, ← hreadn]; exact hcmp), rfl, hagree⟩
   | jump_ne hinstr hcmp =>
     rename_i m n q; rw [hpc] at hinstr
-    have hmax := by simpa [Instr.maxRegister] using Program.getElem?_maxRegister hinstr
+    have hmax := by simpa [Instr.maxRegister] using Program.getElem?_maxRegister p hinstr
     have hreadm := hagree m (Nat.zero_le m) (by omega); have hreadn := hagree n (Nat.zero_le n) (by omega)
     exact ⟨⟨c₂.pc + 1, c₂.state⟩, Step.jump_ne hinstr (by rw [← hreadm, ← hreadn]; exact hcmp), by simp [hpc], hagree⟩
 

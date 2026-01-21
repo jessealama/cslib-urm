@@ -112,21 +112,15 @@ theorem loop_iteration (s : State) (k y : ℕ)
   let s2 := s1.write 2 (s1.read 2 + 1)
   have h3 : Step addProgram ⟨3, s1⟩ ⟨4, s2⟩ := step_inc_r2 s1
   have h4 : Step addProgram ⟨4, s2⟩ ⟨1, s2⟩ := step_jump_back s2
-  use s2
-  constructor
-  · aesop_steps
-  · constructor
-    · simp only [s2, s1, State.write, State.read, Function.update_of_ne (by decide : (0 : ℕ) ≠ 2),
-                 Function.update_self]
-    constructor
-    · simp only [s2, s1, State.write, State.read,
-                 Function.update_of_ne (by decide : (1 : ℕ) ≠ 2),
-                 Function.update_of_ne (by decide : (1 : ℕ) ≠ 0)]
-      exact hy
-    · simp only [s2, State.read, State.write, Function.update_self]
-      simp only [s1, State.read, State.write, Function.update_of_ne (by decide : (2 : ℕ) ≠ 0)]
-      simp only [State.read] at hk
-      omega
+  refine ⟨s2, by aesop_steps, ?_, ?_, ?_⟩
+  · simp only [s2, s1, State.write, State.read, Function.update_of_ne (by decide : (0 : ℕ) ≠ 2),
+               Function.update_self]
+  · simp only [s2, s1, State.write, State.read, Function.update_of_ne (by decide : (1 : ℕ) ≠ 2),
+               Function.update_of_ne (by decide : (1 : ℕ) ≠ 0)]
+    exact hy
+  · simp only [s2, s1, State.read, State.write, Function.update_self,
+               Function.update_of_ne (by decide : (2 : ℕ) ≠ 0)]
+    simp only [State.read] at hk; omega
 
 /-- After k iterations starting from the loop entry, we have the loop invariant.
     Starting state: pc=1, R0=x, R1=y, R2=0
@@ -138,19 +132,12 @@ theorem loop_invariant (x y k : ℕ) (hk : k ≤ y) :
          s.read 2 = k := by
   induction k with
   | zero =>
-    use (State.fromInputs [x, y]).write 2 0
-    refine ⟨Steps.refl _, ?_, ?_, ?_⟩
-    · simp [State.write, State.read, State.fromInputs, Function.update_of_ne]
-    · simp [State.write, State.read, State.fromInputs, Function.update_of_ne]
-    · simp [State.write, State.read, Function.update_self]
+    refine ⟨_, Steps.refl _, ?_, ?_, ?_⟩ <;>
+      simp [State.write, State.read, State.fromInputs, Function.update_of_ne, Function.update_self]
   | succ k' ih =>
-    have hk' : k' ≤ y := Nat.le_of_succ_le hk
-    obtain ⟨s', hsteps', hr0', hr1', hr2'⟩ := ih hk'
-    have hlt : k' < y := Nat.lt_of_succ_le hk
-    obtain ⟨s'', hiter, hr0'', hr1'', hr2''⟩ := loop_iteration s' k' y hr2' hr1' hlt
-    use s''
-    refine ⟨Steps.trans hsteps' hiter, ?_, hr1'', hr2''⟩
-    omega
+    obtain ⟨s', hsteps', hr0', hr1', hr2'⟩ := ih (Nat.le_of_succ_le hk)
+    obtain ⟨s'', hiter, hr0'', hr1'', hr2''⟩ := loop_iteration s' k' y hr2' hr1' (Nat.lt_of_succ_le hk)
+    exact ⟨s'', Steps.trans hsteps' hiter, by omega, hr1'', hr2''⟩
 
 /-- The program halts after completing y iterations.
     Starting from pc=1 with R2=y and R1=y, we exit to pc=5. -/
@@ -348,23 +335,16 @@ theorem loop_iteration (s : State) (n k : ℕ)
   let s2 := s1.write 1 (s1.read 1 + 1)
   have h3 : Step predProgram ⟨6, s1⟩ ⟨7, s2⟩ := step_inc_r1 s1
   have h4 : Step predProgram ⟨7, s2⟩ ⟨4, s2⟩ := step_jump_back s2
-  use s2
-  constructor
-  · aesop_steps
-  constructor
-  · simp only [s2, s1, State.read, State.write,
-               Function.update_of_ne (by decide : (0 : ℕ) ≠ 1),
+  refine ⟨s2, by aesop_steps, ?_, ?_, ?_⟩
+  · simp only [s2, s1, State.read, State.write, Function.update_of_ne (by decide : (0 : ℕ) ≠ 1),
                Function.update_of_ne (by decide : (0 : ℕ) ≠ 2)]
     exact hn
-  constructor
-  · simp only [s2, State.read, State.write, Function.update_self]
-    simp only [s1, State.read, State.write, Function.update_of_ne (by decide : (1 : ℕ) ≠ 2)]
-    simp only [State.read] at hr1
-    omega
-  · simp only [s2, State.read, State.write, Function.update_of_ne (by decide : (2 : ℕ) ≠ 1)]
-    simp only [s1, State.read, State.write, Function.update_self]
-    simp only [State.read] at hr2
-    omega
+  · simp only [s2, s1, State.read, State.write, Function.update_self,
+               Function.update_of_ne (by decide : (1 : ℕ) ≠ 2)]
+    simp only [State.read] at hr1; omega
+  · simp only [s2, s1, State.read, State.write, Function.update_of_ne (by decide : (2 : ℕ) ≠ 1),
+               Function.update_self]
+    simp only [State.read] at hr2; omega
 
 /-- After k iterations, R1 = k + 1 and R2 = k.
     Starting state: pc=4, R0=n (n > 0), R1=1, R2=0 -/
@@ -376,23 +356,14 @@ theorem loop_invariant (n k : ℕ) (hk : k < n) :
   induction k with
   | zero =>
     let s_init := (State.fromInputs [n]).write 1 0 |>.write 2 0 |>.write 1 1
-    use s_init
-    refine ⟨Steps.refl _, ?_, ?_, ?_⟩
-    · simp only [s_init, State.read, State.write, State.fromInputs,
-                 Function.update_of_ne (by decide : (0 : ℕ) ≠ 1),
-                 Function.update_of_ne (by decide : (0 : ℕ) ≠ 2),
-                 List.getD_cons_zero]
-    · simp only [s_init, State.read, State.write, Function.update_self]
-    · simp only [s_init, State.read, State.write,
-                 Function.update_of_ne (by decide : (2 : ℕ) ≠ 1),
-                 Function.update_self]
+    refine ⟨s_init, Steps.refl _, ?_, ?_, ?_⟩
+    · simp [s_init, State.read, State.write, State.fromInputs]
+    · simp [s_init, State.read, State.write, Function.update_self]
+    · simp [s_init, State.read, State.write, Function.update_of_ne, Function.update_self]
   | succ k' ih =>
-    have hk' : k' < n := Nat.lt_of_succ_lt hk
-    obtain ⟨s', hsteps', hr0', hr1', hr2'⟩ := ih (hk')
-    have hlt : k' + 1 < n := hk
-    obtain ⟨s'', hiter, hr0'', hr1'', hr2''⟩ := loop_iteration s' n k' hr0' hr1' hr2' hlt
-    use s''
-    refine ⟨Steps.trans hsteps' hiter, hr0'', hr1'', hr2''⟩
+    obtain ⟨s', hsteps', hr0', hr1', hr2'⟩ := ih (Nat.lt_of_succ_lt hk)
+    obtain ⟨s'', hiter, hr0'', hr1'', hr2''⟩ := loop_iteration s' n k' hr0' hr1' hr2' hk
+    exact ⟨s'', Steps.trans hsteps' hiter, hr0'', hr1'', hr2''⟩
 
 /-- When R0 = R1 at pc=4, we exit to pc=8 and copy R2 to R0, then halt at pc=9. -/
 theorem loop_exit (s : State) (n : ℕ)
@@ -576,8 +547,8 @@ private theorem const_zero_computable : URMComputable 1 (fun _ => Part.some 0) :
 private def mulStepGs : Fin 2 → (Fin 3 → ℕ) → Part ℕ :=
   fun i => if i.val = 0 then (fun y => Part.some (y 0)) else (fun y => Part.some (y 2))
 
-@[simp] private theorem mulStepGs_zero : mulStepGs 0 = fun y => Part.some (y 0) := rfl
-@[simp] private theorem mulStepGs_one : mulStepGs 1 = fun y => Part.some (y 2) := rfl
+@[simp] private theorem mulStepGs_zero : mulStepGs 0 = (Part.some <| · 0) := rfl
+@[simp] private theorem mulStepGs_one : mulStepGs 1 = (Part.some <| · 2) := rfl
 
 /-- Helper: The PR step function for mul computes x + acc. -/
 private theorem mul_pr_step_eq (inputs : Fin 3 → ℕ) :

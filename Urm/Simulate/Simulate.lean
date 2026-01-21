@@ -69,10 +69,8 @@ def encodeInput1 (bound : ℕ) (input : ℕ) : ℕ :=
 /-- Connection between encodedIsHalted and Config.isHalted. -/
 theorem encodedIsHalted_iff_isHalted (p : Program) (c : Config) :
     encodedIsHalted (encodeProgram p) (encodeConfig p.maxRegister c) ↔ c.isHalted p := by
-  simp only [encodedIsHalted, encodeProgram, encodeConfig, Nat.unpair_pair, Config.isHalted]
-  -- LHS: decide (p.length ≤ c.pc) = true
-  -- RHS: p.length ≤ c.pc
-  simp only [decide_eq_true_eq]
+  simp only [encodedIsHalted, encodeProgram, encodeConfig, Nat.unpair_pair, Config.isHalted,
+             decide_eq_true_eq]
 
 /-- extractOutput correctly extracts register 0. -/
 theorem extractOutput_encodeConfig (bound : ℕ) (c : Config) :
@@ -97,20 +95,16 @@ theorem isHaltedAtStep_correct (p : Program) (n : ℕ) (c c' : Config)
 theorem Step.of_not_halted (p : Program) (c : Config) (h : ¬c.isHalted p) :
     ∃ c', Step p c c' := by
   simp only [Config.isHalted, Nat.not_le] at h
-  have hinstr : p[c.pc]? ≠ none := by
-    simp only [ne_eq]
-    intro heq
-    rw [List.getElem?_eq_none_iff] at heq
-    exact Nat.not_lt.mpr heq h
+  have hinstr : p[c.pc]? ≠ none := List.getElem?_eq_none_iff.not.mpr (Nat.not_le.mpr h)
   obtain ⟨instr, hinstr'⟩ := Option.ne_none_iff_exists'.mp hinstr
-  cases instr with
-  | Z n => exact ⟨⟨c.pc + 1, c.state.write n 0⟩, Step.zero hinstr'⟩
-  | S n => exact ⟨⟨c.pc + 1, c.state.write n (c.state.read n + 1)⟩, Step.succ hinstr'⟩
-  | T m n => exact ⟨⟨c.pc + 1, c.state.write n (c.state.read m)⟩, Step.trans hinstr'⟩
-  | J m n q =>
+  match instr with
+  | .Z n => exact ⟨_, Step.zero hinstr'⟩
+  | .S n => exact ⟨_, Step.succ hinstr'⟩
+  | .T m n => exact ⟨_, Step.trans hinstr'⟩
+  | .J m n q =>
     by_cases heq : c.state.read m = c.state.read n
-    · exact ⟨⟨q, c.state⟩, Step.jump_eq hinstr' heq⟩
-    · exact ⟨⟨c.pc + 1, c.state⟩, Step.jump_ne hinstr' heq⟩
+    · exact ⟨_, Step.jump_eq hinstr' heq⟩
+    · exact ⟨_, Step.jump_ne hinstr' heq⟩
 
 /-- If no configuration before step n is halted, we can build StepsN p n. -/
 theorem stepsN_of_not_halted_before (p : Program) (input : ℕ) (n : ℕ)
@@ -163,12 +157,9 @@ theorem isHaltedAtStep_false_before (p : Program) (n : ℕ) (c c_final : Config)
   intro m hm
   obtain ⟨c_m, hstepsM, hnot_halted⟩ := stepsN_before_halted p n c c_final hStepsN hHalted m hm
   have hcorrect := isHaltedAtStep_correct p m c c_m hstepsM
-  by_contra h
-  have h' : isHaltedAtStep (encodeProgram p) p.maxRegister (encodeConfig p.maxRegister c) m = true := by
-    cases h'' : isHaltedAtStep (encodeProgram p) p.maxRegister (encodeConfig p.maxRegister c) m with
-    | true => rfl
-    | false => exact absurd h'' h
-  exact hnot_halted (hcorrect.mp h')
+  cases h : isHaltedAtStep (encodeProgram p) p.maxRegister (encodeConfig p.maxRegister c) m
+  · rfl
+  · exact absurd (hcorrect.mp h) hnot_halted
 
 /-- The output of any halted config reachable from init equals Result. -/
 theorem halted_output_eq_Result (p : Program) (inputs : List ℕ) (c : Config)

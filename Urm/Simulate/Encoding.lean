@@ -129,8 +129,8 @@ def decodeProgram (n : ℕ) : Program :=
 
 /-- Helper lemma: decodeRegs after encodeRegs of mapped list. -/
 private theorem decodeRegs_encodeRegs_map (p : Program) :
-    decodeRegs p.length (encodeRegs (p.map encodeInstr)) = p.map encodeInstr := by
-  simpa using decodeRegs_encodeRegs (p.map encodeInstr)
+    decodeRegs p.length (encodeRegs (p.map encodeInstr)) = p.map encodeInstr :=
+  List.length_map .. ▸ decodeRegs_encodeRegs (p.map encodeInstr)
 
 /-- Get instruction at position from encoded program. -/
 def getEncodedInstr (progCode : ℕ) (pc : ℕ) : Option Instr :=

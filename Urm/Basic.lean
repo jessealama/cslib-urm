@@ -118,6 +118,44 @@ Used to isolate register usage when composing programs. -/
 def shiftRegisters (offset : ℕ) (p : Program) : Program :=
   p.map (Instr.shiftRegisters offset)
 
+/-! ### MaxRegister helper lemmas -/
+
+/-- The foldl max operation preserves the initial value as a lower bound. -/
+theorem maxRegister_foldl_ge_init (init : ℕ) (p : Program) :
+    init ≤ p.foldl (fun acc i => max acc i.maxRegister) init := by
+  induction p generalizing init with
+  | nil => exact Nat.le_refl _
+  | cons _ t iht => exact Nat.le_trans (Nat.le_max_left _ _) (iht _)
+
+/-- The foldl max operation is monotonic in the initial value. -/
+theorem maxRegister_foldl_mono (a b : ℕ) (p : Program) (hab : a ≤ b) :
+    p.foldl (fun acc i => max acc i.maxRegister) a ≤
+    p.foldl (fun acc i => max acc i.maxRegister) b := by
+  induction p generalizing a b with
+  | nil => exact hab
+  | cons _ t iht => simp only [List.foldl_cons]; apply iht; omega
+
+/-- Any element's maxRegister is at most the program's maxRegister. -/
+theorem maxRegister_foldl_ge_elem (p : Program) (init : ℕ) (instr : Instr) (h : instr ∈ p) :
+    instr.maxRegister ≤ p.foldl (fun acc i => max acc i.maxRegister) init := by
+  induction p generalizing init with
+  | nil => cases h
+  | cons hd tl ih =>
+    simp only [List.foldl_cons]
+    cases h with
+    | head =>
+      calc instr.maxRegister
+          ≤ max init instr.maxRegister := Nat.le_max_right _ _
+        _ ≤ _ := maxRegister_foldl_ge_init _ _
+    | tail _ htl => exact ih _ htl
+
+/-- If an instruction is at position i, its maxRegister is at most the program's maxRegister. -/
+theorem getElem?_maxRegister (p : Program) {i : ℕ} {instr : Instr}
+    (h : p[i]? = some instr) : instr.maxRegister ≤ p.maxRegister := by
+  have hmem : instr ∈ p := List.mem_of_getElem? h
+  simp only [maxRegister]
+  exact maxRegister_foldl_ge_elem p 0 instr hmem
+
 end Program
 
 /-- Register state: maps register indices to natural number contents.

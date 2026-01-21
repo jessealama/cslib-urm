@@ -52,25 +52,19 @@ theorem minimizeProgram_result (n : ℕ) (pF : Program)
   have hOutput_eq_k : cOutput.state.read 0 = k := by
     rw [hOutput_read, exitResult.counter_eq]
   have hTotal : Steps (minimizeProgram n pF) ⟨0, State.fromInputs (List.ofFn inputs)⟩ cOutput := by
-    let h1 : Steps (minimizeProgram n pF) ⟨0, State.fromInputs (List.ofFn inputs)⟩
-        ⟨loopStartPC n, setup.state⟩ := setup.steps
-    let h2 : Steps (minimizeProgram n pF) ⟨loopStartPC n, setup.state⟩ exitResult.config := exitResult.steps
-    let h3 : Steps (minimizeProgram n pF) ⟨outputPC n pF, exitResult.config.state⟩ cOutput := hOutput_steps
-    let h2' : Steps (minimizeProgram n pF) ⟨loopStartPC n, setup.state⟩
+    have h2' : Steps (minimizeProgram n pF) ⟨loopStartPC n, setup.state⟩
         ⟨outputPC n pF, exitResult.config.state⟩ := by
-      convert h2 using 2; exact exitResult.pc_eq.symm
-    exact h1.trans (h2'.trans h3)
+      convert exitResult.steps using 2; exact exitResult.pc_eq.symm
+    exact setup.steps.trans (h2'.trans hOutput_steps)
   have hFinal_eq_Output : cFinal = cOutput := by
-    let hInit_eq : Config.init (List.ofFn inputs) = ⟨0, State.fromInputs (List.ofFn inputs)⟩ := rfl
-    rw [hInit_eq] at hFinal_steps
+    simp only [Config.init] at hFinal_steps
     exact Steps.halts_unique hFinal_steps hFinal_halted hTotal hOutput_halted
   have hResult_eq_k : Result (minimizeProgram n pF) (List.ofFn inputs) hHalts = k := by
-    let hwit := Classical.choose_spec hHalts
-    let hcFinal_is_witness : cFinal = Classical.choose hHalts :=
+    have hwit := Classical.choose_spec hHalts
+    have hcFinal_is_witness : cFinal = Classical.choose hHalts :=
       Steps.halts_unique hFinal_steps hFinal_halted hwit.1 hwit.2
-    simp only [Result, State.output]
-    rw [← hcFinal_is_witness, hFinal_eq_Output]
-    exact hOutput_eq_k
+    simp only [Result, State.output, State.read] at hOutput_eq_k ⊢
+    rw [← hcFinal_is_witness, hFinal_eq_Output, hOutput_eq_k]
   let k' := (μ f inputs).get hDom
   have hf_k'_zero : f (extendInputs inputs k') = Part.some 0 := μ_spec hDom
   have hpF_halts_k := exitResult.pF_halts k (Nat.le_refl k)
@@ -89,21 +83,17 @@ theorem minimizeProgram_result (n : ℕ) (pF : Program)
     apply Nat.le_antisymm
     · by_contra hk_gt
       push_neg at hk_gt
-      let hk'_lt_k : k' < k := hk_gt
-      let hpF_halts_k' := exitResult.pF_halts k' (Nat.le_of_lt hk'_lt_k)
-      let hpF_nonzero_k' := exitResult.pF_nonzero_below k' hk'_lt_k
-      let hf_k'_dom : (f (extendInputs inputs k')).Dom := by
+      have hpF_halts_k' := exitResult.pF_halts k' (Nat.le_of_lt hk_gt)
+      have hpF_nonzero_k' := exitResult.pF_nonzero_below k' hk_gt
+      have hf_k'_dom : (f (extendInputs inputs k')).Dom := by
         rw [← (hpF_spec (extendInputs inputs k')).1]; exact hpF_halts_k'
-      let hf_k'_get : (f (extendInputs inputs k')).get hf_k'_dom = 0 := by
-        rw [Part.eq_some_iff] at hf_k'_zero
-        exact Part.get_eq_of_mem hf_k'_zero hf_k'_dom
-      let hpF_result_k' := (hpF_spec (extendInputs inputs k')).2 hpF_halts_k' hf_k'_dom
-      rw [hpF_result_k', hf_k'_get] at hpF_nonzero_k'
+      have hf_k'_get : (f (extendInputs inputs k')).get hf_k'_dom = 0 :=
+        Part.get_eq_of_mem (Part.eq_some_iff.mp hf_k'_zero) hf_k'_dom
+      rw [(hpF_spec (extendInputs inputs k')).2 hpF_halts_k' hf_k'_dom, hf_k'_get] at hpF_nonzero_k'
       exact hpF_nonzero_k' rfl
     · by_contra hk'_gt
       push_neg at hk'_gt
-      let hk_lt_k' : k < k' := hk'_gt
-      obtain ⟨v, hv_eq, hv_ne0⟩ := μ_min hDom hk_lt_k'
+      obtain ⟨v, hv_eq, hv_ne0⟩ := μ_min hDom hk'_gt
       rw [hf_k_zero] at hv_eq
       exact hv_ne0 (Part.some_inj.mp hv_eq.symm)
   rw [hResult_eq_k, hk_eq_k']

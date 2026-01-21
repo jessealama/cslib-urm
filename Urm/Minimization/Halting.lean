@@ -217,9 +217,7 @@ noncomputable def loop_iteration (hpF_sf : pF.IsStandardForm)
       rw [hresult, hzero_after_pF]
     have hstep_J0 : Step (minimizeProgram n pF) ⟨epilogueStartPC n pF, c_pF'⟩
         ⟨outputPC n pF, c_pF'⟩ := Step.jump_eq hJ0_instr heq_zero
-    have hsteps_exit := Relation.ReflTransGen.single hstep_J0
-    have hsteps_total := Relation.ReflTransGen.trans hsteps_to_epilogue hsteps_exit
-    exact ⟨⟨outputPC n pF, c_pF'⟩, hsteps_total, pF_result, Or.inl ⟨rfl, hresult⟩,
+    exact ⟨⟨outputPC n pF, c_pF'⟩, hsteps_to_epilogue.trans (Steps.single hstep_J0), pF_result, Or.inl ⟨rfl, hresult⟩,
            fun h => absurd hresult h, fun h => absurd hresult h,
            fun _ => hcounter_after_pF, hf_halts, pFExec.result_eq⟩
 
@@ -236,28 +234,18 @@ noncomputable def loop_iteration (hpF_sf : pF.IsStandardForm)
     have heq_self : state_after_S.read (zeroReg n pF) = state_after_S.read (zeroReg n pF) := rfl
     have hstep_J1 : Step (minimizeProgram n pF) ⟨epilogueStartPC n pF + 2, state_after_S⟩
         ⟨loopStartPC n, state_after_S⟩ := Step.jump_eq hJ1_instr heq_self
-    have hsteps_continue := Relation.ReflTransGen.head hstep_J0
-        (Relation.ReflTransGen.head hstep_S (Relation.ReflTransGen.single hstep_J1))
-    have hsteps_total := Relation.ReflTransGen.trans hsteps_to_epilogue hsteps_continue
+    have hsteps_total := hsteps_to_epilogue.trans ((Steps.single hstep_J0).trans ((Steps.single hstep_S).trans (Steps.single hstep_J1)))
     have hcounter_k1 : state_after_S.read (counterReg n pF) = k + 1 := by
       simp only [state_after_S, State.write, State.read, Function.update_self]
       simp only [State.read] at hcounter_after_pF
       omega
     have hzero_preserved : state_after_S.read (zeroReg n pF) = s.read (zeroReg n pF) := by
-      let hne : zeroReg n pF ≠ counterReg n pF := Nat.ne_of_gt (zeroReg_gt_counterReg n pF)
-      calc state_after_S.read (zeroReg n pF)
-          = c_pF'.read (zeroReg n pF) := by
-            simp only [state_after_S, State.write, State.read, Function.update_of_ne hne]
-        _ = 0 := hzero_after_pF
-        _ = s.read (zeroReg n pF) := hs_zero.symm
+      simp only [state_after_S, State.write_read_diff _ _ _ _ (Nat.ne_of_gt (zeroReg_gt_counterReg n pF))]
+      rw [hzero_after_pF, hs_zero]
     have hsaved_preserved : ∀ i : Fin n, state_after_S.read (savedInputsStart n pF + i) = s.read (savedInputsStart n pF + i) := by
       intro i
-      let hne : savedInputsStart n pF + ↑i ≠ counterReg n pF := by min_register_omega
-      calc state_after_S.read (savedInputsStart n pF + ↑i)
-          = c_pF'.read (savedInputsStart n pF + ↑i) := by
-            simp only [state_after_S, State.write, State.read, Function.update_of_ne hne]
-        _ = inputs i := hsaved_after_pF i
-        _ = s.read (savedInputsStart n pF + ↑i) := (hs_saved i).symm
+      simp only [state_after_S, State.write_read_diff _ _ _ _ (by min_register_omega : savedInputsStart n pF + ↑i ≠ counterReg n pF)]
+      rw [hsaved_after_pF i, hs_saved i]
     exact ⟨⟨loopStartPC n, state_after_S⟩, hsteps_total, pF_result, Or.inr ⟨rfl, hcounter_k1, hresult⟩,
            fun _ => hzero_preserved, fun _ => hsaved_preserved,
            fun h => absurd h hresult, hf_halts, pFExec.result_eq⟩
@@ -681,20 +669,10 @@ theorem setupPhase_embed :
 /-- outputPhase instruction is at outputPC in minimizeProgram. -/
 theorem outputPhase_instr :
     (minimizeProgram n pF)[outputPC n pF]? = some (Instr.T (counterReg n pF) 0) := by
-  simp only [minimizeProgram, outputPC, pFOffset, setupPhaseLength, loopPrologueLength]
-  simp only [List.getElem?_append, List.length_append, setupPhase_length, loopPrologue_length,
-    shiftJumps_length, loopEpilogue_length, setupPhaseLength, loopPrologueLength]
-  have h2 : ¬ n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 <
-      n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 := by omega
-  have h3 : ¬ n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 <
-      n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length := by omega
-  have h4 : ¬ n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 <
-      n + 2 + (minimizationBase n pF + 1 + n + 1) := by omega
-  have h5 : ¬ n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 < n + 2 := by omega
-  simp only [h2, h3, h4, h5, ite_false]
-  have hidx : n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3 -
-      (n + 2 + (minimizationBase n pF + 1 + n + 1) + pF.length + 3) = 0 := by omega
-  simp only [hidx, outputPhase, List.getElem?_cons_zero]
+  simp only [minimizeProgram, outputPC, pFOffset, setupPhaseLength, loopPrologueLength,
+    List.getElem?_append, List.length_append, setupPhase_length, loopPrologue_length,
+    shiftJumps_length, loopEpilogue_length]
+  split_ifs <;> first | omega | simp [outputPhase]
 
 /-- Execute output phase: single T instruction from outputPC halts the program. -/
 theorem outputPhase_halts (s : State) :

@@ -247,7 +247,7 @@ private theorem encodedStep_correct_zero (p : Program) (c : Config) (n : ℕ)
   have hn : n ≤ p.maxRegister := by
     have hinstr' : p[c.pc]? = some (Instr.Z n) := by
       simp only [List.getElem?_eq_getElem hpc, hinstr]
-    have h := Program.getElem?_maxRegister hinstr'
+    have h := Program.getElem?_maxRegister p hinstr'
     simp only [Instr.maxRegister] at h
     exact h
   simp only [hn, ↓reduceIte]
@@ -256,8 +256,8 @@ private theorem encodedStep_correct_zero (p : Program) (c : Config) (n : ℕ)
   exact congrArg _ (ofFn_set_eq_ofFn_write p.maxRegister c n 0)
 
 private theorem ofFn_getElem (bound : ℕ) (c : Config) (i : ℕ) (hi : i < bound + 1) :
-    (List.ofFn (fun j : Fin (bound + 1) => c.state j))[i]'(by simp; exact hi) = c.state i := by
-  simp only [List.getElem_ofFn]
+    (List.ofFn (fun j : Fin (bound + 1) => c.state j))[i]'(by simp; exact hi) = c.state i :=
+  List.getElem_ofFn ..
 
 private theorem encodedStep_correct_succ (p : Program) (c : Config) (n : ℕ)
     (hpc : c.pc < p.length) (hinstr : p[c.pc] = Instr.S n) :
@@ -273,7 +273,7 @@ private theorem encodedStep_correct_succ (p : Program) (c : Config) (n : ℕ)
   have hn : n ≤ p.maxRegister := by
     have hinstr' : p[c.pc]? = some (Instr.S n) := by
       simp only [List.getElem?_eq_getElem hpc, hinstr]
-    have h := Program.getElem?_maxRegister hinstr'
+    have h := Program.getElem?_maxRegister p hinstr'
     simp only [Instr.maxRegister] at h
     exact h
   simp only [hn, ↓reduceIte]
@@ -301,7 +301,7 @@ private theorem encodedStep_correct_trans (p : Program) (c : Config) (m n : ℕ)
   have hmn : max m n ≤ p.maxRegister := by
     have hinstr' : p[c.pc]? = some (Instr.T m n) := by
       simp only [List.getElem?_eq_getElem hpc, hinstr]
-    have h := Program.getElem?_maxRegister hinstr'
+    have h := Program.getElem?_maxRegister p hinstr'
     simp only [Instr.maxRegister] at h
     exact h
   have hm : m ≤ p.maxRegister := le_of_max_le_left hmn
@@ -332,7 +332,7 @@ private theorem encodedStep_correct_jump_eq (p : Program) (c : Config) (m n q : 
   have hmn : max m n ≤ p.maxRegister := by
     have hinstr' : p[c.pc]? = some (Instr.J m n q) := by
       simp only [List.getElem?_eq_getElem hpc, hinstr]
-    have h := Program.getElem?_maxRegister hinstr'
+    have h := Program.getElem?_maxRegister p hinstr'
     simp only [Instr.maxRegister] at h
     exact h
   have hm : m ≤ p.maxRegister := le_of_max_le_left hmn
@@ -364,7 +364,7 @@ private theorem encodedStep_correct_jump_ne (p : Program) (c : Config) (m n q : 
   have hmn : max m n ≤ p.maxRegister := by
     have hinstr' : p[c.pc]? = some (Instr.J m n q) := by
       simp only [List.getElem?_eq_getElem hpc, hinstr]
-    have h := Program.getElem?_maxRegister hinstr'
+    have h := Program.getElem?_maxRegister p hinstr'
     simp only [Instr.maxRegister] at h
     exact h
   have hm : m ≤ p.maxRegister := le_of_max_le_left hmn

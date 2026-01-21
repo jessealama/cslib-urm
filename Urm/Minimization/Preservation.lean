@@ -26,6 +26,21 @@ open Program
 section
 variable (n : ℕ) (pF : Program)
 
+/-! ## Helper Lemmas -/
+
+/-- No instruction in loopPrologue writes to registers above minimizationBase. -/
+private theorem loopPrologue_no_write_high (r : ℕ) (hr : minimizationBase n pF < r) :
+    ∀ instr, instr ∈ loopPrologue n pF → instr.writesTo ≠ some r := by
+  intro instr hinstr
+  simp only [loopPrologue, List.mem_append, List.mem_singleton] at hinstr
+  rcases hinstr with (hclear | hcopy) | heq
+  · simp only [Program.clearRegisters, List.mem_map, List.mem_range] at hclear
+    obtain ⟨i, hi, rfl⟩ := hclear
+    writesTo_omega
+  · obtain ⟨j, hj, hwrites⟩ := copyRegisterRange_writesTo _ _ _ instr hcopy
+    rw [hwrites]; simp only [ne_eq, Option.some.injEq, minimizationBase] at hr ⊢; omega
+  · simp only [heq, Instr.writesTo, ne_eq, Option.some.injEq, minimizationBase] at hr ⊢; omega
+
 /-! ## Setup Phase Results -/
 
 /-- Setup phase is a straight-line program. -/
@@ -201,24 +216,9 @@ theorem loopPrologue_restores_inputs
     straightLine_transfer_result hsl s k (savedInputsStart n pF + i) ↑i hk hwrite hnowrite_after
   have hs_before_val : s_before.read (savedInputsStart n pF + ↑i) = s.read (savedInputsStart n pF + ↑i) := by
     rw [← hs_before]
-    let hnowrite_before : ∀ instr, instr ∈ loopPrologue n pF →
-        instr.writesTo ≠ some (savedInputsStart n pF + ↑i) := by
-      intro instr hinstr
-      simp only [loopPrologue, List.mem_append, List.mem_singleton] at hinstr
-      cases hinstr with
-      | inl h =>
-        cases h with
-        | inl hclear =>
-          simp only [Program.clearRegisters, List.mem_map, List.mem_range] at hclear
-          obtain ⟨j, hj, rfl⟩ := hclear
-          simp only [Instr.writesTo, ne_eq, Option.some.injEq, savedInputsStart]; omega
-        | inr hcopy =>
-          obtain ⟨j, hj, hwrites⟩ := copyRegisterRange_writesTo _ _ _ instr hcopy
-          rw [hwrites]; simp only [ne_eq, Option.some.injEq, savedInputsStart, minimizationBase, Nat.zero_add]; omega
-      | inr heq =>
-        simp only [heq, Instr.writesTo, ne_eq, Option.some.injEq, savedInputsStart, minimizationBase]
-        omega
-    exact Steps.straightLine_preserves hsl hsteps_k hnowrite_before
+    apply Steps.straightLine_preserves hsl hsteps_k
+    have h := savedInputsStart_gt_base n pF
+    exact loopPrologue_no_write_high n pF _ (by omega)
   have ⟨hsteps', hhalted', _⟩ := straightLineFinalState_spec hsl s
   have heq : c'.state = straightLineFinalState hsl s := by
     rw [Steps.halts_unique hsteps hhalted hsteps' hhalted']; rfl
@@ -251,22 +251,8 @@ theorem loopPrologue_sets_counter_input
     straightLine_transfer_result hsl s k (counterReg n pF) n hk hwrite hnowrite
   have hcounter_at_k : s_before.read (counterReg n pF) = s.read (counterReg n pF) := by
     rw [← hs_before]
-    let hnowrite_counter : ∀ instr, instr ∈ loopPrologue n pF → instr.writesTo ≠ some (counterReg n pF) := by
-      intro instr hinstr
-      simp only [loopPrologue, List.mem_append, List.mem_singleton] at hinstr
-      cases hinstr with
-      | inl h =>
-        cases h with
-        | inl hclear =>
-          simp only [Program.clearRegisters, List.mem_map, List.mem_range] at hclear
-          obtain ⟨i, _, rfl⟩ := hclear
-          simp only [Instr.writesTo, ne_eq, Option.some.injEq, counterReg]; omega
-        | inr hcopy =>
-          obtain ⟨j, _, hwrites⟩ := copyRegisterRange_writesTo _ _ _ instr hcopy
-          rw [hwrites]; simp only [ne_eq, Option.some.injEq, counterReg, minimizationBase]; omega
-      | inr heq =>
-        simp only [heq, Instr.writesTo, ne_eq, Option.some.injEq, counterReg, minimizationBase]; omega
-    exact Steps.straightLine_preserves hsl hsteps_k hnowrite_counter
+    apply Steps.straightLine_preserves hsl hsteps_k
+    exact loopPrologue_no_write_high n pF _ (counterReg_gt_base n pF)
   have ⟨hsteps', hhalted', _⟩ := straightLineFinalState_spec hsl s
   have heq := Steps.halts_unique hsteps hhalted hsteps' hhalted'
   simp only [straightLineFinalState] at htransfer
@@ -281,24 +267,9 @@ theorem loopPrologue_preserves_high_register
     (r : ℕ) (hr : r > minimizationBase n pF) :
     c'.state.read r = s.read r := by
   have hsl := loopPrologue_isStraightLine n pF
-  have hnowrite : ∀ instr, instr ∈ loopPrologue n pF → instr.writesTo ≠ some r := by
-    intro instr hinstr
-    simp only [loopPrologue, List.mem_append, List.mem_singleton] at hinstr
-    cases hinstr with
-    | inl h =>
-      cases h with
-      | inl hclear =>
-        simp only [Program.clearRegisters, List.mem_map, List.mem_range] at hclear
-        obtain ⟨i, hi, rfl⟩ := hclear
-        writesTo_omega
-      | inr hcopy =>
-        obtain ⟨j, hj, hwrites⟩ := copyRegisterRange_writesTo _ _ _ instr hcopy
-        rw [hwrites]; simp only [ne_eq, Option.some.injEq, minimizationBase] at hr ⊢; omega
-    | inr heq =>
-      simp only [heq, Instr.writesTo, ne_eq, Option.some.injEq, minimizationBase] at hr ⊢; omega
   have ⟨hsteps', hhalted', _⟩ := straightLineFinalState_spec hsl s
   rw [Steps.halts_unique hsteps hhalted hsteps' hhalted']
-  exact Steps.straightLine_preserves hsl hsteps' hnowrite
+  exact Steps.straightLine_preserves hsl hsteps' (loopPrologue_no_write_high n pF r hr)
 
 /-- Loop prologue clears registers in range [n+1, minimizationBase n pF]. -/
 theorem loopPrologue_clears_high_registers
