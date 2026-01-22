@@ -72,12 +72,12 @@ variable {p : Program}
 
 /-- The step relation is deterministic: each configuration has at most one successor. -/
 theorem deterministic {c c' c'' : Config} (h1 : Step p c c') (h2 : Step p c c'') : c' = c'' := by
-  cases h1 <;> cases h2 <;> simp_all
+  cases h1 <;> cases h2 <;> grind
 
 /-- A halted configuration has no successor in the step relation. -/
 theorem no_step_of_halted {c c' : Config} (hhalted : c.is_halted p) : ¬Step p c c' := by
   intro hstep
-  cases hstep <;> simp_all [Config.is_halted]
+  cases hstep <;> grind [Config.is_halted]
 
 /-- If a step exists from config c, then c.pc < p.length (contrapositive of no_step_of_halted). -/
 theorem pc_lt_length {c c' : Config} (hstep : Step p c c') : c.pc < p.length := by

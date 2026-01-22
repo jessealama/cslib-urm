@@ -133,16 +133,16 @@ namespace Instr
 
 @[simp]
 theorem shift_registers_zero (instr : Instr) : instr.shift_registers 0 = instr := by
-  cases instr <;> simp [shift_registers]
+  cases instr <;> grind [shift_registers]
 
 theorem shift_registers_add (k₁ k₂ : ℕ) (instr : Instr) :
     (instr.shift_registers k₁).shift_registers k₂ = instr.shift_registers (k₁ + k₂) := by
-  cases instr <;> simp [shift_registers, Nat.add_assoc]
+  cases instr <;> grind [shift_registers]
 
 @[simp]
 theorem max_register_shift_registers (offset : ℕ) (instr : Instr) :
     (instr.shift_registers offset).max_register = instr.max_register + offset := by
-  cases instr <;> simp [shift_registers, max_register, Nat.add_max_add_right]
+  cases instr <;> grind [shift_registers, max_register]
 
 end Instr
 
@@ -265,7 +265,7 @@ theorem Step.shift_inv {p : Program} {c : Config} {c' : Config} (offset : ℕ)
   | none =>
     have h : (p.shift_registers offset)[(c.shift offset).pc]? = none := by
       simp only [Config.shift_pc, Program.getElem?_shift_registers, hinstr]; rfl
-    cases hstep <;> simp_all
+    cases hstep <;> grind
   | some instr =>
     have hshift_instr : (p.shift_registers offset)[(c.shift offset).pc]? =
                         some (instr.shift_registers offset) := by
