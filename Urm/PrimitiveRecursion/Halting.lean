@@ -39,7 +39,7 @@ theorem pr_setup_phase_embed :
   simp only [primitive_recursion_program, List.getElem?_append, pr_setup_phase_length_eq,
     List.length_append, pr_base_case_phase_length_eq, pr_loop_check_length, pr_loop_body_length_eq,
     pr_setup_phase_length, pr_base_case_phase_length, pr_loop_body_length] at *
-  split_ifs <;> first | rfl | omega
+  grind
 
 /-- Base case prologue is embedded after setup phase. -/
 theorem pr_base_case_prologue_embed :
@@ -50,7 +50,7 @@ theorem pr_base_case_prologue_embed :
   simp only [primitive_recursion_program, pr_base_case_pc, pr_base_case_phase, List.getElem?_append,
     pr_setup_phase_length_eq, pr_setup_phase_length, pr_base_case_prologue_length_eq, pr_base_case_prologue_length,
     List.length_append, pr_loop_check_length, pr_loop_body_length_eq, pr_loop_body_length, shift_jumps_length] at *
-  split_ifs <;> first | omega | (congr 1; omega)
+  grind
 
 /-- Shifted pF is embedded in the base case phase. -/
 theorem pr_pF_shift_jumps_embed :
@@ -61,9 +61,7 @@ theorem pr_pF_shift_jumps_embed :
   simp only [primitive_recursion_program, pr_pf_offset, pr_base_case_phase, List.getElem?_append,
     pr_setup_phase_length_eq, pr_setup_phase_length, pr_base_case_prologue_length_eq, pr_base_case_prologue_length,
     shift_jumps_length, List.length_append, pr_loop_check_length, pr_loop_body_length_eq, pr_loop_body_length]
-  split_ifs <;> try omega
-  simp only [shift_jumps, List.getElem?_map]
-  congr 2; omega
+  grind
 
 /-- Loop check instruction embedding. -/
 theorem pr_loop_check_embed :
@@ -81,7 +79,7 @@ theorem pr_loop_prologue_embed :
     pr_setup_phase_length_eq, pr_setup_phase_length, pr_base_case_phase_length_eq, pr_base_case_phase_length,
     pr_loop_check_length, pr_loop_prologue_length_eq, pr_loop_prologue_length,
     List.length_append, shift_jumps_length, pr_loop_epilogue_length_eq, pr_loop_epilogue_length] at *
-  split_ifs <;> first | omega | (congr 1; omega)
+  grind
 
 /-- Shifted pG is embedded in the loop body. -/
 theorem pr_pG_shift_jumps_embed :
@@ -93,9 +91,7 @@ theorem pr_pG_shift_jumps_embed :
     List.getElem?_append, pr_setup_phase_length_eq, pr_setup_phase_length, pr_base_case_phase_length_eq,
     pr_base_case_phase_length, pr_loop_check_length, pr_loop_prologue_length_eq, pr_loop_prologue_length,
     shift_jumps_length, List.length_append, pr_loop_epilogue_length_eq, pr_loop_epilogue_length]
-  split_ifs <;> try omega
-  simp only [shift_jumps, List.getElem?_map]
-  congr 2; omega
+  grind
 
 /-- Output phase is at outputPC. -/
 theorem pr_output_phase_embed :
@@ -217,7 +213,7 @@ noncomputable def pr_execute_base_case_phase (hpF_sf : pF.IsStandardForm)
       pr_loop_prologue_length_eq, pr_loop_epilogue_length_eq]
     simp only [pr_setup_phase_length, pr_base_case_prologue_length, pr_loop_prologue_length,
       pr_loop_epilogue_length, List.length]
-    split_ifs <;> first | omega | simp +arith
+    grind
 
   have hstep_T : Step (primitive_recursion_program n pF pG) ⟨pr_pf_offset n pF pG + pF.length, c_pF'⟩
       ⟨pr_pf_offset n pF pG + pF.length + 1, c_pF'.write (pr_accumulator_reg n pF pG) (c_pF'.read 0)⟩ :=
@@ -388,7 +384,7 @@ noncomputable def pr_loop_iteration
         pr_loop_prologue_length_eq, shift_jumps_length]
       simp only [pr_setup_phase_length, pr_base_case_phase_length, pr_base_case_prologue_length,
         pr_loop_prologue_length, List.length]
-      split_ifs <;> first | omega | simp +arith
+      grind
 
     have hS_instr : (primitive_recursion_program n pF pG)[pr_pg_offset n pF pG + pG.length + 1]? =
         some (Instr.S (pr_counter_reg n pF pG)) := by

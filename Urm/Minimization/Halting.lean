@@ -39,7 +39,7 @@ theorem loop_prologue_embed :
   simp only [minimize_program, loop_start_pc, setup_phase_length, List.getElem?_append,
     List.length_append, setup_phase_len, loop_prologue_length, shift_jumps_length,
     loopEpilogue_length, loop_prologueLength] at *
-  split_ifs <;> first | omega | (congr 1; omega)
+  grind
 
 /-- pF.shift_jumps is embedded in minimize_program at offset pFOffset n pF. -/
 theorem pF_shift_jumps_embed :
@@ -49,8 +49,7 @@ theorem pF_shift_jumps_embed :
   simp only [minimize_program, pFOffset, setup_phase_length, loop_prologueLength,
     List.getElem?_append, List.length_append, setup_phase_len, loop_prologue_length,
     shift_jumps_length, loopEpilogue_length]
-  split_ifs <;> try omega
-  simp only [shift_jumps, List.getElem?_map, Nat.add_sub_cancel_left]
+  grind
 
 /-! ## Loop Iteration Lemmas -/
 
@@ -664,7 +663,7 @@ theorem setup_phase_embed :
   intro i hi
   simp only [Nat.zero_add, minimize_program, List.getElem?_append, List.length_append,
     setup_phase_len, loop_prologue_length, shift_jumps_length, loopEpilogue_length] at *
-  split_ifs <;> first | rfl | omega
+  grind
 
 /-- output_phase instruction is at outputPC in minimize_program. -/
 theorem output_phase_instr :
@@ -672,7 +671,7 @@ theorem output_phase_instr :
   simp only [minimize_program, outputPC, pFOffset, setup_phase_length, loop_prologueLength,
     List.getElem?_append, List.length_append, setup_phase_len, loop_prologue_length,
     shift_jumps_length, loopEpilogue_length]
-  split_ifs <;> first | omega | simp [output_phase]
+  grind [output_phase]
 
 /-- Execute output phase: single T instruction from outputPC halts the program. -/
 theorem output_phase_halts (s : State) :
