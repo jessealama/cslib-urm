@@ -68,25 +68,18 @@ private theorem pr_loop_prologue_no_write_high (n : ℕ) (pF pG : Program) (r : 
 theorem pr_setup_phase_is_straight_line (n : ℕ) (pF pG : Program) :
     (pr_setup_phase n pF pG).is_straight_line = true := by
   simp only [pr_setup_phase]
-  exact is_straight_line_append (copy_register_range_is_straight_line _ _ _)
-    (is_straight_line_cons (Instr.Z_is_non_jumping _)
-      (is_straight_line_singleton (Instr.Z_is_non_jumping _)))
+  grind [Instr.Z_is_non_jumping, Instr.S_is_non_jumping, Instr.T_is_non_jumping]
 
 /-- Base case prologue is a straight-line program. -/
 theorem pr_base_case_prologue_is_straight_line (n : ℕ) (pF pG : Program) :
     (pr_base_case_prologue n pF pG).is_straight_line = true := by
-  simp only [pr_base_case_prologue]
-  exact is_straight_line_append (clear_registers_is_straight_line _)
-    (copy_register_range_is_straight_line _ _ _)
+  simp only [pr_base_case_prologue]; grind
 
 /-- Loop prologue is a straight-line program. -/
 theorem pr_loop_prologue_is_straight_line (n : ℕ) (pF pG : Program) :
     (pr_loop_prologue n pF pG).is_straight_line = true := by
   simp only [pr_loop_prologue]
-  apply is_straight_line_append _ (is_straight_line_cons (Instr.T_is_non_jumping _ _)
-    (is_straight_line_singleton (Instr.T_is_non_jumping _ _)))
-  exact is_straight_line_append (clear_registers_is_straight_line _)
-    (copy_register_range_is_straight_line _ _ _)
+  grind [Instr.Z_is_non_jumping, Instr.S_is_non_jumping, Instr.T_is_non_jumping]
 
 /-! ## Setup Phase Invariants -/
 

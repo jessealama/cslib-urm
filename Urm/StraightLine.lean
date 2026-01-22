@@ -201,6 +201,7 @@ theorem clear_registers_from_length (start count : ℕ) :
     (clear_registers_from start count).length = count := by
   simp [clear_registers_from]
 
+@[scoped grind =]
 theorem clear_registers_from_is_straight_line (start count : ℕ) :
     (clear_registers_from start count).is_straight_line = true := by
   simp only [clear_registers_from, is_straight_line, List.all_map, List.all_eq_true, List.mem_range]
@@ -292,6 +293,7 @@ Lemmas for proving composite programs are straight-line.
 These simplify proofs in Preservation.lean files across closures. -/
 
 /-- Append preserves straight-line property. -/
+@[scoped grind =]
 theorem is_straight_line_append {p q : Program}
     (hp : p.is_straight_line = true) (hq : q.is_straight_line = true) :
     (p ++ q).is_straight_line = true := by
@@ -299,6 +301,7 @@ theorem is_straight_line_append {p q : Program}
   rw [hp, hq]; rfl
 
 /-- Cons of non-jumping instruction preserves straight-line. -/
+@[scoped grind =]
 theorem is_straight_line_cons {instr : Instr} {p : Program}
     (hinstr : instr.is_non_jumping = true) (hp : p.is_straight_line = true) :
     Program.is_straight_line (instr :: p) = true := by
@@ -306,19 +309,20 @@ theorem is_straight_line_cons {instr : Instr} {p : Program}
   rw [hinstr, hp]; rfl
 
 /-- Singleton non-jumping instruction is straight-line. -/
+@[scoped grind =]
 theorem is_straight_line_singleton {instr : Instr}
     (h : instr.is_non_jumping = true) :
     Program.is_straight_line [instr] = true := by
   simp only [Program.is_straight_line, List.all_cons, List.all_nil, h, Bool.and_self]
 
 /-- Z instruction is non-jumping. -/
-@[simp] theorem Instr.Z_is_non_jumping (n : ℕ) : (Instr.Z n).is_non_jumping = true := rfl
+@[simp, scoped grind =] theorem Instr.Z_is_non_jumping (n : ℕ) : (Instr.Z n).is_non_jumping = true := rfl
 
 /-- S instruction is non-jumping. -/
-@[simp] theorem Instr.S_is_non_jumping (n : ℕ) : (Instr.S n).is_non_jumping = true := rfl
+@[simp, scoped grind =] theorem Instr.S_is_non_jumping (n : ℕ) : (Instr.S n).is_non_jumping = true := rfl
 
 /-- T instruction is non-jumping. -/
-@[simp] theorem Instr.T_is_non_jumping (m n : ℕ) : (Instr.T m n).is_non_jumping = true := rfl
+@[simp, scoped grind =] theorem Instr.T_is_non_jumping (m n : ℕ) : (Instr.T m n).is_non_jumping = true := rfl
 
 /-! ## clear_registers and copy_register_range
 
@@ -352,12 +356,14 @@ macro "len_append_omega" : tactic =>
 macro "writes_to_omega" : tactic =>
   `(tactic| (simp only [Instr.writes_to, ne_eq, Option.some.injEq]; omega))
 
+@[scoped grind =]
 theorem clear_registers_is_straight_line (maxReg : ℕ) :
     (Program.clear_registers maxReg).is_straight_line = true := by
   simp only [Program.clear_registers, Program.is_straight_line, List.all_map, List.all_eq_true,
              List.mem_range]
   intro _ _; rfl
 
+@[scoped grind =]
 theorem copy_register_range_is_straight_line (srcStart dstStart count : ℕ) :
     (Program.copy_register_range srcStart dstStart count).is_straight_line = true := by
   simp only [Program.copy_register_range, Program.is_straight_line, List.all_map, List.all_eq_true]

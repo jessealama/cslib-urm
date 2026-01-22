@@ -44,6 +44,7 @@ Each constructor corresponds to one of the four instruction types:
 - `jump_eq`: Execute `J m n q` when registers m and n are equal (jump to q)
 - `jump_ne`: Execute `J m n q` when registers m and n differ (proceed to next)
 -/
+@[grind]
 inductive Step : Config → Config → Prop where
   | zero {c : Config} {n : ℕ}
       (h : p[c.pc]? = some (Instr.Z n)) :
@@ -80,6 +81,7 @@ theorem no_step_of_halted {c c' : Config} (hhalted : c.is_halted p) : ¬Step p c
   cases hstep <;> grind [Config.is_halted]
 
 /-- If a step exists from config c, then c.pc < p.length (contrapositive of no_step_of_halted). -/
+@[scoped grind →]
 theorem pc_lt_length {c c' : Config} (hstep : Step p c c') : c.pc < p.length := by
   by_contra hc; exact no_step_of_halted (Nat.not_lt.mp hc) hstep
 
@@ -89,6 +91,7 @@ private theorem instr_max_register_le {i : ℕ} {instr : Instr}
   Program.getElem?_max_register p h
 
 /-- A step preserves any register above p.max_register (cannot be read or written). -/
+@[scoped grind →]
 theorem read_high_register_eq {c c' : Config} (hstep : Step p c c') (r : ℕ)
     (hr : p.max_register < r) : c'.state.read r = c.state.read r := by
   cases hstep with

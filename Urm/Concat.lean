@@ -42,6 +42,7 @@ theorem shift_jumps_length (offset : ℕ) (p : Program) :
   simp [shift_jumps]
 
 /-- Shifting jumps by 0 is the identity. -/
+@[scoped grind =]
 theorem shift_jumps_zero (p : Program) : p.shift_jumps 0 = p := by
   simp only [shift_jumps]
   induction p with
