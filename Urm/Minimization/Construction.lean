@@ -40,10 +40,10 @@ open Program
 /-! ## Length calculations -/
 
 /-- Length of setup phase: copy n registers + zero counter + zero register. -/
-def setup_phase_length (n : ℕ) : ℕ := n + 2
+@[simp] def setup_phase_length (n : ℕ) : ℕ := n + 2
 
 /-- Length of loop prologue: clear (base+1) registers + copy n registers + transfer. -/
-def loop_prologueLength (n : ℕ) (pF : Program) : ℕ :=
+@[simp] def loop_prologueLength (n : ℕ) (pF : Program) : ℕ :=
   (minimization_base n pF + 1) + n + 1
 
 /-- PC where loop starts (after setup). -/

@@ -75,7 +75,7 @@ def URMComputableSF (n : ℕ) (f : (Fin n → ℕ) → Part ℕ) : Prop :=
 /-- Non-jumping instructions have bounded jumps for any length. -/
 theorem Instr.has_bounded_jump_of_is_non_jumping {instr : Instr} (h : instr.is_non_jumping = true)
     (len : ℕ) : instr.has_bounded_jump len = true := by
-  cases instr <;> simp_all [is_non_jumping, has_bounded_jump]
+  cases instr <;> grind [is_non_jumping, has_bounded_jump]
 
 /-- has_bounded_jump is monotonic: if bounded for len1, then bounded for any len2 ≥ len1. -/
 theorem Instr.has_bounded_jump_mono {instr : Instr} {len1 len2 : ℕ}
@@ -206,7 +206,7 @@ theorem Program.to_standard_form_length (p : Program) :
 /-- cap_jump always produces an instruction with bounded jump. -/
 theorem Instr.has_bounded_jump_cap_jump (len : ℕ) (instr : Instr) :
     (instr.cap_jump len).has_bounded_jump len = true := by
-  cases instr <;> simp [cap_jump, has_bounded_jump]
+  cases instr <;> grind [cap_jump, has_bounded_jump]
 
 /-- to_standard_form produces a standard form program. -/
 theorem Program.to_standard_form_isStandardForm (p : Program) :

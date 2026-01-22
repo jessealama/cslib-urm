@@ -48,7 +48,7 @@ theorem shift_jumps_zero (p : Program) : p.shift_jumps 0 = p := by
   | nil => rfl
   | cons hd tl ih =>
     simp only [List.map_cons]
-    cases hd <;> simp [Instr.shift_jumps, ih]
+    cases hd <;> grind [Instr.shift_jumps]
 
 /-- Concatenate two programs, adjusting the second program's jump targets.
 
@@ -76,7 +76,7 @@ theorem concat_assoc (p1 p2 p3 : Program) :
   congr 1
   apply List.map_eq_map_iff.mpr
   intro instr _
-  cases instr <;> simp [Instr.shift_jumps]; omega
+  cases instr <;> grind [Instr.shift_jumps]
 
 /-- Program concatenation forms a semigroup.
 Note: This uses `concat` (which shifts jumps), not raw list append. -/

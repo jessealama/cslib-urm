@@ -67,25 +67,26 @@ private theorem pr_loop_prologue_no_write_high (n : ℕ) (pF pG : Program) (r : 
 /-- Setup phase is a straight-line program. -/
 theorem pr_setup_phase_is_straight_line (n : ℕ) (pF pG : Program) :
     (pr_setup_phase n pF pG).is_straight_line = true := by
-  simp only [pr_setup_phase, Program.is_straight_line, List.all_append, List.all_cons, List.all_nil,
-    Bool.and_true, Bool.and_eq_true]
-  refine ⟨copy_register_range_is_straight_line 0 (pr_saved_inputs_start n pF pG) (n + 1), ?_, rfl⟩
-  simp [Instr.is_non_jumping]
+  simp only [pr_setup_phase]
+  exact is_straight_line_append (copy_register_range_is_straight_line _ _ _)
+    (is_straight_line_cons (Instr.Z_is_non_jumping _)
+      (is_straight_line_singleton (Instr.Z_is_non_jumping _)))
 
 /-- Base case prologue is a straight-line program. -/
 theorem pr_base_case_prologue_is_straight_line (n : ℕ) (pF pG : Program) :
     (pr_base_case_prologue n pF pG).is_straight_line = true := by
-  simp only [pr_base_case_prologue, Program.is_straight_line, List.all_append, Bool.and_eq_true]
-  exact ⟨clear_registers_is_straight_line (primitive_recursion_base n pF pG),
-         copy_register_range_is_straight_line (pr_saved_inputs_start n pF pG) 0 n⟩
+  simp only [pr_base_case_prologue]
+  exact is_straight_line_append (clear_registers_is_straight_line _)
+    (copy_register_range_is_straight_line _ _ _)
 
 /-- Loop prologue is a straight-line program. -/
 theorem pr_loop_prologue_is_straight_line (n : ℕ) (pF pG : Program) :
     (pr_loop_prologue n pF pG).is_straight_line = true := by
-  simp only [pr_loop_prologue, Program.is_straight_line, List.all_append, Bool.and_eq_true]
-  refine ⟨⟨clear_registers_is_straight_line (primitive_recursion_base n pF pG),
-          copy_register_range_is_straight_line (pr_saved_inputs_start n pF pG) 0 n⟩, ?_⟩
-  simp only [List.all_cons, List.all_nil, Instr.is_non_jumping, Bool.and_self]
+  simp only [pr_loop_prologue]
+  apply is_straight_line_append _ (is_straight_line_cons (Instr.T_is_non_jumping _ _)
+    (is_straight_line_singleton (Instr.T_is_non_jumping _ _)))
+  exact is_straight_line_append (clear_registers_is_straight_line _)
+    (copy_register_range_is_straight_line _ _ _)
 
 /-! ## Setup Phase Invariants -/
 

@@ -809,7 +809,7 @@ private theorem guardValidPred_computable (n : ℕ) :
   -- hasValidLengthNum n c is always 0 or 1
   have h01 : hasValidLengthNum n (xy 0) = 0 ∨ hasValidLengthNum n (xy 0) = 1 := by
     simp only [hasValidLengthNum, tailIsEmpty, tailIsNonEmpty, isEmptyList]
-    split_ifs <;> omega
+    grind
   cases h01 with
   | inl h0 => simp [h0]
   | inr h1 => simp [h1]

@@ -50,25 +50,25 @@ open Program
 /-! ## Length calculations -/
 
 /-- Length of setup phase: copy (n+1) registers + zero counter + zero register. -/
-def pr_setup_phase_length (n : ℕ) : ℕ := (n + 1) + 2
+@[simp] def pr_setup_phase_length (n : ℕ) : ℕ := (n + 1) + 2
 
 /-- Length of base case prologue: clear (base+1) registers + copy n registers. -/
-def pr_base_case_prologue_length (n : ℕ) (pF pG : Program) : ℕ :=
+@[simp] def pr_base_case_prologue_length (n : ℕ) (pF pG : Program) : ℕ :=
   (primitive_recursion_base n pF pG + 1) + n
 
 /-- Length of base case phase: prologue + pF + transfer to accumulator. -/
-def pr_base_case_phase_length (n : ℕ) (pF pG : Program) : ℕ :=
+@[simp] def pr_base_case_phase_length (n : ℕ) (pF pG : Program) : ℕ :=
   pr_base_case_prologue_length n pF pG + pF.length + 1
 
 /-- Length of loop prologue: clear (base+1) + copy n + 2 transfers. -/
-def pr_loop_prologue_length (n : ℕ) (pF pG : Program) : ℕ :=
+@[simp] def pr_loop_prologue_length (n : ℕ) (pF pG : Program) : ℕ :=
   (primitive_recursion_base n pF pG + 1) + n + 2
 
 /-- Length of loop epilogue: transfer + increment + unconditional jump. -/
-def pr_loop_epilogue_length : ℕ := 3
+@[simp] def pr_loop_epilogue_length : ℕ := 3
 
 /-- Length of loop body: prologue + pG + epilogue. -/
-def pr_loop_body_length (n : ℕ) (pF pG : Program) : ℕ :=
+@[simp] def pr_loop_body_length (n : ℕ) (pF pG : Program) : ℕ :=
   pr_loop_prologue_length n pF pG + pG.length + pr_loop_epilogue_length
 
 /-! ## PC positions -/

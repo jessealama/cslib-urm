@@ -107,11 +107,11 @@ theorem Step.of_concat_right {c c' : Config} (hpc_lo : p1.length ≤ c.pc) (hpc_
     rw [Program.getElem?_concat_of_ge c.pc hpc_lo, Program.getElem?_shift_jumps, hinstr]; rfl
   set pc2 := c.pc - p1.length with hpc2_def
   cases instr with
-  | Z n => have hc' : c' = ⟨c.pc + 1, c.state.write n 0⟩ := by cases hstep <;> simp_all [Instr.shift_jumps]
+  | Z n => have hc' : c' = ⟨c.pc + 1, c.state.write n 0⟩ := by cases hstep <;> grind [Instr.shift_jumps]
            subst hc'; rw [show c.pc + 1 - p1.length = pc2 + 1 by omega]; exact Step.zero hinstr
-  | S n => have hc' : c' = ⟨c.pc + 1, c.state.write n (c.state.read n + 1)⟩ := by cases hstep <;> simp_all [Instr.shift_jumps]
+  | S n => have hc' : c' = ⟨c.pc + 1, c.state.write n (c.state.read n + 1)⟩ := by cases hstep <;> grind [Instr.shift_jumps]
            subst hc'; rw [show c.pc + 1 - p1.length = pc2 + 1 by omega]; exact Step.succ hinstr
-  | T m n => have hc' : c' = ⟨c.pc + 1, c.state.write n (c.state.read m)⟩ := by cases hstep <;> simp_all [Instr.shift_jumps]
+  | T m n => have hc' : c' = ⟨c.pc + 1, c.state.write n (c.state.read m)⟩ := by cases hstep <;> grind [Instr.shift_jumps]
              subst hc'; rw [show c.pc + 1 - p1.length = pc2 + 1 by omega]; exact Step.trans hinstr
   | J m n q =>
     cases hstep with
@@ -121,7 +121,7 @@ theorem Step.of_concat_right {c c' : Config} (hpc_lo : p1.length ≤ c.pc) (hpc_
     | jump_ne h hne =>
       simp only [Instr.shift_jumps] at hconcat_instr; simp only [hconcat_instr, Option.some.injEq, Instr.J.injEq] at h
       obtain ⟨rfl, rfl, _⟩ := h; rw [show c.pc + 1 - p1.length = pc2 + 1 by omega]; exact Step.jump_ne hinstr hne
-    | _ => simp_all [Instr.shift_jumps]
+    | _ => grind [Instr.shift_jumps]
 
 theorem Steps.of_concat_right {s : State} {c' : Config}
     (hsteps : Steps (p1.concat p2) ⟨p1.length, s⟩ c') (hhalted : c'.is_halted (p1.concat p2)) :

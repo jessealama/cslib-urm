@@ -406,7 +406,7 @@ theorem nonzero_execution (n : ℕ) (hn : 0 < n) :
     simp only [s3, s2, s1, State.write, State.read]
     ext i
     simp only [Function.update]
-    split_ifs <;> first | rfl | omega
+    grind
   have h_setup : Steps pred_program ⟨0, s0⟩ ⟨4, s3⟩ := by aesop_steps
   have hk : n - 1 < n := Nat.sub_lt hn Nat.one_pos
   obtain ⟨s_loop, h_loop_steps, hr0_loop, hr1_loop, hr2_loop⟩ := loop_invariant n (n - 1) hk
