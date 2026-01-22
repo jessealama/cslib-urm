@@ -46,10 +46,10 @@ private theorem loop_prologue_no_write_high (r : ℕ) (hr : minimization_base n 
 /-- Setup phase is a straight-line program. -/
 theorem setup_phase_is_straight_line :
     (setup_phase n pF).is_straight_line = true := by
-  simp only [setup_phase, Program.is_straight_line, List.all_append, List.all_cons, List.all_nil,
-    Bool.and_true, Bool.and_eq_true]
-  refine ⟨copy_register_range_is_straight_line 0 (savedInputsStart n pF) n, ?_, rfl⟩
-  simp [Instr.is_non_jumping]
+  simp only [setup_phase]
+  exact is_straight_line_append (copy_register_range_is_straight_line _ _ _)
+    (is_straight_line_cons (Instr.Z_is_non_jumping _)
+      (is_straight_line_singleton (Instr.Z_is_non_jumping _)))
 
 /-- After setup phase, saved inputs contain original inputs. -/
 theorem setup_phase_saves_inputs (inputs : Fin n → ℕ)
@@ -161,10 +161,10 @@ theorem setup_phase_zero_reg_zero
 /-- Loop prologue is a straight-line program. -/
 theorem loop_prologue_is_straight_line :
     (loop_prologue n pF).is_straight_line = true := by
-  simp only [loop_prologue, Program.is_straight_line, List.all_append, List.all_cons, List.all_nil,
-    Bool.and_true, Bool.and_eq_true]
-  exact ⟨⟨clear_registers_is_straight_line (minimization_base n pF),
-           copy_register_range_is_straight_line (savedInputsStart n pF) 0 n⟩, rfl⟩
+  simp only [loop_prologue]
+  apply is_straight_line_append _ (is_straight_line_singleton (Instr.T_is_non_jumping _ _))
+  exact is_straight_line_append (clear_registers_is_straight_line _)
+    (copy_register_range_is_straight_line _ _ _)
 
 /-- After loop prologue, R[0..n-1] contain saved inputs. -/
 theorem loop_prologue_restores_inputs

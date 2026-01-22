@@ -286,6 +286,40 @@ theorem clear_registers_from_preserves (start count : ℕ) (s : State) (r : ℕ)
   simp only [Instr.writes_to, ne_eq, Option.some.injEq]
   omega
 
+/-! ## Straight-Line Program Composition
+
+Lemmas for proving composite programs are straight-line.
+These simplify proofs in Preservation.lean files across closures. -/
+
+/-- Append preserves straight-line property. -/
+theorem is_straight_line_append {p q : Program}
+    (hp : p.is_straight_line = true) (hq : q.is_straight_line = true) :
+    (p ++ q).is_straight_line = true := by
+  simp only [Program.is_straight_line, List.all_append] at hp hq ⊢
+  rw [hp, hq]; rfl
+
+/-- Cons of non-jumping instruction preserves straight-line. -/
+theorem is_straight_line_cons {instr : Instr} {p : Program}
+    (hinstr : instr.is_non_jumping = true) (hp : p.is_straight_line = true) :
+    Program.is_straight_line (instr :: p) = true := by
+  simp only [Program.is_straight_line, List.all_cons] at hp ⊢
+  rw [hinstr, hp]; rfl
+
+/-- Singleton non-jumping instruction is straight-line. -/
+theorem is_straight_line_singleton {instr : Instr}
+    (h : instr.is_non_jumping = true) :
+    Program.is_straight_line [instr] = true := by
+  simp only [Program.is_straight_line, List.all_cons, List.all_nil, h, Bool.and_self]
+
+/-- Z instruction is non-jumping. -/
+@[simp] theorem Instr.Z_is_non_jumping (n : ℕ) : (Instr.Z n).is_non_jumping = true := rfl
+
+/-- S instruction is non-jumping. -/
+@[simp] theorem Instr.S_is_non_jumping (n : ℕ) : (Instr.S n).is_non_jumping = true := rfl
+
+/-- T instruction is non-jumping. -/
+@[simp] theorem Instr.T_is_non_jumping (m n : ℕ) : (Instr.T m n).is_non_jumping = true := rfl
+
 /-! ## clear_registers and copy_register_range
 
 These are straight-line program building blocks used by both Composition and Minimization. -/
