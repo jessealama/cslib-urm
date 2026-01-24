@@ -11,7 +11,6 @@ import Urm.Composition.Basic
 import Urm.PrimitiveRecursion.Basic
 import Urm.Minimization.Basic
 import Urm.Partrec
-import Urm.PartrecPrime
 import Urm.Simulate.Basic
 
 /-! # Public API
@@ -32,11 +31,9 @@ Core types and main theorems for URM computability.
 ## Main Theorems
 - `Urm.URMComputable1.toPartrec` - URM-computable implies Partrec (unary)
 - `Nat.Partrec.toURMComputable1` - Partrec implies URM-computable (unary)
-- `Urm.URMComputable_iff_Partrec'` - n-ary equivalence with Nat.Partrec'
 -/
 
 export Urm (Instr Program Config Step Steps)
 export Urm (URMComputable URMComputable1)
 export Urm (URMComputable1.toPartrec)
-export Urm (URMComputable_iff_Partrec')
 -- Note: Nat.Partrec.toURMComputable1 is in Nat namespace, auto-accessible
