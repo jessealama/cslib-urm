@@ -102,7 +102,7 @@ theorem straight_line_halts_at_length {p : Program} (hsl : p.is_straight_line = 
     cases hstep with
     | zero hinstr | succ hinstr | trans hinstr =>
       have hpc_lt := List.getElem?_eq_some_iff.mp hinstr |>.1
-      simp only at ih ⊢; omega
+      grind
     | jump_eq hinstr _ | jump_ne hinstr _ =>
       have ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.mp hinstr
       simp only [Program.is_straight_line, List.all_eq_true] at hsl
@@ -256,7 +256,7 @@ theorem straight_line_zeros_register {p : Program} (hsl : p.is_straight_line = t
     have ha'_pc_lt := Step.pc_lt_length hstep
     have hc'_pc_gt : c'.pc > k := by
       cases hstep with
-      | zero _ | succ _ | trans _ | jump_ne _ _ => simp only []; omega
+      | zero _ | succ _ | trans _ | jump_ne _ _ => grind
       | jump_eq h heq =>
         simp only [Program.is_straight_line, List.all_eq_true] at hsl
         exact absurd (hsl _ ((List.getElem?_eq_some_iff.mp h).2 ▸ List.getElem_mem ha'_pc_lt)) (by simp [Instr.is_non_jumping])
@@ -357,11 +357,11 @@ theorem copy_register_range_length (srcStart dstStart count : ℕ) :
 
 /-- Tactic for solving length arithmetic goals involving clear_registers and copy_register_range. -/
 macro "len_append_omega" : tactic =>
-  `(tactic| (simp only [List.length_append, clear_registers_length, copy_register_range_length]; omega))
+  `(tactic| (simp only [List.length_append, clear_registers_length, copy_register_range_length]; grind))
 
 /-- Tactic for proving register write targets are distinct. -/
 macro "writes_to_omega" : tactic =>
-  `(tactic| (simp only [Instr.writes_to, ne_eq, Option.some.injEq]; omega))
+  `(tactic| (simp only [Instr.writes_to, ne_eq, Option.some.injEq]; grind))
 
 @[scoped grind =]
 theorem clear_registers_is_straight_line (maxReg : ℕ) :
@@ -386,7 +386,7 @@ theorem copy_register_range_preserves_outside (srcStart dstStart count : ℕ)
     (r : ℕ) (hr : r < dstStart ∨ r ≥ dstStart + count) :
     ∀ instr, instr ∈ Program.copy_register_range srcStart dstStart count → instr.writes_to ≠ some r := by
   intro instr hinstr; obtain ⟨i, hi, hwrites⟩ := copy_register_range_writes_to srcStart dstStart count instr hinstr
-  rw [hwrites]; simp only [ne_eq, Option.some.injEq]; omega
+  rw [hwrites]; grind
 
 /-- clear_registers preserves registers above maxReg. -/
 theorem clear_registers_preserves_above (maxReg : ℕ) (s : State) (r : ℕ) (hr : r > maxReg) :
@@ -438,7 +438,7 @@ theorem straight_line_transfer_result {p : Program} (hsl : p.is_straight_line = 
     have ha'_pc_lt := Step.pc_lt_length hstep
     have hc'_pc_gt : c'.pc > k := by
       cases hstep with
-      | zero _ | succ _ | trans _ | jump_ne _ _ => simp only []; omega
+      | zero _ | succ _ | trans _ | jump_ne _ _ => grind
       | jump_eq h heq' =>
         simp only [Program.is_straight_line, List.all_eq_true] at hsl
         exact absurd (hsl _ ((List.getElem?_eq_some_iff.mp h).2 ▸ List.getElem_mem ha'_pc_lt)) (by simp [Instr.is_non_jumping])

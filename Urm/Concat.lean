@@ -159,15 +159,15 @@ theorem Step.concat_right {c c' : Config}
   | .zero (n := n) h =>
     have h' : (p1.concat p2)[c.pc + p1.length]? = some (Instr.Z n) := by
       rw [hinstr_eq, Program.getElem?_shift_jumps, h]; rfl
-    convert @Step.zero (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ n h' using 2; simp; omega
+    convert @Step.zero (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ n h' using 2; grind
   | .succ (n := n) h =>
     have h' : (p1.concat p2)[c.pc + p1.length]? = some (Instr.S n) := by
       rw [hinstr_eq, Program.getElem?_shift_jumps, h]; rfl
-    convert @Step.succ (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ n h' using 2; simp; omega
+    convert @Step.succ (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ n h' using 2; grind
   | .trans (m := m) (n := n) h =>
     have h' : (p1.concat p2)[c.pc + p1.length]? = some (Instr.T m n) := by
       rw [hinstr_eq, Program.getElem?_shift_jumps, h]; rfl
-    convert @Step.trans (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ m n h' using 2; simp; omega
+    convert @Step.trans (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ m n h' using 2; grind
   | .jump_eq (m := m) (n := n) (q := q) h heq =>
     have h' : (p1.concat p2)[c.pc + p1.length]? = some (Instr.J m n (q + p1.length)) := by
       rw [hinstr_eq, Program.getElem?_shift_jumps, h]; rfl
@@ -175,7 +175,7 @@ theorem Step.concat_right {c c' : Config}
   | .jump_ne (m := m) (n := n) (q := q) h hne =>
     have h' : (p1.concat p2)[c.pc + p1.length]? = some (Instr.J m n (q + p1.length)) := by
       rw [hinstr_eq, Program.getElem?_shift_jumps, h]; rfl
-    convert @Step.jump_ne (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ m n (q + p1.length) h' hne using 2; simp; omega
+    convert @Step.jump_ne (p1.concat p2) ⟨c.pc + p1.length, c.state⟩ m n (q + p1.length) h' hne using 2; grind
 
 /-- Multi-step in the second part of a concatenated program. -/
 theorem Steps.concat_right {c c' : Config}

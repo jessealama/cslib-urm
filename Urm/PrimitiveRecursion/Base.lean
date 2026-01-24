@@ -41,36 +41,35 @@ open Program
 /-- The base register for primitive recursion, ensuring neither pF nor pG
     clobbers saved registers, and saved registers don't overlap with pG's
     input space (registers 0 through n+1). -/
-def primitive_recursion_base (n : ℕ) (pF pG : Program) : ℕ :=
+@[grind =] def primitive_recursion_base (n : ℕ) (pF pG : Program) : ℕ :=
   max (n + 1) (max pF.max_register pG.max_register)
 
 /-! ## Register indices -/
 
 /-- The start of saved input registers R[base+1..base+n]. -/
-def pr_saved_inputs_start (n : ℕ) (pF pG : Program) : ℕ :=
+@[grind =] def pr_saved_inputs_start (n : ℕ) (pF pG : Program) : ℕ :=
   primitive_recursion_base n pF pG + 1
 
 /-- The register storing the original y value (recursion depth). -/
-def pr_saved_y_reg (n : ℕ) (pF pG : Program) : ℕ :=
+@[grind =] def pr_saved_y_reg (n : ℕ) (pF pG : Program) : ℕ :=
   primitive_recursion_base n pF pG + n + 1
 
 /-- The counter register (tracks current iteration 0..y). -/
-def pr_counter_reg (n : ℕ) (pF pG : Program) : ℕ :=
+@[grind =] def pr_counter_reg (n : ℕ) (pF pG : Program) : ℕ :=
   primitive_recursion_base n pF pG + n + 2
 
 /-- The accumulator register (holds result from previous iteration). -/
-def pr_accumulator_reg (n : ℕ) (pF pG : Program) : ℕ :=
+@[grind =] def pr_accumulator_reg (n : ℕ) (pF pG : Program) : ℕ :=
   primitive_recursion_base n pF pG + n + 3
 
 /-- The zero register (always 0, used for J comparisons). -/
-def pr_zero_reg (n : ℕ) (pF pG : Program) : ℕ :=
+@[grind =] def pr_zero_reg (n : ℕ) (pF pG : Program) : ℕ :=
   primitive_recursion_base n pF pG + n + 4
 
 /-- Tactic for solving register arithmetic goals in primitive recursion.
-    Unfolds register definitions and calls omega. -/
+    Unfolds register definitions and calls grind. -/
 macro "pr_register_omega" : tactic =>
-  `(tactic| (simp only [pr_saved_inputs_start, pr_saved_y_reg, pr_counter_reg,
-      pr_accumulator_reg, pr_zero_reg, primitive_recursion_base]; omega))
+  `(tactic| grind)
 
 /-! ## Bound lemmas for primitive_recursion_base -/
 
