@@ -162,12 +162,6 @@ theorem clear_registers_zeros' (maxReg : ℕ) (s : State) (r : ℕ) (hr : r ≤ 
     (straight_lineFinalState (clear_registers_is_straight_line' maxReg) s).read r = 0 := by
   rw [clear_registers_finalState_eq]; exact clear_registers_from_zeros 0 (maxReg + 1) s r ⟨Nat.zero_le r, by omega⟩
 
-/-- For a straight-line program, c.state equals straight_lineFinalState if halted from s. -/
-theorem straight_lineFinalState_eq_of_halted {p : Program} (hsl : p.is_straight_line = true) (s : State)
-    (c : Config) (hsteps : Steps p ⟨0, s⟩ c) (hhalted : c.is_halted p) :
-    c.state = straight_lineFinalState hsl s :=
-  Steps.eq_of_halts hsteps hhalted (straight_lineFinalState_spec hsl s).1 (straight_lineFinalState_spec hsl s).2.1 ▸ rfl
-
 /-- When p1 is straight-line, the intermediate state equals straight_lineFinalState.
     This combines suffix_of_concat_state with straight_lineFinalState_eq_of_halted. -/
 theorem straight_line_suffix_of_concat_state {p1 p2 : Program} {s : State} {c : Config}

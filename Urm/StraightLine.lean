@@ -141,6 +141,13 @@ theorem straight_lineFinalState_spec {p : Program} (hsl : p.is_straight_line = t
     Steps p ⟨0, s⟩ c ∧ c.is_halted p ∧ c.pc = p.length :=
   Classical.choose_spec (straight_line_halts_from_state hsl s)
 
+/-- For a straight-line program, c.state equals straight_lineFinalState if halted from s. -/
+theorem straight_lineFinalState_eq_of_halted {p : Program} (hsl : p.is_straight_line = true)
+    (s : State) (c : Config) (hsteps : Steps p ⟨0, s⟩ c) (hhalted : c.is_halted p) :
+    c.state = straight_lineFinalState hsl s :=
+  Steps.eq_of_halts hsteps hhalted (straight_lineFinalState_spec hsl s).1
+    (straight_lineFinalState_spec hsl s).2.1 ▸ rfl
+
 /-- In a straight-line program, we can characterize the state at any intermediate pc.
 This gives us the configuration after executing instructions 0..pc-1. -/
 theorem straight_line_state_at_pc {p : Program} (hsl : p.is_straight_line = true)
@@ -437,5 +444,54 @@ theorem straight_line_transfer_result {p : Program} (hsl : p.is_straight_line = 
         exact absurd (hsl _ ((List.getElem?_eq_some_iff.mp h).2 ▸ List.getElem_mem ha'_pc_lt)) (by simp [Instr.is_non_jumping])
     rw [ih hc'_pc_gt]; apply Step.straight_line_preserves hsl hstep; intro instr hinstr
     rw [← (List.getElem?_eq_some_iff.mp hinstr).2]; exact hnowrite a'.pc ha'_pc_lt hpc_gt
+
+/-! ## High-Level Straight-Line Preservation Helpers
+
+These helpers bundle the common 8-step proof pattern for straight-line program register results
+into 2-3 step proofs, reducing boilerplate in Preservation.lean files. -/
+
+/-- For a T instruction at position k: if no later instruction writes to dst,
+    and no instruction writes to src, then final dst = initial src.
+    Bundles steps 5-8 of the common proof pattern. -/
+theorem straight_line_transfer_final {p : Program} (hsl : p.is_straight_line = true)
+    (s : State) (c : Config) (hsteps : Steps p ⟨0, s⟩ c) (hhalted : c.is_halted p)
+    (k src dst : ℕ) (hk : k < p.length)
+    (hwrite : p[k] = Instr.T src dst)
+    (hnowrite_after : ∀ j (hj : j < p.length), k < j → (p[j]'hj).writes_to ≠ some dst)
+    (hnowrite_src : ∀ instr, instr ∈ p → instr.writes_to ≠ some src) :
+    c.state.read dst = s.read src := by
+  obtain ⟨s_before, ⟨c_k, hsteps_k, _, hs_before_eq⟩, htransfer⟩ :=
+    straight_line_transfer_result hsl s k src dst hk hwrite hnowrite_after
+  have hs_before_val : s_before.read src = s.read src := by
+    rw [← hs_before_eq]
+    exact Steps.straight_line_preserves hsl hsteps_k hnowrite_src
+  have heq : c.state = straight_lineFinalState hsl s :=
+    straight_lineFinalState_eq_of_halted hsl s c hsteps hhalted
+  rw [heq, htransfer, hs_before_val]
+
+/-- For a Z instruction at position k: if no later instruction writes to r,
+    then final r = 0. Wrapper with Steps/halted interface. -/
+theorem straight_line_zero_final {p : Program} (hsl : p.is_straight_line = true)
+    (s : State) (c : Config) (hsteps : Steps p ⟨0, s⟩ c) (hhalted : c.is_halted p)
+    (k r : ℕ) (hk : k < p.length)
+    (hwrite : p[k] = Instr.Z r)
+    (hnowrite_after : ∀ j (hj : j < p.length), k < j → (p[j]'hj).writes_to ≠ some r) :
+    c.state.read r = 0 := by
+  have heq : c.state = straight_lineFinalState hsl s :=
+    straight_lineFinalState_eq_of_halted hsl s c hsteps hhalted
+  rw [heq]
+  exact straight_line_zeros_register hsl s r k hk hwrite hnowrite_after
+
+/-- If no instruction writes to r, final r = initial r.
+    Direct wrapper with Steps/halted interface. -/
+theorem straight_line_preserves_final {p : Program} (hsl : p.is_straight_line = true)
+    (s : State) (c : Config) (hsteps : Steps p ⟨0, s⟩ c) (hhalted : c.is_halted p)
+    (r : ℕ) (hnowrite : ∀ instr, instr ∈ p → instr.writes_to ≠ some r) :
+    c.state.read r = s.read r := by
+  have heq : c.state = straight_lineFinalState hsl s :=
+    straight_lineFinalState_eq_of_halted hsl s c hsteps hhalted
+  have ⟨hsteps', _, _⟩ := straight_lineFinalState_spec hsl s
+  rw [heq]
+  exact Steps.straight_line_preserves hsl hsteps' hnowrite
 
 end Urm
