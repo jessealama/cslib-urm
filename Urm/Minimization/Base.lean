@@ -29,25 +29,25 @@ namespace Urm
 open Program
 
 /-- The base register for minimization, ensuring pF doesn't clobber saved registers. -/
-def minimization_base (n : ℕ) (pF : Program) : ℕ :=
+@[grind =] def minimization_base (n : ℕ) (pF : Program) : ℕ :=
   max n pF.max_register
 
 /-- The register where counter y is stored. -/
-def counter_reg (n : ℕ) (pF : Program) : ℕ :=
+@[grind =] def counter_reg (n : ℕ) (pF : Program) : ℕ :=
   minimization_base n pF + n + 1
 
 /-- The zero register (always contains 0, used for J comparisons). -/
-def zero_reg (n : ℕ) (pF : Program) : ℕ :=
+@[grind =] def zero_reg (n : ℕ) (pF : Program) : ℕ :=
   minimization_base n pF + n + 2
 
 /-- The start of saved input registers. -/
-def savedInputsStart (n : ℕ) (pF : Program) : ℕ :=
+@[grind =] def savedInputsStart (n : ℕ) (pF : Program) : ℕ :=
   minimization_base n pF + 1
 
 /-- Tactic for solving register arithmetic goals in minimization.
-    Unfolds register definitions and calls omega. -/
+    Unfolds register definitions and calls grind. -/
 macro "min_register_omega" : tactic =>
-  `(tactic| (simp only [savedInputsStart, counter_reg, zero_reg, minimization_base]; omega))
+  `(tactic| grind)
 
 /-! ## Bound lemmas for minimization_base -/
 
