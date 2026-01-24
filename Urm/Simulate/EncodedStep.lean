@@ -251,7 +251,7 @@ private theorem encoded_step_correct_zero (p : Program) (c : Config) (n : ℕ)
     simp only [Instr.max_register] at h
     exact h
   simp only [hn, ↓reduceIte]
-  rw [update_nth_encoded_encode_regs _ _ _ (by simp; omega)]
+  rw [update_nth_encoded_encode_regs _ _ _ (by grind)]
   congr 1
   exact congrArg _ (ofFn_set_eq_ofFn_write p.max_register c n 0)
 
@@ -277,11 +277,11 @@ private theorem encoded_step_correct_succ (p : Program) (c : Config) (n : ℕ)
     simp only [Instr.max_register] at h
     exact h
   simp only [hn, ↓reduceIte]
-  rw [nth_encoded_encode_regs _ n (by simp; omega)]
-  rw [update_nth_encoded_encode_regs _ _ _ (by simp; omega)]
+  rw [nth_encoded_encode_regs _ n (by grind)]
+  rw [update_nth_encoded_encode_regs _ _ _ (by grind)]
   congr 1
-  have heq1 : (List.ofFn (fun j : Fin (p.max_register + 1) => c.state j))[n]'(by simp; omega) =
-      c.state n := ofFn_getElem p.max_register c n (by omega)
+  have heq1 : (List.ofFn (fun j : Fin (p.max_register + 1) => c.state j))[n]'(by grind) =
+      c.state n := ofFn_getElem p.max_register c n (by grind)
   rw [heq1]
   simp only [State.read]
   exact congrArg _ (ofFn_set_eq_ofFn_write p.max_register c n (c.state n + 1))
@@ -307,11 +307,11 @@ private theorem encoded_step_correct_trans (p : Program) (c : Config) (m n : ℕ
   have hm : m ≤ p.max_register := le_of_max_le_left hmn
   have hn : n ≤ p.max_register := le_of_max_le_right hmn
   simp only [hn, hm, ↓reduceIte]
-  rw [nth_encoded_encode_regs _ m (by simp; omega)]
-  rw [update_nth_encoded_encode_regs _ _ _ (by simp; omega)]
+  rw [nth_encoded_encode_regs _ m (by grind)]
+  rw [update_nth_encoded_encode_regs _ _ _ (by grind)]
   congr 1
-  have heq1 : (List.ofFn (fun j : Fin (p.max_register + 1) => c.state j))[m]'(by simp; omega) =
-      c.state m := ofFn_getElem p.max_register c m (by omega)
+  have heq1 : (List.ofFn (fun j : Fin (p.max_register + 1) => c.state j))[m]'(by grind) =
+      c.state m := ofFn_getElem p.max_register c m (by grind)
   rw [heq1]
   simp only [State.read]
   exact congrArg _ (ofFn_set_eq_ofFn_write p.max_register c n (c.state m))
@@ -338,12 +338,12 @@ private theorem encoded_step_correct_jump_eq (p : Program) (c : Config) (m n q :
   have hm : m ≤ p.max_register := le_of_max_le_left hmn
   have hn : n ≤ p.max_register := le_of_max_le_right hmn
   simp only [hm, hn, ↓reduceIte]
-  rw [nth_encoded_encode_regs _ m (by simp; omega)]
-  rw [nth_encoded_encode_regs _ n (by simp; omega)]
-  have heqm : (List.ofFn (fun j : Fin (p.max_register + 1) => c.state j))[m]'(by simp; omega) =
-      c.state m := ofFn_getElem p.max_register c m (by omega)
-  have heqn : (List.ofFn (fun j : Fin (p.max_register + 1) => c.state j))[n]'(by simp; omega) =
-      c.state n := ofFn_getElem p.max_register c n (by omega)
+  rw [nth_encoded_encode_regs _ m (by grind)]
+  rw [nth_encoded_encode_regs _ n (by grind)]
+  have heqm : (List.ofFn (fun j : Fin (p.max_register + 1) => c.state j))[m]'(by grind) =
+      c.state m := ofFn_getElem p.max_register c m (by grind)
+  have heqn : (List.ofFn (fun j : Fin (p.max_register + 1) => c.state j))[n]'(by grind) =
+      c.state n := ofFn_getElem p.max_register c n (by grind)
   rw [heqm, heqn]
   simp only [State.read] at heq
   simp only [heq, ↓reduceIte]
@@ -370,12 +370,12 @@ private theorem encoded_step_correct_jump_ne (p : Program) (c : Config) (m n q :
   have hm : m ≤ p.max_register := le_of_max_le_left hmn
   have hn : n ≤ p.max_register := le_of_max_le_right hmn
   simp only [hm, hn, ↓reduceIte]
-  rw [nth_encoded_encode_regs _ m (by simp; omega)]
-  rw [nth_encoded_encode_regs _ n (by simp; omega)]
-  have heqm : (List.ofFn (fun j : Fin (p.max_register + 1) => c.state j))[m]'(by simp; omega) =
-      c.state m := ofFn_getElem p.max_register c m (by omega)
-  have heqn : (List.ofFn (fun j : Fin (p.max_register + 1) => c.state j))[n]'(by simp; omega) =
-      c.state n := ofFn_getElem p.max_register c n (by omega)
+  rw [nth_encoded_encode_regs _ m (by grind)]
+  rw [nth_encoded_encode_regs _ n (by grind)]
+  have heqm : (List.ofFn (fun j : Fin (p.max_register + 1) => c.state j))[m]'(by grind) =
+      c.state m := ofFn_getElem p.max_register c m (by grind)
+  have heqn : (List.ofFn (fun j : Fin (p.max_register + 1) => c.state j))[n]'(by grind) =
+      c.state n := ofFn_getElem p.max_register c n (by grind)
   rw [heqm, heqn]
   simp only [State.read] at hne
   simp only [hne, ↓reduceIte]

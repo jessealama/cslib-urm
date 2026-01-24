@@ -92,7 +92,7 @@ theorem transfer_results_to_inputs_writes_to (resultStart arityF : ℕ)
 theorem transfer_results_to_inputs_preserves_outside (resultStart arityF : ℕ) (r : ℕ) (hr : r ≥ arityF) :
     ∀ instr, instr ∈ Program.transfer_results_to_inputs resultStart arityF → instr.writes_to ≠ some r := by
   intro instr hinstr; obtain ⟨i, hi, hwrites⟩ := transfer_results_to_inputs_writes_to resultStart arityF instr hinstr
-  rw [hwrites]; simp only [ne_eq, Option.some.injEq]; omega
+  rw [hwrites]; grind
 
 section Continuation
 
@@ -134,21 +134,21 @@ theorem Steps.of_concat_right {s : State} {c' : Config}
   | refl =>
     refine ⟨⟨c''.pc - p1.length, c''.state⟩, Relation.ReflTransGen.refl, ?_, rfl⟩
     simp only [Config.is_halted] at hhalted' ⊢
-    simp only [Program.concat, List.length_append, Program.shift_jumps, List.length_map] at hhalted'; omega
+    simp only [Program.concat, List.length_append, Program.shift_jumps, List.length_map] at hhalted'; grind
   | @head a b hstep hrest ih =>
     have ha_in_range : a.pc < p1.length + p2.length := by
       by_contra hc; simp only [not_lt] at hc
-      exact Step.no_step_of_halted (by simp only [Config.is_halted, Program.concat, List.length_append, Program.shift_jumps, List.length_map]; omega) hstep
+      exact Step.no_step_of_halted (by simp only [Config.is_halted, Program.concat, List.length_append, Program.shift_jumps, List.length_map]; grind) hstep
     have hstep_p2 := Step.of_concat_right hstart ha_in_range hstep
     have hb_pc_ge : b.pc ≥ p1.length := by
       cases hstep with
-      | zero _ | succ _ | trans _ | jump_ne _ _ => simp only []; omega
+      | zero _ | succ _ | trans _ | jump_ne _ _ => grind
       | jump_eq h _ =>
         rw [Program.getElem?_concat_of_ge a.pc hstart, Program.getElem?_shift_jumps] at h
         cases hp2 : p2[a.pc - p1.length]? with
         | none => simp only [hp2, Option.map_none] at h; nomatch h
         | some instr => simp only [hp2, Option.map_some] at h; cases instr with
-          | J _ _ q' => simp only [Instr.shift_jumps, Option.some.injEq, Instr.J.injEq] at h; obtain ⟨_, _, hq_eq⟩ := h; simp only [← hq_eq]; omega
+          | J _ _ q' => simp only [Instr.shift_jumps, Option.some.injEq, Instr.J.injEq] at h; obtain ⟨_, _, hq_eq⟩ := h; grind
           | _ => simp only [Instr.shift_jumps, Option.some.injEq] at h; nomatch h
     obtain ⟨c, hrest_p2, hhalted_c, hstate_eq⟩ := ih hb_pc_ge
     exact ⟨c, Relation.ReflTransGen.head hstep_p2 hrest_p2, hhalted_c, hstate_eq⟩
@@ -158,7 +158,7 @@ theorem suffix_of_concat_from_zero {p1 p2 : Program} {s : State} {c : Config}
     ∃ s', Steps p1 ⟨0, s⟩ ⟨p1.length, s'⟩ ∧ (∃ c', Steps p2 ⟨0, s'⟩ c' ∧ c'.is_halted p2) := by
   obtain ⟨c1, hsteps_p1, hhalted_p1⟩ := prefix_of_concat_from_zero hsteps hhalted h1
   have hc1_le := h1.pc_le_length hsteps_p1 (by simp : (⟨0, s⟩ : Config).pc ≤ p1.length)
-  have hc1_pc : c1.pc = p1.length := by simp only [Config.is_halted] at hhalted_p1; omega
+  have hc1_pc : c1.pc = p1.length := by simp only [Config.is_halted] at hhalted_p1; grind
   refine ⟨c1.state, ?_, ?_⟩
   · convert hsteps_p1 using 1; ext <;> simp [hc1_pc]
   · have hsteps_p1_lifted : Steps (p1.concat p2) ⟨0, s⟩ ⟨p1.length, c1.state⟩ := by
